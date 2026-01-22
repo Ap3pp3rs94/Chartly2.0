@@ -1,0 +1,170 @@
+version: "1.0"
+
+connector_profile:
+  id: "webhook"
+  protocol: "webhook"
+  kind: "webhook"
+  description: >
+    Inbound webhook connector profile. Webhooks are received at the gateway, verified (signature/replay),
+    stored as immutable raw payloads, and translated into ingestion/normalization jobs. Connector-hub may
+    manage routing and downstream scheduling but does not terminate public webhooks directly.
+  version: "1.0.0"
+  status: "active"
+
+source_config_schema:
+  required_fields:
+    - "path"
+  optional_fields:
+    - "allowed_methods"
+    - "content_types"
+    - "max_body_bytes"
+    - "verification"
+    - "event_translation"
+    - "rate_limit_rpm"
+  field_docs:
+    path:
+      type: "string"
+      rules:
+        - "Must start with '/webhooks/'."
+        - "Must be globally unique per tenant+source."
+    verification:
+      type: "object"
+      rules:
+        - "If enabled, signing_secret must be env-var reference only."
+    event_translation:
+      type: "object"
+      rules:
+        - "Defines event_type and optional mapping hints for normalizer."
+        - "Must not include secrets."
+
+gateway_termination:
+  path_policy:
+    required_prefix: "/webhooks/"
+    max_length: 200
+  allowed_methods_default: ["POST"]
+  allowed_methods_all: ["POST", "PUT"]
+  content_type_policy:
+    allowed:
+      - "application/json"
+      - "application/*+json"
+      - "application/x-www-form-urlencoded"
+      - "text/plain"
+    notes:
+      - "Non-JSON bodies are stored raw; normalizer mapping decides how to interpret."
+  max_body_bytes_default: 1000000   # 1MB
+  authentication:
+    rbac_required: true
+    notes:
+      - "Public webhook endpoints typically bypass user auth but must still enforce tenant scoping and verification."
+      - "If bearer token verification is used, it must be treated as a secret and stored via env var."
+
+verification:
+  supported_signature_schemes: ["hmac_sha256", "bearer_token", "none"]
+  defaults:
+    scheme: "hmac_sha256"
+    signature_header: "X-Signature"
+    timestamp_header: "X-Timestamp"
+    tolerance_seconds: 300
+  hmac_sha256:
+    signing_secret_env_required: true
+    signing_secret_env_field: "signing_secret_env"
+    signature_format: "hex"
+    payload_canonicalization: "raw_bytes"
+    notes:
+      - "Compute HMAC over raw request body bytes."
+  bearer_token:
+    token_header: "Authorization"
+    token_env_field: "token_env"
+    notes:
+      - "Bearer tokens are weaker than signatures; prefer hmac_sha256."
+  replay_protection:
+    enabled: true
+    required_headers: ["X-Timestamp"]
+    tolerance_seconds: 300
+    behavior:
+      on_missing_timestamp: "quarantine"
+      on_out_of_window: "reject_request"
+
+event_translation:
+  raw_storage:
+    required: true
+    behavior:
+      - "Gateway writes raw request body to blob store immediately and computes sha256."
+      - "Gateway emits a normalize job with raw_ref and webhook metadata."
+  canonical_event:
+    default_event_type: "webhook.received"
+    event_type_convention: "dot.separated.namespaces"
+    include_minimal_metadata:
+      - "headers_allowlist"
+      - "remote_ip_hash"
+      - "received_at"
+      - "path"
+      - "method"
+    headers_allowlist:
+      # Store only safe headers; never store Authorization or secrets.
+      - "User-Agent"
+      - "Content-Type"
+      - "X-Request-Id"
+      - "X-Event-Id"
+      - "X-Timestamp"
+  dedupe_hints:
+    suggested_key_fields:
+      - "tenant_id"
+      - "source_id"
+      - "raw_ref.sha256"
+      - "webhook.event_id_header_if_present"
+
+rate_limiting_and_backpressure:
+  defaults:
+    rate_limit_rpm: 300
+  backpressure:
+    - "Gateway must shed load safely (429) when internal queues are saturated."
+    - "Normalize jobs should be queued; do not block webhook response on downstream processing."
+
+observability:
+  required_metrics:
+    - "webhook.requests_total"
+    - "webhook.verified_total"
+    - "webhook.rejected_total"
+    - "webhook.latency_ms_p95"
+    - "webhook.queue_enqueued_total"
+  required_log_fields:
+    - "ts"
+    - "service=gateway"
+    - "tenant_id"
+    - "source_id"
+    - "request_id"
+    - "path"
+    - "method"
+    - "status_code"
+    - "raw_sha256"
+    - "verified"
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["schema_drift_explainer"]
+  forbidden:
+    - "disable_verification"
+    - "add_header_allowlist_that_includes_authorization"
+    - "include_signing_secret_literals"
+  approval_gate: "human_required"
+  audit_fields_required: ["llm_role", "model_id", "prompt_hash", "output_hash", "approver", "decision"]
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example 1: HMAC verified webhook
+# source:
+#   kind: webhook
+#   connector: webhook
+#   config:
+#     path: "/webhooks/vendor-a/orders"
+#     verification:
+#       scheme: "hmac_sha256"
+#       signature_header: "X-Signature"
+#       timestamp_header: "X-Timestamp"
+#       tolerance_seconds: 300
+#       signing_secret_env: "VENDOR_A_WEBHOOK_SECRET"
+#     event_translation:
+#       event_type: "vendor_a.orders.received"
+# -----------------------------------------------------------------------------
