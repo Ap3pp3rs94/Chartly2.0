@@ -20,19 +20,21 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
-      - name: Detect Go files
+            - name: Detect Go files
         id: gofiles
         shell: bash
         run: |
           set -euo pipefail
           total=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
           pkg=$(grep -R --include='*.go' --exclude-dir=web -n '^package ' . 2>/dev/null | wc -l | tr -d ' ')
+          ready=false
+          if [ "$total" -gt 0 ] && [ "$total" -eq "$pkg" ]; then
+            ready=true
+          fi
           echo "total=$total" >> "$GITHUB_OUTPUT"
           echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
-          echo "Go files total: $total, with package: $pkg"
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "Go files total: $total, with package: $pkg, ready: $ready"
       - name: Start dependencies (docker compose)
         shell: bash
         run: |
@@ -60,7 +62,7 @@ jobs:
           docker compose logs --no-color --tail=200
           exit 1
 
-            - name: Detect integration tests (files)
+                  - name: Detect integration tests (files)
         id: itests
         shell: bash
         run: |
@@ -72,9 +74,8 @@ jobs:
           fi
           echo "count=$count" >> "$GITHUB_OUTPUT"
           echo "Integration test files (with package): $count"
-
       - name: Run integration tests (tests/integration)
-        if: ${{ steps.itests.outputs.count != '0' && steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
+        if: ${{ steps.itests.outputs.count != '0' && steps.gofiles.outputs.ready == 'true' && steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         env:
           # Provide local dependency endpoints for tests
@@ -91,7 +92,7 @@ jobs:
           go test ./tests/integration/... -count=1
 
       - name: Run integration tests (build tag)
-        if: ${{ steps.itests.outputs.count == '0' && steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
+        if: ${{ steps.itests.outputs.count == '0' && steps.gofiles.outputs.ready == 'true' && steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         env:
           POSTGRES_DSN: postgres://chartly:chartly@localhost:5432/chartly?sslmode=disable
@@ -113,7 +114,7 @@ jobs:
           fi
 
             - name: Skip integration tests (incomplete Go files)
-        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total != steps.gofiles.outputs.pkg }}
+        if: ${{ steps.gofiles.outputs.ready != 'true' }}
         run: echo "Go files missing package declarations; skipping integration tests."
 - name: Upload test artifacts (if any)
         if: always()
@@ -132,4 +133,6 @@ jobs:
         shell: bash
         run: |
           docker compose down
+
+
 
