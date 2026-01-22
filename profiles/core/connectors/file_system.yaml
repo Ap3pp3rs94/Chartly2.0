@@ -1,0 +1,156 @@
+version: "1.0"
+
+connector_profile:
+  id: "file_system"
+  protocol: "file_system"
+  kind: "file"
+  description: >
+    File system connector profile. Describes ingestion of files from a file system surface.
+    In production, file access is typically performed by an agent running with explicit allowlists.
+    Connector-hub coordinates jobs; the agent reads files and writes raw blobs to blob storage.
+  version: "1.0.0"
+  status: "active"
+
+source_config_schema:
+  required_fields:
+    - "roots"
+    - "include_globs"
+  optional_fields:
+    - "exclude_globs"
+    - "recursive"
+    - "max_depth"
+    - "max_file_size_bytes"
+    - "poll_interval_seconds"
+    - "content_types"
+    - "parsing"
+    - "rate_limit_rpm"
+  field_docs:
+    roots:
+      type: "array<string>"
+      rules:
+        - "Must be absolute paths on the agent host."
+        - "Must be within agent allowlist."
+    include_globs:
+      type: "array<string>"
+      rules:
+        - "Glob patterns for files to include (e.g., **/*.json)."
+    exclude_globs:
+      type: "array<string>"
+    recursive:
+      type: "boolean"
+      default: true
+    max_depth:
+      type: "integer"
+      default: 10
+    max_file_size_bytes:
+      type: "integer"
+      default: 50000000
+    poll_interval_seconds:
+      type: "integer"
+      default: 300
+
+file_system:
+  access_model:
+    agent_required: true
+    notes:
+      - "Direct filesystem reads are performed by a dedicated agent process."
+      - "Agent must enforce allowlists and never exfiltrate unauthorized files."
+  allowlist_policy:
+    roots_allowlist_env: "FS_ROOTS_ALLOWLIST"   # env var on agent (comma-separated)
+    deny_hidden_files: true
+  glob_policy:
+    max_include_globs: 50
+    max_exclude_globs: 50
+  recursion:
+    default_recursive: true
+    max_depth_default: 10
+    hard_max_depth: 25
+  size_limits:
+    max_file_size_bytes_default: 50000000
+    hard_max_file_size_bytes: 200000000
+  content_type_detection:
+    mode: "extension_then_magic"
+    default_content_type: "application/octet-stream"
+
+change_detection:
+  modes: ["polling"]
+  planned_modes: ["event_watch"]
+  polling:
+    default_interval_seconds: 300
+    min_interval_seconds: 30
+    max_interval_seconds: 3600
+  hashing:
+    algorithm: "sha256"
+    when: "on_change_or_first_seen"
+  state_tracking:
+    planned: true
+    notes:
+      - "Store file cursor state (path + last_modified + last_hash) keyed by tenant/source."
+      - "Prevent reprocessing unchanged files; rely on idempotency as secondary protection."
+
+rate_limiting_and_backpressure:
+  defaults:
+    rate_limit_rpm: 30
+    per_source_concurrency: 2
+  backpressure:
+    - "Stop scheduling file reads when queue depth exceeds threshold."
+    - "Agent should implement local throttling to avoid disk thrash."
+
+payload_handling:
+  supported_formats:
+    json:
+      extensions: [".json"]
+      parse: true
+    csv:
+      extensions: [".csv"]
+      parse: false   # base: store raw; parsing handled by normalizer mapping if enabled later
+    text:
+      extensions: [".txt", ".log"]
+      parse: false
+  parsing_policy:
+    on_parse_failure: "store_raw"
+    max_preview_chars: 2000
+  raw_ref_requirements:
+    - "Every file ingested must be written to blob store with sha256."
+    - "raw_ref must include original file path and metadata in job context (not in canonical by default)."
+  notes:
+    - "Never embed file contents directly into logs or canonical records."
+
+observability:
+  required_metrics:
+    - "fs.files_seen_total"
+    - "fs.files_ingested_total"
+    - "fs.bytes_ingested_total"
+    - "fs.errors_total"
+  required_log_fields:
+    - "ts"
+    - "service=connector-hub"
+    - "tenant_id"
+    - "source_id"
+    - "job_id"
+    - "file_path"
+    - "file_size_bytes"
+    - "raw_sha256"
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["schema_drift_explainer"]
+  forbidden:
+    - "suggest_accessing_unlisted_paths"
+    - "auto_apply_allowlist_changes"
+  approval_gate: "human_required"
+  audit_fields_required: ["llm_role", "model_id", "prompt_hash", "output_hash", "approver", "decision"]
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Ingest JSON files from an agent allowlisted directory
+# source:
+#   kind: file
+#   connector: file_system
+#   config:
+#     roots: ["C:\\Data\\exports"]
+#     include_globs: ["**/*.json"]
+#     exclude_globs: ["**/tmp/**"]
+#     poll_interval_seconds: 300
+# -----------------------------------------------------------------------------
