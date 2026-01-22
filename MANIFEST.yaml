@@ -1,0 +1,313 @@
+manifest_version: "2.0"
+chartly_version: "0.0.1"
+status: "scaffold"
+
+mission: >
+  Chartly 2.0 is a contracts-first, profiles-driven automation system that ingests data from many sources,
+  preserves raw truth, normalizes into validated canonical records, and publishes analytics outputs
+  (charts/reports/projections) with traceability, quarantine, backpressure, idempotency, and immutable audit.
+
+principles:
+  - name: "Contracts-first"
+    required: true
+    rule: "All canonical outputs and externally-facing request payloads MUST validate against versioned schemas in contracts/."
+  - name: "Profiles-over-code"
+    required: true
+    rule: "Mapping/cleansing/dedupe/enrichment/retention MUST be driven by profiles/ whenever possible."
+  - name: "Auditability"
+    required: true
+    rule: "Every canonical record MUST contain a raw_ref (bucket/key/sha256) that points to preserved raw truth."
+  - name: "Quarantine lane"
+    required: true
+    rule: "Invalid/policy-violating data MUST be quarantined with reason_code and raw_ref; it MUST NOT enter canonical storage."
+  - name: "Idempotency"
+    required: true
+    rule: "Retries/replays MUST NOT produce duplicate canonical writes; idempotency keys are mandatory."
+  - name: "Backpressure"
+    required: true
+    rule: "System MUST protect itself/upstreams via rate limits, circuit breakers, and queue-depth-based throttling."
+
+canonical_objects:
+  # NOTE: Schemas are authoritative in contracts/v1/canonical/*.schema.json.
+  # This section is the semantic contract: required fields, identifiers, and traceability rules.
+  Source:
+    id: "source_id (stable string; ULID recommended)"
+    required_fields: ["id", "kind", "name", "config", "enabled", "tenant_id", "created_at", "updated_at"]
+    kinds: ["api", "domain", "db", "file", "webhook", "other"]
+  Entity:
+    id: "entity_id (ULID recommended)"
+    required_fields: ["id", "type", "name", "attributes", "tenant_id", "created_at", "updated_at"]
+  Event:
+    id: "event_id (ULID)"
+    required_fields: ["id", "event_type", "ts", "source_id", "payload", "tenant_id", "raw_ref"]
+  Metric:
+    id: "metric_id (ULID)"
+    required_fields: ["id", "metric_name", "ts", "value", "dimensions", "source_id", "tenant_id", "raw_ref"]
+  Case:
+    id: "case_id (ULID)"
+    required_fields: ["id", "case_type", "status", "opened_at", "tenant_id"]
+    statuses: ["open", "closed", "quarantined"]
+  Artifact:
+    id: "artifact_id (ULID)"
+    required_fields: ["id", "artifact_type", "created_at", "storage_ref", "tenant_id", "metadata"]
+  AuditRecord:
+    id: "audit_id (ULID)"
+    required_fields: ["id", "ts", "actor", "action", "subject", "subject_type", "hash", "details", "tenant_id"]
+    hash_chain:
+      prev_hash_optional: true
+      algo: "sha256"
+
+paths:
+  contracts_root: "contracts"
+  profiles_root: "profiles"
+  configs_root: "configs"
+  services_root: "services"
+  pkg_root: "pkg"
+  docs_root: "docs"
+  infra_root: "infra"
+
+contract_policy:
+  required: true
+  roots:
+    - "contracts/v1/canonical"
+    - "contracts/v1/telemetry"
+    - "contracts/v1/reports"
+  validation:
+    required: true
+    enforcement_points:
+      - component: "normalizer"
+        rule: "MUST validate canonical outputs against contracts/v1/canonical."
+      - component: "gateway"
+        rule: "MUST validate report/projection request payloads against contracts/v1/reports when endpoints exist."
+  versioning:
+    major_dirs: ["v1"]
+    compatibility:
+      - "Within v1, changes MUST be backward compatible."
+      - "Breaking changes require a new major directory (v2)."
+    allowed_changes_in_v1:
+      - "Add optional fields"
+      - "Add new schema files"
+      - "Tighten enums only if backward compatible OR gated by version"
+    forbidden_changes_in_v1:
+      - "Remove required fields"
+      - "Change meaning of existing fields without adding a new field name"
+
+profile_policy:
+  required: true
+  roots:
+    - "profiles/core"
+    - "profiles/domains"
+  required_files:
+    - "profile.yaml"
+    - "mappings.yaml"
+    - "rules.yaml"
+    - "cleansing.yaml"
+    - "deduplication.yaml"
+    - "enrichment.yaml"
+    - "retention.yaml"
+    - "alerts.yaml"
+  versioning:
+    required: true
+    version_field: "profile.yaml:version"
+    promotion_flow:
+      - "author -> validate -> fixtures -> local run -> PR merge (staging) -> tag/release (production)"
+
+service_graph:
+  required: true
+  services:
+    gateway:
+      folder: "services/gateway"
+      required: true
+      responsibilities:
+        - "External HTTP entrypoint"
+        - "Request routing"
+        - "Rate limiting and request_id generation"
+        - "Auth enforcement (when enabled)"
+      inbound: ["HTTP"]
+      outbound: ["auth", "orchestrator", "analytics", "storage", "observer"]
+      dependencies: ["configs", "contracts"]
+    orchestrator:
+      folder: "services/orchestrator"
+      required: true
+      responsibilities:
+        - "Scheduling"
+        - "Workflow DAG/state machine"
+        - "Sharding and dispatch"
+        - "Retries and DLQ"
+      inbound: ["HTTP", "queue/events"]
+      outbound: ["connector-hub", "normalizer", "storage", "audit", "observer"]
+      dependencies: ["configs", "contracts", "pkg/queue"]
+    connector-hub:
+      folder: "services/connector-hub"
+      required: true
+      responsibilities:
+        - "Connector registry and discovery (planned)"
+        - "High concurrency upstream fetch"
+        - "Per-domain limits, rate limiting, circuit breakers"
+        - "Write raw payloads to raw plane"
+      inbound: ["job dispatch from orchestrator"]
+      outbound: ["storage(raw)", "orchestrator(events)", "audit(optional)", "observer"]
+      dependencies: ["configs", "profiles", "pkg/queue", "pkg/telemetry"]
+    normalizer:
+      folder: "services/normalizer"
+      required: true
+      responsibilities:
+        - "Profile-driven mapping and cleansing"
+        - "Schema validation"
+        - "Quarantine with reason codes"
+        - "Write canonical records"
+        - "Emit audit records"
+      inbound: ["normalize jobs"]
+      outbound: ["storage(canonical)", "audit", "orchestrator(events)", "observer"]
+      dependencies: ["contracts", "profiles", "pkg/contracts", "pkg/profiles"]
+    storage:
+      folder: "services/storage"
+      required: true
+      responsibilities:
+        - "Relational metadata store interface"
+        - "Time-series read/write interface"
+        - "Cache interface"
+        - "Blob/artifact storage interface"
+      inbound: ["service reads/writes"]
+      outbound: ["observer"]
+      dependencies: ["configs"]
+    analytics:
+      folder: "services/analytics"
+      required: false
+      planned: true
+      responsibilities:
+        - "Aggregations and chart building"
+        - "Reports/exports"
+        - "Projections/anomaly detection"
+      inbound: ["HTTP"]
+      outbound: ["storage", "observer"]
+      dependencies: ["contracts/reports"]
+    audit:
+      folder: "services/audit"
+      required: false
+      planned: true
+      responsibilities:
+        - "Append-only audit ledger"
+        - "Hash chain verification"
+      inbound: ["append/query"]
+      outbound: ["storage(optional)", "observer"]
+    auth:
+      folder: "services/auth"
+      required: false
+      planned: true
+      responsibilities:
+        - "Authentication and RBAC policy decisions"
+      inbound: ["HTTP"]
+      outbound: ["observer"]
+    observer:
+      folder: "services/observer"
+      required: false
+      planned: true
+      responsibilities:
+        - "Metrics/tracing/log collection and export"
+      inbound: ["telemetry"]
+      outbound: ["telemetry sinks"]
+
+data_planes:
+  raw_plane:
+    required: true
+    storage: "S3-compatible blob store (MinIO local; S3/GCS prod)"
+    immutable: true
+    object_ref_fields: ["bucket", "key", "sha256", "content_type", "captured_at"]
+  canonical_plane:
+    required: true
+    storage:
+      v0: ["Postgres (metadata and minimal canonical)"]
+      planned: ["ClickHouse/TimescaleDB for high-scale time-series"]
+    rule: "All canonical records MUST validate against contracts and include raw_ref."
+  audit_plane:
+    required: true
+    storage: "Append-only ledger (service/audit) with verifiable hash chain"
+    rule: "Audit writes are append-only; verification must detect tampering."
+
+queue_and_backpressure_policy:
+  required: true
+  queue_backends:
+    v0: ["redis streams (planned implementation)"]
+    planned: ["nats jetstream", "kafka"]
+  required_mechanisms:
+    - "per-source rate limiting"
+    - "per-domain concurrency limits"
+    - "circuit breaker per upstream"
+    - "retry with exponential backoff + jitter"
+    - "DLQ for poison jobs"
+    - "queue depth thresholds for backpressure"
+  idempotency:
+    required: true
+    key_components: ["tenant_id", "source_id", "job_type", "raw_sha256", "profile_version"]
+  quarantine:
+    required: true
+    required_fields: ["reason_code", "raw_ref", "profile_version", "validation_errors"]
+
+security_and_compliance_baseline:
+  required: true
+  rbac:
+    required: true
+    roles_file: "services/auth/internal/rbac/roles.yaml"
+    gateway_enforcement: true
+  secrets:
+    rules:
+      - "No secrets in repo-tracked files (configs/profiles/contracts)."
+      - "Secrets via environment variables or external secret manager."
+  pii_phi:
+    required: true
+    rules:
+      - "Profiles declare PII/PHI handling constraints."
+      - "Normalizer quarantines policy violations."
+  compliance_hooks:
+    planned: true
+    frameworks: ["GDPR", "HIPAA", "SOX"]
+
+observability_baseline:
+  required: true
+  logs:
+    format: "structured"
+    required_fields: ["ts", "level", "service", "env", "tenant_id", "request_id", "job_id", "source_id"]
+  metrics:
+    required: ["ingest_rate", "error_rate", "queue_depth", "latency_p95", "connector_health"]
+  tracing:
+    required: true
+    correlation: ["request_id propagated across services", "job_id propagated across job boundaries"]
+
+acceptance_criteria_v0:
+  - "Repo scaffold exists exactly as defined under C:\\Chartly2.0."
+  - "MANIFEST.yaml and ARCHITECTURE.md exist and are internally consistent."
+  - "contracts/v1/canonical schemas exist for Source, Entity, Event, Metric, Case, Artifact, AuditRecord."
+  - "profiles/core/base required profile files exist."
+  - "Gateway exposes /health returning 200 and includes request_id in response headers."
+  - "Orchestrator can create and track a job state machine for ingest and normalize."
+  - "Connector-hub can fetch at least one HTTP REST source and persist raw payload with sha256."
+  - "Normalizer can read raw payload, apply a profile mapping, validate output, and write canonical Metric/Event."
+  - "Invalid payloads are quarantined with reason_code and raw_ref."
+  - "Idempotency prevents duplicate canonical writes on retry."
+  - "Structured logs include request_id/job_id for gateway/orchestrator/connector-hub/normalizer."
+  - "Basic unit tests and a minimal integration test exist and run in CI."
+
+non_goals_v0:
+  - "Full multi-tenant billing and hard quotas"
+  - "Full OAuth/SAML provider suite"
+  - "Advanced ML forecasting/model registry"
+  - "Full web dashboard polish"
+  - "Complete Terraform coverage for all clouds"
+
+milestones:
+  v0:
+    focus:
+      - "contracts + profiles foundation"
+      - "spine services: gateway, orchestrator, connector-hub, normalizer, storage"
+      - "audit baseline (append-only concept; minimal implementation acceptable)"
+  v1:
+    focus:
+      - "analytics endpoints + basic projections"
+      - "connector discovery + schema drift detection"
+      - "expanded observability + policy enforcement"
+  v2:
+    focus:
+      - "multi-tenant hardening + quotas"
+      - "advanced forecasting/anomaly detection"
+      - "mature deployments + SDK generation"

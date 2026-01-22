@@ -1,0 +1,125 @@
+name: lint
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  editorconfig:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: EditorConfig checker
+        uses: editorconfig-checker/action-editorconfig-checker@v2
+        with:
+          # Keep it strict; the repo has an .editorconfig
+          args: "-exclude 'node_modules|.git|dist|build|coverage|.venv'"
+
+  yamllint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect YAML files
+        id: y
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find . -name '*.yml' -o -name '*.yaml' | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "YAML files: $count"
+
+      - name: Run yamllint
+        if: ${{ steps.y.outputs.count != '0' }}
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          config_data: |
+            extends: default
+            rules:
+              line-length:
+                max: 120
+                level: warning
+              trailing-spaces: enable
+              new-line-at-end-of-file: enable
+              truthy:
+                allowed-values: ['true', 'false', 'on', 'off']
+          file_or_dir: .
+
+      - name: Skip yamllint (no YAML files)
+        if: ${{ steps.y.outputs.count == '0' }}
+        run: echo "No YAML files found; skipping."
+
+  markdownlint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect Markdown files
+        id: m
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find . -name '*.md' | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Markdown files: $count"
+
+      - name: Run markdownlint
+        if: ${{ steps.m.outputs.count != '0' }}
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: |
+            **/*.md
+          config: |
+            {
+              "default": true,
+              "MD013": { "line_length": 120 },
+              "MD033": false
+            }
+
+      - name: Skip markdownlint (no Markdown files)
+        if: ${{ steps.m.outputs.count == '0' }}
+        run: echo "No Markdown files found; skipping."
+
+  gofmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+          cache: true
+
+      - name: Detect Go files
+        id: gofiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+          echo "Go files: $count"
+
+      - name: gofmt (check)
+        if: ${{ steps.gofiles.outputs.count != '0' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          unformatted=$(gofmt -l $(find . -name '*.go' -not -path './web/*'))
+          if [ -n "$unformatted" ]; then
+            echo "Unformatted Go files:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Skip gofmt (no Go files)
+        if: ${{ steps.gofiles.outputs.count == '0' }}
+        run: echo "No Go files found; skipping."
