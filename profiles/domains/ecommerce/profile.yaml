@@ -1,0 +1,137 @@
+profile:
+  name: "domains/ecommerce"
+  description: >
+    Ecommerce domain overlay. Inherits from core/base and adds commerce-specific mapping patterns
+    and KPI conventions while enforcing PII minimization (GDPR-aware) and strong auditability.
+  domain: "ecommerce"
+  version: "1.0.0"
+  status: "active"
+  owners:
+    - "Chartly Maintainers"
+  created_at: "2026-01-21T00:00:00Z"
+  updated_at: "2026-01-21T00:00:00Z"
+
+inherits:
+  base_profile: "profiles/core/base/profile.yaml"
+  overridden_files:
+    - "mappings.yaml"
+    - "order_normalization.yaml"
+    - "retention.yaml"
+
+classification:
+  data_sensitivity: "pii"
+  handling_notes:
+    - "Raw payloads may include customer PII (email, address, phone)."
+    - "Canonical outputs must minimize PII: prefer aggregated metrics and hashed identifiers."
+    - "Never store full email/address/phone as dimensions."
+    - "If PII is detected in canonical outputs, quarantine and open a case."
+  allowed_storage:
+    raw: true
+    canonical: true
+    audit: true
+
+compliance:
+  gdpr: true
+  requirements:
+    - "Data minimization in canonical outputs."
+    - "Right-to-erasure supported via targeted deletion/redaction workflows (planned)."
+    - "All deletions/redactions must be audited."
+  notes:
+    - "GDPR workflows must not break audit integrity; record redactions as audited events."
+
+scope:
+  supported_source_kinds: ["api", "db", "file", "webhook"]
+  supported_connector_types:
+    - "http_rest"
+    - "graphql"
+    - "database"
+    - "file_system"
+    - "webhook"
+    - "s3"
+
+canonicalization_overrides:
+  dimension_policy:
+    max_dimensions_per_record: 96
+    max_dimension_key_len: 64
+    max_dimension_value_len: 256
+    recommended_dimensions:
+      - "store_id"
+      - "channel"
+      - "sku"
+      - "category"
+      - "currency"
+      - "region"
+      - "interval"
+    prohibitions:
+      - "no_email_in_dimensions"
+      - "no_address_in_dimensions"
+      - "no_phone_in_dimensions"
+
+quarantine_overrides:
+  escalation_rules:
+    - when: "policy.pii_phi_violation"
+      action: "open_case"
+      severity: "high"
+    - when: "policy.secret_detected"
+      action: "open_case"
+      severity: "critical"
+  notes:
+    - "PII leakage is treated as a compliance incident."
+
+policy_references:
+  mappings: "profiles/domains/ecommerce/mappings.yaml"
+  order_normalization: "profiles/domains/ecommerce/order_normalization.yaml"
+  retention: "profiles/domains/ecommerce/retention.yaml"
+
+llm_workers_overrides:
+  enabled: true
+  lanes:
+    - lane: "reporting_specs"
+      purpose: "Suggest dashboard/report configurations for commerce KPIs (non-sensitive)."
+      model: "llama3.1:8b"
+      allowed_roles: ["report_spec_assistant", "anomaly_hint_assistant"]
+      approval_gate: "human_required"
+      constraints:
+        - "No PII in prompts or outputs."
+        - "Only aggregated KPIs and non-identifying dimensions."
+    - lane: "drift_analysis"
+      purpose: "Explain schema drift and propose mapping patches (human-gated)."
+      model: "llama3.1:8b"
+      allowed_roles: ["schema_drift_explainer", "mapping_suggester"]
+      approval_gate: "human_required"
+      constraints:
+        - "Redact PII before providing samples."
+        - "No auto-apply of mappings/rules."
+  audit_requirements:
+    required: true
+    record_fields:
+      - "ts"
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "llm_role"
+      - "model_id"
+      - "prompt_hash"
+      - "output_hash"
+      - "decision"
+      - "approver"
+
+observability_overrides:
+  additional_metrics:
+    - "ecommerce.orders.count"
+    - "ecommerce.revenue.total"
+    - "ecommerce.aov"
+    - "ecommerce.conversion_rate"
+    - "ecommerce.cart_abandonment_rate"
+    - "ecommerce.pii_quarantine_total"
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Domain overlay tightens PII detection
+# classification:
+#   data_sensitivity: "pii"
+#   handling_notes:
+#     - "Hash customer_id if used; never store email."
+# -----------------------------------------------------------------------------
