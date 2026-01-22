@@ -50,14 +50,16 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
-      - name: Discover Go files
+            - name: Detect Go files
         id: gofiles
         shell: bash
         run: |
           set -euo pipefail
-          count=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Go files found: $count"
+          total=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
+          pkg=$(grep -R --include='*.go' --exclude-dir=web -n '^package ' . 2>/dev/null | wc -l | tr -d ' ')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
+          echo "Go files total: $total, with package: $pkg"
 
       - name: gofmt (check)
         if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
@@ -85,7 +87,7 @@ jobs:
           set -euo pipefail
           go test ./...
 
-      - name: Skip Go checks (no Go files yet)
+      - name: Skip Go checks (no complete Go files yet)
         if: ${{ steps.gofiles.outputs.total == '0' }}
         run: echo "No complete Go files found (missing package decl); skipping gofmt/vet/test."
 
@@ -180,4 +182,5 @@ jobs:
       - name: Skip web checks (no web app)
         if: ${{ steps.web.outputs.exists == 'false' }}
         run: echo "web/package.json not found; skipping."
+
 
