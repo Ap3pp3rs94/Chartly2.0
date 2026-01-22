@@ -99,19 +99,23 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
-            - name: Detect Go files
+                  - name: Detect Go files
         id: gofiles
         shell: bash
         run: |
           set -euo pipefail
           total=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
           pkg=$(grep -R --include='*.go' --exclude-dir=web -n '^package ' . 2>/dev/null | wc -l | tr -d ' ')
+          ready=false
+          if [ "$total" -gt 0 ] && [ "$total" -eq "$pkg" ]; then
+            ready=true
+          fi
           echo "total=$total" >> "$GITHUB_OUTPUT"
           echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
-          echo "Go files total: $total, with package: $pkg"
-
+          echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          echo "Go files total: $total, with package: $pkg, ready: $ready"
       - name: gofmt (check)
-        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
+        if: ${{ steps.gofiles.outputs.ready == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -123,6 +127,7 @@ jobs:
           fi
 
       - name: Skip gofmt (no Go files)
-        if: ${{ steps.gofiles.outputs.total == '0' }}
-        run: echo "No complete Go files found (missing package decl); skipping."
+        if: ${{ steps.gofiles.outputs.ready != 'true' }}
+        run: echo "Go files missing package declarations or none present; skipping."
+
 
