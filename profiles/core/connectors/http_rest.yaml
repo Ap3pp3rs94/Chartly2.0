@@ -1,0 +1,248 @@
+version: "1.0"
+
+connector_profile:
+  id: "http_rest"
+  protocol: "http_rest"
+  kind: "api"
+  description: >
+    HTTP REST connector profile. Defines how API sources are configured, fetched, rate-limited,
+    retried, and audited. This profile is used by connector-hub to enforce safe, scalable ingestion.
+  version: "1.0.0"
+  status: "active"   # active|deprecated|experimental
+
+source_config_schema:
+  required_fields:
+    - "base_url"
+    - "paths"
+  optional_fields:
+    - "headers"
+    - "params"
+    - "timeout_seconds"
+    - "rate_limit_rpm"
+    - "per_domain_concurrency"
+    - "retries"
+    - "pagination"
+    - "accept"
+    - "content_type_override"
+    - "tls"
+  field_docs:
+    base_url:
+      type: "string"
+      rules:
+        - "Must be absolute URL with https:// preferred."
+        - "No credentials in URL (no user:pass@host)."
+        - "Must not include query string; use params instead."
+    paths:
+      type: "array<string>"
+      rules:
+        - "Each path must start with '/'."
+        - "Paths may include templated variables resolved by orchestrator (planned) but must be explicit."
+        - "Max 100 paths per source by default; larger requires explicit approval."
+    headers:
+      type: "object"
+      rules:
+        - "No secrets in profile or source config."
+        - "Authorization values must reference env vars (e.g., 'Bearer ${ENV:API_TOKEN}')."
+        - "User-Agent should be set and stable."
+    params:
+      type: "object"
+      rules:
+        - "Query parameters must be deterministic per job."
+        - "No secrets."
+    timeout_seconds:
+      type: "integer"
+      default: 30
+      rules:
+        - "Must be between 1 and 120."
+    rate_limit_rpm:
+      type: "integer"
+      default: 120
+      rules:
+        - "Must be >= 1."
+        - "Enforced per source; domain overlays may also enforce per-host."
+    per_domain_concurrency:
+      type: "integer"
+      default: 10
+      rules:
+        - "Must be between 1 and 100."
+    retries:
+      type: "object"
+      defaults:
+        max_attempts: 3
+        base_backoff_ms: 500
+        max_backoff_ms: 8000
+      rules:
+        - "Retries apply to network failures and 5xx responses (configurable)."
+    pagination:
+      type: "object"
+      rules:
+        - "Pagination must be bounded by safety limits."
+    accept:
+      type: "string"
+      default: "application/json"
+    tls:
+      type: "object"
+      defaults:
+        verify: true
+        min_version: "1.2"
+
+http:
+  base_url_policy:
+    require_https: false         # allow http for local dev; production should use https
+    forbid_embedded_credentials: true
+    allow_private_ips: true      # local/internal services may use private IPs
+  paths_policy:
+    max_paths_per_source: 100
+    allow_path_templates: false  # planned
+  headers_policy:
+    forbid_secret_literals: true
+    env_ref_syntax: "${ENV:VAR_NAME}"
+    required_headers:
+      User-Agent: "Chartly/2.0"
+    forbidden_header_keys:
+      - "Proxy-Authorization"
+  query_params_policy:
+    allow: true
+    forbid_secret_literals: true
+  timeout_policy:
+    min_seconds: 1
+    max_seconds: 120
+    default_seconds: 30
+
+pagination:
+  supported_modes: ["none", "page", "cursor", "link_header"]
+  defaults:
+    mode: "none"
+  config_fields:
+    page:
+      page_param: "page"
+      size_param: "limit"
+      start_page: 1
+      max_pages: 100
+      max_page_size: 1000
+    cursor:
+      cursor_param: "cursor"
+      max_pages: 200
+      stop_when_empty: true
+    link_header:
+      header_name: "Link"
+      rel_next: "next"
+      max_pages: 200
+  safety_limits:
+    max_total_requests_per_job: 500
+    max_total_bytes_per_job: 50000000   # 50MB
+    notes:
+      - "If limits exceeded, job must fail safely and be recorded as ingestion_health warn/error."
+
+rate_limiting:
+  defaults:
+    rate_limit_rpm: 120
+    per_domain_concurrency: 10
+  upstream_respect:
+    - "Honor Retry-After header when present."
+    - "Apply jitter to retries to avoid thundering herd."
+    - "Use backpressure signals from orchestrator to throttle dispatch."
+  enforcement:
+    location: "connector-hub"
+    keys:
+      - "tenant_id"
+      - "source_id"
+      - "host"
+
+retries_and_circuit_breakers:
+  retry_policy:
+    retry_on_status: [408, 429, 500, 502, 503, 504]
+    max_attempts: 3
+    base_backoff_ms: 500
+    max_backoff_ms: 8000
+    jitter: true
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 10
+    open_seconds: 60
+    half_open_probe_requests: 2
+    notes:
+      - "Circuit breaker is per host by default; may be per source for noisy endpoints."
+
+payload_handling:
+  accepted_content_types:
+    - "application/json"
+    - "application/*+json"
+    - "text/json"
+  max_payload_bytes: 10000000     # 10MB per request
+  json_parsing_policy:
+    on_parse_failure: "store_text_preview"
+    text_preview_max_len: 2000
+  raw_ref_requirements:
+    - "Every fetch must write raw payload to blob store and compute sha256."
+    - "raw_ref is attached downstream by normalizer; connector-hub must emit blob reference and hash."
+
+observability:
+  required_metrics:
+    - "http.requests_total"
+    - "http.errors_total"
+    - "http.latency_ms_p50"
+    - "http.latency_ms_p95"
+    - "http.rate_limited_total"
+    - "circuit_breaker.opens_total"
+  required_log_fields:
+    - "ts"
+    - "service=connector-hub"
+    - "tenant_id"
+    - "source_id"
+    - "request_id"
+    - "job_id"
+    - "host"
+    - "path"
+    - "status_code"
+    - "latency_ms"
+    - "raw_sha256"
+  notes:
+    - "Never log response bodies."
+
+llm_assist:
+  enabled: true
+  allowed_roles:
+    - "schema_drift_explainer"
+    - "mapping_suggester"
+  forbidden:
+    - "include_secret_values"
+    - "auto_apply_source_changes"
+    - "disable_rate_limits"
+  approval_gate: "human_required"
+  audit_fields_required:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+  notes:
+    - "LLM may propose pagination/headers/params adjustments, but all changes require review."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example 1: Simple public JSON endpoint
+# source:
+#   kind: api
+#   connector: http_rest
+#   config:
+#     base_url: "https://api.example.com"
+#     paths: ["/v1/items"]
+#     timeout_seconds: 20
+#     rate_limit_rpm: 60
+#
+# Example 2: API with bearer auth via env var reference
+# config:
+#   headers:
+#     Authorization: "Bearer ${ENV:EXAMPLE_API_TOKEN}"
+#   paths: ["/v2/metrics"]
+#
+# Example 3: Cursor pagination
+# config:
+#   pagination:
+#     mode: "cursor"
+#     cursor_param: "cursor"
+#     max_pages: 50
+# -----------------------------------------------------------------------------
