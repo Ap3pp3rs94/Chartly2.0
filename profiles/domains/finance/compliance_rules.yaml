@@ -1,0 +1,149 @@
+version: "1.0"
+
+compliance_framework:
+  sox: true
+  scope:
+    - "Financial reporting pipelines and any data used to generate financial reports."
+    - "Auditability, traceability, and change control for contracts and profiles."
+  definitions:
+    raw_truth: "Immutable upstream payload stored in raw plane with sha256."
+    canonical_record: "Validated canonical metric/event/entity referencing raw_truth via raw_ref."
+    audit_record: "Append-only ledger entry describing pipeline actions and changes (hash chained)."
+    reproducible_report: "Report that can be regenerated from raw/canonical inputs and recorded profile/contract versions."
+
+controls:
+  lineage:
+    required: true
+    rules:
+      - "Every canonical Metric/Event MUST include raw_ref with sha256."
+      - "Every report/export artifact MUST include references to:
+          - contract version (v1)
+          - profile name + version
+          - source_id(s)
+          - query parameters and time range"
+      - "Backfills must be explicit and audited; no silent reprocessing."
+    evidence:
+      - "raw_ref stored in canonical records"
+      - "audit records for pipeline stages"
+      - "artifact metadata includes profile/contract version"
+
+  immutability:
+    required: true
+    raw_plane:
+      immutable: true
+      tamper_evidence: "sha256"
+    audit_plane:
+      append_only: true
+      hash_chain_required: true
+      verification_required: true
+    canonical_plane:
+      no_in_place_mutation: true
+      policy:
+        - "If corrections are needed, write a new record or correction event with audit trail."
+    evidence:
+      - "audit ledger verification snapshots"
+      - "append-only semantics"
+
+  access_control:
+    required: true
+    rbac:
+      enforced_at_gateway: true
+      minimum_roles:
+        - "viewer (read-only)"
+        - "operator (can schedule ingestion)"
+        - "admin (can manage sources/profiles)"
+        - "auditor (can view audit ledger)"
+      separation_of_duties:
+        - "Profile/contract changes require maintainer approval."
+        - "Production deploy requires explicit confirmation (DEPLOY_PROD)."
+    data_access:
+      - "Raw plane access restricted to operators/admins/auditors."
+      - "Canonical plane read access may be broader, but still tenant-scoped."
+
+  retention:
+    required: true
+    minima_days:
+      raw_plane: 90
+      canonical_plane: 730
+      audit_plane: 3650
+    notes:
+      - "Minima reflect common SOX retention expectations; organization may increase."
+      - "Legal hold must override deletion."
+
+  change_management:
+    required: true
+    rules:
+      - "All contract changes require review and must follow contracts/VERSIONING.md."
+      - "All profile changes require version bump and CODEOWNERS review."
+      - "Breaking changes require MAJOR version bump and documented migration plan."
+      - "All changes must be recorded in CHANGELOG.md."
+    evidence:
+      - "Git history + PR reviews"
+      - "tags/releases for production promotion"
+
+  reporting_integrity:
+    required: true
+    rules:
+      - "Reports must be reproducible: inputs + profile/contract versions recorded."
+      - "No silent data edits. Corrections must be explicit and audited."
+      - "Forecast/projection outputs must be labeled as projections and not mixed with observed truth."
+      - "Backtesting and model evaluation are planned requirements for advanced forecasting."
+    planned_requirements:
+      - "Backtest harness for forecasting models"
+      - "Model registry with versioned artifacts"
+      - "Drift detection and alerting tied to report generation"
+
+enforcement:
+  required: true
+  quarantine_on_violation: true
+  reason_codes:
+    lineage_violation: "schema.validation_failed"
+    immutability_violation: "schema.validation_failed"
+    access_violation: "policy.pii_phi_violation"
+    retention_violation: "retention.policy_violation"
+    change_management_violation: "schema.validation_failed"
+    reporting_integrity_violation: "schema.validation_failed"
+  notes:
+    - "Compliance violations should open cases for investigation."
+
+llm_workers:
+  enabled: true
+  allowed_roles:
+    - "report_spec_assistant"
+    - "anomaly_hint_assistant"
+  forbidden:
+    - "auto_approve_profile_changes"
+    - "bypass_contract_validation"
+    - "provide_financial_advice"
+    - "modify_or_suppress_audit_records"
+  audit_requirements:
+    required: true
+    record_fields:
+      - "ts"
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "llm_role"
+      - "model_id"
+      - "prompt_hash"
+      - "output_hash"
+      - "decision"
+      - "approver"
+    notes:
+      - "LLM outputs are advisory; human approval required for any change to mappings/rules."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Report artifact metadata must include:
+# - contract_version: v1
+# - profile: domains/finance@1.0.0
+# - sources: [source_id...]
+# - generated_at
+# - query_time_range
+#
+# Example: Backfill run must create:
+# - audit records: backfill.started, backfill.completed
+# - artifact: backfill_manifest
+# -----------------------------------------------------------------------------
