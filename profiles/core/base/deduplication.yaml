@@ -1,0 +1,149 @@
+version: "1.0"
+
+dedupe_engine:
+  determinism_rules:
+    - "Dedupe decisions MUST be deterministic given (tenant_id, source_id, profile_version, canonical object, raw_ref)."
+    - "No random sampling. No time-now. No external network calls."
+    - "Dedupe store lookups are the only allowed external state, and must be keyed deterministically."
+  store_requirements:
+    # Implemented by storage/orchestrator; profile defines expectations.
+    required_capabilities:
+      - "check_exists(idempotency_key) -> {exists, canonical_hash}"
+      - "put_if_absent(idempotency_key, canonical_hash, metadata) -> {inserted|already_exists}"
+      - "ttl_support (optional, for windowed dedupe)"
+    required_metadata:
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "object_type"
+      - "object_primary_id"
+      - "raw_sha256"
+      - "canonical_hash"
+      - "first_seen_at"
+  consistency_model:
+    # Choose a model; implementations must honor it for correctness.
+    mode: "at_least_once_with_idempotency"   # at_least_once_with_idempotency|exactly_once (planned)
+    notes:
+      - "At-least-once delivery is expected; idempotency ensures canonical writes are not duplicated."
+      - "Conflicts are quarantined to prevent silent corruption."
+
+idempotency_keys:
+  common_components:
+    - "tenant_id"
+    - "source_id"
+    - "raw_ref.sha256"
+    - "profile.version"
+    - "canonical.object_type"
+    - "canonical.primary_id_or_composite"
+
+  canonical_object_key_builders:
+    event:
+      object_type: "Event"
+      primary_id_field: "id"
+      composite_fallback:
+        enabled: true
+        fields:
+          - "event_type"
+          - "ts"
+          - "source_id"
+      key_format: "chartly:{tenant_id}:{source_id}:event:{primary_or_hash}"
+      notes:
+        - "Prefer canonical id when available."
+        - "If id is missing (should be rare), use deterministic hash over composite fallback fields."
+
+    metric:
+      object_type: "Metric"
+      primary_id_field: "id"
+      composite_fallback:
+        enabled: true
+        fields:
+          - "metric_name"
+          - "ts"
+          - "source_id"
+          - "dimensions_hash"
+      key_format: "chartly:{tenant_id}:{source_id}:metric:{primary_or_hash}"
+      notes:
+        - "dimensions_hash must be computed from a canonicalized dimensions map (sorted keys)."
+
+    entity:
+      object_type: "Entity"
+      primary_id_field: "id"
+      composite_fallback:
+        enabled: true
+        fields:
+          - "type"
+          - "name"
+      key_format: "chartly:{tenant_id}:entity:{primary_or_hash}"
+      notes:
+        - "Base profile generally does not infer entities; this is included for completeness."
+
+  payload_hashing:
+    # Hashing rules for canonical content used for conflict detection.
+    algorithm: "sha256"
+    canonicalization:
+      json_canonicalization:
+        - "Sort object keys recursively."
+        - "Normalize numbers to a stable string representation (float64) before hashing."
+        - "Remove non-semantic whitespace."
+      exclude_fields_from_hash:
+        # These do not change semantic meaning and should not cause conflicts.
+        - "raw_ref.captured_at"     # raw capture time can vary for identical payload
+        - "raw_ref.size_bytes"      # optional and not semantic
+    outputs:
+      canonical_hash_field: "canonical_hash"
+      dimensions_hash_field: "dimensions_hash"
+
+dedupe_windows:
+  default:
+    enabled: false
+    mode: "none"          # none|fixed|sliding
+    window_seconds: 0
+    ttl_seconds: 0
+  allowed_window_modes: ["none", "fixed", "sliding"]
+  notes:
+    - "Windowed dedupe can drop legitimate repeated events/metrics."
+    - "Enable only with domain justification and version bump."
+    - "If enabled, store must support TTL and the window must be included in the idempotency key."
+
+collision_handling:
+  duplicate_policy: "drop"       # drop|keep_first|keep_last
+  conflict_policy: "quarantine"  # quarantine|keep_first|keep_last (base uses quarantine)
+  conflict_definition:
+    - "Same idempotency key but different canonical_hash."
+  quarantine:
+    reason_code: "dedupe.collision_conflict"
+    open_case: true
+    severity: "high"
+    notes:
+      - "Conflicts indicate inconsistent mapping or upstream instability; do not silently overwrite."
+
+replay_policy:
+  allowed: true
+  canonical_write_behavior_on_replay:
+    - "If idempotency key exists with same canonical_hash: treat as duplicate and apply duplicate_policy."
+    - "If idempotency key exists with different canonical_hash: quarantine as conflict."
+    - "If idempotency key does not exist: write canonical record and insert dedupe key."
+
+llm_assist:
+  enabled: true
+  allowed_roles: []               # base: no LLM role can modify dedupe automatically
+  approval_gate: "human_required"
+  notes:
+    - "LLMs may explain dedupe conflicts and propose rule changes, but dedupe configuration changes require human review and version bump."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Domain overlay enables sliding window dedupe for noisy webhooks
+# dedupe_windows:
+#   default:
+#     enabled: true
+#     mode: "sliding"
+#     window_seconds: 120
+#     ttl_seconds: 300
+#
+# Example: Domain overlay chooses keep_last for duplicates (only if safe)
+# collision_handling:
+#   duplicate_policy: "keep_last"
+# -----------------------------------------------------------------------------
