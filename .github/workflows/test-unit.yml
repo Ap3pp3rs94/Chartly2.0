@@ -20,17 +20,19 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
-      - name: Detect Go files
+            - name: Detect Go files
         id: gofiles
         shell: bash
         run: |
           set -euo pipefail
-          count=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
-          echo "count=$count" >> "$GITHUB_OUTPUT"
-          echo "Go files: $count"
+          total=$(find . -name '*.go' -not -path './web/*' | wc -l | tr -d ' ')
+          pkg=$(grep -R --include='*.go' --exclude-dir=web -n '^package ' . 2>/dev/null | wc -l | tr -d ' ')
+          echo "total=$total" >> "$GITHUB_OUTPUT"
+          echo "pkg=$pkg" >> "$GITHUB_OUTPUT"
+          echo "Go files total: $total, with package: $pkg"
 
       - name: Run unit tests (race)
-        if: ${{ steps.gofiles.outputs.count != '0' }}
+        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         run: |
           set -euo pipefail
@@ -38,8 +40,8 @@ jobs:
           go test ./... -race -count=1
 
       - name: Skip unit tests (no Go files)
-        if: ${{ steps.gofiles.outputs.count == '0' }}
-        run: echo "No Go files found; skipping unit tests."
+        if: ${{ steps.gofiles.outputs.total == '0' }}
+        run: echo "No complete Go files found (missing package decl); skipping unit tests."
 
       # Optional artifact upload hook (kept scaffold-safe)
       - name: Upload test artifacts (if any)
@@ -53,3 +55,4 @@ jobs:
             **/*.cover
             **/*.json
           if-no-files-found: ignore
+

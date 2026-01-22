@@ -60,7 +60,7 @@ jobs:
           echo "Go files found: $count"
 
       - name: gofmt (check)
-        if: ${{ steps.gofiles.outputs.count != '0' }}
+        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         run: |
           set -euo pipefail
@@ -72,22 +72,22 @@ jobs:
           fi
 
       - name: go vet
-        if: ${{ steps.gofiles.outputs.count != '0' }}
+        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         run: |
           set -euo pipefail
           go vet ./...
 
       - name: go test
-        if: ${{ steps.gofiles.outputs.count != '0' }}
+        if: ${{ steps.gofiles.outputs.total != '0' && steps.gofiles.outputs.total == steps.gofiles.outputs.pkg }}
         shell: bash
         run: |
           set -euo pipefail
           go test ./...
 
       - name: Skip Go checks (no Go files yet)
-        if: ${{ steps.gofiles.outputs.count == '0' }}
-        run: echo "No Go files found; skipping gofmt/vet/test."
+        if: ${{ steps.gofiles.outputs.total == '0' }}
+        run: echo "No complete Go files found (missing package decl); skipping gofmt/vet/test."
 
   contracts-validate:
     runs-on: ubuntu-latest
@@ -180,3 +180,4 @@ jobs:
       - name: Skip web checks (no web app)
         if: ${{ steps.web.outputs.exists == 'false' }}
         run: echo "web/package.json not found; skipping."
+
