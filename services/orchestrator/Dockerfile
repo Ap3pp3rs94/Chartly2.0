@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.22
 ARG DISTROLESS_IMAGE=gcr.io/distroless/base-debian12:nonroot
 
 ###############################################################################
@@ -9,7 +9,7 @@ ARG DISTROLESS_IMAGE=gcr.io/distroless/base-debian12:nonroot
 FROM --platform=$BUILDPLATFORM golang:${GO_VERSION} AS deps
 WORKDIR /src
 
-COPY go.mod go.sum ./
+COPY go.mod ./
 RUN --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     go mod download -x
 
@@ -54,12 +54,8 @@ RUN --mount=type=cache,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,target=/go/pkg/mod,sharing=locked \
     GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} GOARM= \
     go build -trimpath \
-      -ldflags "-s -w \
-        -buildid= \
-        -X main.version=${VERSION} \
-        -X main.commit=${VCS_REF} \
-        -X main.date=${BUILD_DATE}" \
-      -o /out/orchestrator .
+      -ldflags "-s -w -buildid=" \
+      -o /out/orchestrator ./cmd/orchestrator
 
 ###############################################################################
 # healthcheck: build a tiny static healthcheck binary (http + tcp)
@@ -111,7 +107,6 @@ func main() {
 	if res.StatusCode >= 200 && res.StatusCode < 300 {
 		os.Exit(0)
 	}
-
 	os.Exit(1)
 }
 
