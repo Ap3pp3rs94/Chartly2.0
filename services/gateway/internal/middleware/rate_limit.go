@@ -3,7 +3,6 @@ package middleware
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"net"
 	"net/http"
 	"os"
@@ -12,22 +11,6 @@ import (
 	"sync"
 	"time"
 )
-
-type errResp struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
-
-func writeErr(w http.ResponseWriter, status int, code, msg string) {
-	w.Header().Set("content-type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
-	var e errResp
-	e.Error.Code = code
-	e.Error.Message = msg
-	_ = json.NewEncoder(w).Encode(e)
-}
 
 type bucket struct {
 	tokens     float64
