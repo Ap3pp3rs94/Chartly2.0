@@ -28,12 +28,14 @@ type RingBuffer struct {
 	tail     int
 	size     int
 
-	mu       sync.Mutex
-	notEmpty *sync.Cond
-	notFull  *sync.Cond
+	slots chan struct{}
+	items chan struct{}
 
-	closed  atomic.Bool
-	dropped atomic.Uint64
+	closed   atomic.Bool
+	dropped  atomic.Uint64
+	closedCh chan struct{}
+
+	mu sync.Mutex
 }
 
 func NewRingBuffer(capacity int) *RingBuffer {
@@ -44,18 +46,21 @@ func NewRingBuffer(capacity int) *RingBuffer {
 	r := &RingBuffer{
 		capacity: capacity,
 		buf:      make([][]byte, capacity),
+		slots:    make(chan struct{}, capacity),
+		items:    make(chan struct{}, capacity),
+		closedCh: make(chan struct{}),
 	}
-		r.notEmpty = sync.NewCond(&r.mu)
-		r.notFull = sync.NewCond(&r.mu)
+
+	for i := 0; i < capacity; i++ {
+		r.slots <- struct{}{}
+	}
+
 	return r
 }
 
 func (r *RingBuffer) Close() {
 	if r.closed.CompareAndSwap(false, true) {
-		r.mu.Lock()
-		defer r.mu.Unlock()
-		r.notEmpty.Broadcast()
-		r.notFull.Broadcast()
+		close(r.closedCh)
 	}
 }
 
@@ -77,18 +82,30 @@ func (r *RingBuffer) TryPush(chunk []byte) error {
 		return ErrClosed
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.closed.Load() {
+	select {
+	case <-r.slots:
+		// proceed
+	case <-r.closedCh:
 		r.dropped.Add(1)
 		return ErrClosed
-	}
-	if r.size == r.capacity {
+	default:
 		return ErrWouldBlock
 	}
 
-	r.pushLocked(chunk)
+	if r.closed.Load() {
+		// return slot
+		r.slots <- struct{}{}
+		r.dropped.Add(1)
+		return ErrClosed
+	}
+
+	r.mu.Lock()
+	r.buf[r.tail] = chunk
+	r.tail = (r.tail + 1) % r.capacity
+	r.size++
+	r.mu.Unlock()
+
+	r.items <- struct{}{}
 	return nil
 }
 
@@ -102,53 +119,65 @@ func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 		return ErrClosed
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for r.size == r.capacity && !r.closed.Load() {
-		if ctx.Err() != nil {
-			r.dropped.Add(1)
-			return ctx.Err()
-		}
-
-		waitCh := make(chan struct{})
-		go func() {
-			r.notFull.Wait()
-			close(waitCh)
-		}()
-
-		r.mu.Unlock()
-		select {
-		case <-waitCh:
-		case <-ctx.Done():
-			r.mu.Lock()
-			r.dropped.Add(1)
-			return ctx.Err()
-		}
-		r.mu.Lock()
-	}
-
-	if r.closed.Load() {
+	select {
+	case <-r.slots:
+		// acquired slot
+	case <-ctx.Done():
+		r.dropped.Add(1)
+		return ctx.Err()
+	case <-r.closedCh:
 		r.dropped.Add(1)
 		return ErrClosed
 	}
 
-	r.pushLocked(chunk)
+	if r.closed.Load() {
+		// return slot
+		r.slots <- struct{}{}
+		r.dropped.Add(1)
+		return ErrClosed
+	}
+
+	r.mu.Lock()
+	r.buf[r.tail] = chunk
+	r.tail = (r.tail + 1) % r.capacity
+	r.size++
+	r.mu.Unlock()
+
+	r.items <- struct{}{}
 	return nil
 }
 
 func (r *RingBuffer) TryPop() ([]byte, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if r.size == 0 {
-		if r.closed.Load() {
+	select {
+	case <-r.items:
+		// proceed
+	case <-r.closedCh:
+		// if closed and empty, return closed
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if r.size == 0 {
 			return nil, ErrClosed
+		}
+		// fall through to pop without token (should not happen)
+		return r.popLocked(), nil
+	default:
+		if r.closed.Load() {
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if r.size == 0 {
+				return nil, ErrClosed
+			}
 		}
 		return nil, ErrWouldBlock
 	}
 
-	return r.popLocked(), nil
+	r.mu.Lock()
+	chunk := r.popLocked()
+	r.mu.Unlock()
+
+	// return slot
+	r.slots <- struct{}{}
+	return chunk, nil
 }
 
 func (r *RingBuffer) Pop(ctx context.Context) ([]byte, error) {
@@ -156,42 +185,27 @@ func (r *RingBuffer) Pop(ctx context.Context) ([]byte, error) {
 		return nil, ctx.Err()
 	}
 
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	for r.size == 0 && !r.closed.Load() {
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
-
-		waitCh := make(chan struct{})
-		go func() {
-			r.notEmpty.Wait()
-			close(waitCh)
-		}()
-
-		r.mu.Unlock()
+	for {
 		select {
-		case <-waitCh:
-		case <-ctx.Done():
+		case <-r.items:
 			r.mu.Lock()
+			chunk := r.popLocked()
+			r.mu.Unlock()
+			r.slots <- struct{}{}
+			return chunk, nil
+		case <-ctx.Done():
 			return nil, ctx.Err()
+		case <-r.closedCh:
+			r.mu.Lock()
+			defer r.mu.Unlock()
+			if r.size == 0 {
+				return nil, ErrClosed
+			}
+			chunk := r.popLocked()
+			r.slots <- struct{}{}
+			return chunk, nil
 		}
-		r.mu.Lock()
 	}
-
-	if r.size == 0 && r.closed.Load() {
-		return nil, ErrClosed
-	}
-
-	return r.popLocked(), nil
-}
-
-func (r *RingBuffer) pushLocked(chunk []byte) {
-	r.buf[r.tail] = chunk
-	r.tail = (r.tail + 1) % r.capacity
-	r.size++
-	r.notEmpty.Signal()
 }
 
 func (r *RingBuffer) popLocked() []byte {
@@ -199,6 +213,5 @@ func (r *RingBuffer) popLocked() []byte {
 	r.buf[r.head] = nil
 	r.head = (r.head + 1) % r.capacity
 	r.size--
-	r.notFull.Signal()
 	return chunk
 }
