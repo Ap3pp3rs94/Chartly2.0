@@ -65,8 +65,6 @@ type LeaderEvent struct {
 	Owner string `json:"owner"`
 }
 
-type LoggerFn func(level, msg string, fields map[string]any)
-
 type LeaderElector struct {
 	leaseKey   string
 	owner      string
