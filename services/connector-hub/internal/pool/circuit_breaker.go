@@ -20,15 +20,15 @@ const (
 	StateHalfOpen State = "half_open"
 )
 
-type Config struct {
+type CircuitConfig struct {
 	FailureThreshold int           `json:"failure_threshold"`
 	SuccessThreshold int           `json:"success_threshold"`
 	OpenTimeout      time.Duration `json:"open_timeout"`
 	Window           time.Duration `json:"window"`
 }
 
-func DefaultCircuitConfig() Config {
-	return Config{
+func DefaultCircuitConfig() CircuitConfig {
+	return CircuitConfig{
 		FailureThreshold: 5,
 		SuccessThreshold: 2,
 		OpenTimeout:      30 * time.Second,
@@ -46,10 +46,10 @@ type Circuit struct {
 type Manager struct {
 	mu       sync.Mutex
 	perKey   map[string]*Circuit
-	defaults Config
+	defaults CircuitConfig
 }
 
-func NewManager(defaults Config) *Manager {
+func NewManager(defaults CircuitConfig) *Manager {
 	if defaults.FailureThreshold <= 0 {
 		defaults.FailureThreshold = 5
 	}
