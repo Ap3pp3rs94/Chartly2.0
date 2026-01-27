@@ -19,8 +19,6 @@ import (
 	"time"
 )
 
-type LoggerFn func(level, msg string, fields map[string]any)
-
 type Manifest struct {
 
 	Version      string            `json:"version"`
@@ -395,26 +393,4 @@ func strconvNano() string {
 	return time.Now().UTC().Format("20060102T150405.000000000Z")
 }
 
-func sanitizeSeg(s, def string) string {
-
-	s = strings.TrimSpace(s)
-
-	if s == "" {
-
-
-		return def
-
-	}
-
-	s = strings.ToLower(s)
-
-	s = strings.ReplaceAll(s, "..", "")
-
-	s = strings.ReplaceAll(s, "/", "_")
-
-	s = strings.ReplaceAll(s, "\\", "_")
-
-	s = strings.ReplaceAll(s, ":", "_")
-
-	return s
-}
+// sanitizeSeg is defined in raw_writer.go and shared across the output package.
