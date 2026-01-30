@@ -258,7 +258,7 @@ return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 if r.Meta != nil {
 
 
-keys := sortedKeys(r.Meta)
+keys := csvSortedKeys(r.Meta)
 
 
 for _, k := range keys {
@@ -645,7 +645,7 @@ v = row[ci]
 
 
 
-cells = append(cells, stringifyCell(v))
+cells = append(cells, csvStringifyCell(v))
 
 
 
@@ -929,7 +929,7 @@ if opts.IncludeSectionMeta && len(s.Meta) > 0 {
 
 
 
-keys := sortedKeys(s.Meta)
+keys := csvSortedKeys(s.Meta)
 
 
 
@@ -1109,7 +1109,7 @@ return s
 }
 
 
-return truncateRunes(s, o.MaxCellChars) + "..."
+return csvTruncateRunes(s, o.MaxCellChars) + "..."
 }
 
 func normalizeNewlines(s string) string {
@@ -1129,7 +1129,7 @@ s = strings.ReplaceAll(s, "\x00", "")
 return s
 }
 
-func sortedKeys(m map[string]string) []string {
+func csvSortedKeys(m map[string]string) []string {
 
 
 keys := make([]string, 0, len(m))
@@ -1168,7 +1168,7 @@ sort.Strings(keys)
 return keys
 }
 
-func stringifyCell(v any) string {
+func csvStringifyCell(v any) string {
 
 
 if v == nil {
@@ -1300,7 +1300,7 @@ func csvRuneLen(s string) int {
 return utf8.RuneCountInString(s)
 }
 
-func truncateRunes(s string, max int) string {
+func csvTruncateRunes(s string, max int) string {
 
 
 if max <= 0 {
