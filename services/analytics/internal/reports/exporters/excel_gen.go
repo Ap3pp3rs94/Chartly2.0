@@ -1058,7 +1058,7 @@ return strconv.FormatFloat(f, 'g', -1, 64)
 
 func (wb *workbook) capText(s string) string {
 
-s = sanitizeText(s)
+s = xlsxSanitizeText(s)
 
 if s == "" {
 
@@ -1067,7 +1067,7 @@ return ""
 
 }
 
-if runeLen(s) <= wb.opts.MaxCellChars {
+if xlsxRuneLen(s) <= wb.opts.MaxCellChars {
 
 
 return s
@@ -1111,7 +1111,7 @@ continue
 }
 
 
-if maxCellChars > 0 && runeLen(ln) > maxCellChars {
+if maxCellChars > 0 && xlsxRuneLen(ln) > maxCellChars {
 
 
 
@@ -1621,7 +1621,7 @@ default:
 txt := capString(c.val, maxChars)
 
 
-txt = sanitizeText(txt)
+txt = xlsxSanitizeText(txt)
 
 
 txt = strings.ReplaceAll(txt, "\n", " ")
@@ -1646,7 +1646,7 @@ return s
 
 }
 
-if runeLen(s) <= maxChars {
+if xlsxRuneLen(s) <= maxChars {
 
 
 return s
@@ -1666,7 +1666,7 @@ func buildCorePropsXML(title string, t time.Time) []byte {
 ts := t.UTC().Format(time.RFC3339)
 
 
-title = sanitizeText(title)
+title = xlsxSanitizeText(title)
 
 
 var b bytes.Buffer
@@ -1987,13 +1987,13 @@ func lenRunes(s string) int {
 return utf8.RuneCountInString(s)
 }
 
-func runeLen(s string) int {
+func xlsxRuneLen(s string) int {
 
 return utf8.RuneCountInString(s)
 }
 
 // sanitizeText removes XML-invalid control characters deterministically and normalizes whitespace.
-func sanitizeText(s string) string {
+func xlsxSanitizeText(s string) string {
 
 s = strings.ReplaceAll(s, "\u00a0", " ")
 
@@ -2071,3 +2071,4 @@ return out
 ////////////////////////////////////////////////////////////////////////////////
 
 var _ reports.Renderer = ExcelRenderer{}
+
