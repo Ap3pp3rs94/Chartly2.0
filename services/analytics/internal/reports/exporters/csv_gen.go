@@ -166,7 +166,6 @@ opts.cap(value),
 
 // pad columns to maxCols
 
-
 for i := 0; i < maxCols; i++ {
 
 
@@ -176,13 +175,11 @@ if cols != nil && i < len(cols) {
 
 
 
-
 row = append(row, opts.cap(cols[i]))
 
 
 
 } else {
-
 
 
 
@@ -273,9 +270,7 @@ if err := emit("report_meta", "", "", "", "meta."+k, strings.TrimSpace(r.Meta[k]
 
 
 
-
 w.Flush()
-
 
 
 
@@ -392,7 +387,6 @@ if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
 
 
 
-
 lines = nil
 
 
@@ -406,9 +400,7 @@ if lines == nil {
 
 
 
-
 _ = emit("text_line", secID, secTitle, kind, "0", "", nil)
-
 
 
 
@@ -430,7 +422,6 @@ if opts.MaxTextLines > 0 && n > opts.MaxTextLines {
 
 
 
-
 n = opts.MaxTextLines
 
 
@@ -444,9 +435,7 @@ for li := 0; li < n; li++ {
 
 
 
-
 key := strconv.Itoa(li)
-
 
 
 
@@ -456,10 +445,7 @@ val := strings.TrimRight(lines[li], " \t")
 
 
 
-
 if err := emit("text_line", secID, secTitle, kind, key, val, nil); err != nil {
-
-
 
 
 
@@ -471,10 +457,7 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
-
 
 
 
@@ -492,10 +475,7 @@ if opts.MaxTextLines > 0 && len(lines) > n {
 
 
 
-
 if err := emit("text_note", secID, secTitle, kind, "truncated", fmt.Sprintf("showing %d of %d", n, len(lines)), nil); err != nil {
-
-
 
 
 
@@ -507,20 +487,16 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 
-
 }
 
 
 
 }
-
 
 
 case "table":
@@ -532,10 +508,7 @@ if s.Table == nil {
 
 
 
-
 if err := emit("table_note", secID, secTitle, kind, "missing", "true", nil); err != nil {
-
-
 
 
 
@@ -547,16 +520,12 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 
-
 }
-
 
 
 
@@ -569,14 +538,11 @@ break
 
 
 
-
-
 cols := make([]string, 0, len(s.Table.Columns))
 
 
 
 for _, c := range s.Table.Columns {
-
 
 
 
@@ -589,10 +555,7 @@ cols = append(cols, strings.TrimSpace(c))
 
 
 
-
-
 if err := emit("table_header", secID, secTitle, kind, "columns", "", cols); err != nil {
-
 
 
 
@@ -602,14 +565,11 @@ w.Flush()
 
 
 
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 }
-
-
 
 
 
@@ -626,9 +586,7 @@ if opts.MaxTableRows > 0 && len(rows) > opts.MaxTableRows {
 
 
 
-
 rows = rows[:opts.MaxTableRows]
-
 
 
 
@@ -641,10 +599,7 @@ trunc = true
 
 
 
-
-
 for ri := 0; ri < len(rows); ri++ {
-
 
 
 
@@ -654,9 +609,7 @@ row := rows[ri]
 
 
 
-
 cells := make([]string, 0, len(cols))
-
 
 
 
@@ -667,11 +620,7 @@ for ci := 0; ci < len(cols); ci++ {
 
 
 
-
-
 var v any
-
-
 
 
 
@@ -684,20 +633,13 @@ if ci < len(row) {
 
 
 
-
-
-
 v = row[ci]
 
 
 
 
 
-
-
 }
-
-
 
 
 
@@ -708,9 +650,7 @@ cells = append(cells, stringifyCell(v))
 
 
 
-
 }
-
 
 
 
@@ -721,11 +661,7 @@ if err := emit("table_row", secID, secTitle, kind, strconv.Itoa(ri), "", cells);
 
 
 
-
-
 w.Flush()
-
-
 
 
 
@@ -736,19 +672,15 @@ return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
-
 }
 
 
 
 }
-
-
 
 
 
 if trunc {
-
 
 
 
@@ -759,11 +691,7 @@ if err := emit("table_note", secID, secTitle, kind, "truncated", fmt.Sprintf("sh
 
 
 
-
-
 w.Flush()
-
-
 
 
 
@@ -774,13 +702,11 @@ return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
-
 }
 
 
 
 }
-
 
 
 case "chart":
@@ -792,10 +718,7 @@ if opts.OmitCharts {
 
 
 
-
 if err := emit("chart_note", secID, secTitle, kind, "omitted", "true", nil); err != nil {
-
-
 
 
 
@@ -807,16 +730,12 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 
-
 }
-
 
 
 
@@ -829,10 +748,7 @@ break
 
 
 
-
-
 if s.Chart == nil {
-
 
 
 
@@ -843,11 +759,7 @@ if err := emit("chart_note", secID, secTitle, kind, "missing", "true", nil); err
 
 
 
-
-
 w.Flush()
-
-
 
 
 
@@ -858,9 +770,7 @@ return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
-
 }
-
 
 
 
@@ -870,8 +780,6 @@ break
 
 
 }
-
-
 
 
 
@@ -884,10 +792,7 @@ if err != nil {
 
 
 
-
 if err := emit("chart_note", secID, secTitle, kind, "invalid", "true", nil); err != nil {
-
-
 
 
 
@@ -899,16 +804,12 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 
-
 }
-
 
 
 
@@ -921,10 +822,7 @@ break
 
 
 
-
-
 if err := emit("chart_json", secID, secTitle, kind, "spec", string(b), nil); err != nil {
-
 
 
 
@@ -934,13 +832,11 @@ w.Flush()
 
 
 
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 }
-
 
 
 case "json":
@@ -956,10 +852,7 @@ if err != nil {
 
 
 
-
 if err := emit("json_note", secID, secTitle, kind, "invalid", "true", nil); err != nil {
-
-
 
 
 
@@ -971,16 +864,12 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
 
-
 }
-
 
 
 
@@ -993,16 +882,12 @@ break
 
 
 
-
-
 if err := emit("json", secID, secTitle, kind, "payload", string(b), nil); err != nil {
 
 
 
 
-
 w.Flush()
-
 
 
 
@@ -1015,8 +900,6 @@ return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
 
 
-
-
 default:
 
 
@@ -1026,9 +909,7 @@ if err := emit("section_note", secID, secTitle, kind, "unsupported_kind", kind, 
 
 
 
-
 w.Flush()
-
 
 
 
@@ -1057,10 +938,7 @@ for _, k := range keys {
 
 
 
-
 if err := emit("section_meta", secID, secTitle, kind, "meta."+k, strings.TrimSpace(s.Meta[k]), nil); err != nil {
-
-
 
 
 
@@ -1072,10 +950,7 @@ w.Flush()
 
 
 
-
-
 return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
-
 
 
 
@@ -1123,6 +998,7 @@ MaxCellChars       int
 
 func normalizeCSVOpts(cr CSVRenderer) csvOpts {
 
+
 o := csvOpts{
 
 
@@ -1142,37 +1018,47 @@ MaxCellChars:       cr.MaxCellChars,
 
 }
 
+
 if o.MaxTableRows <= 0 {
+
 
 
 o.MaxTableRows = 50
 
 }
 
+
 if o.MaxTextLines <= 0 {
+
 
 
 o.MaxTextLines = 2000
 
 }
 
+
 if o.MaxCellChars <= 0 {
+
 
 
 o.MaxCellChars = 30000
 
 }
 
+
 if o.MaxCellChars > 32767 {
+
 
 
 o.MaxCellChars = 32767
 
 }
 
+
 // default include meta = true
 
 if cr.IncludeSectionMeta == false {
+
 
 
 o.IncludeSectionMeta = false
@@ -1180,195 +1066,265 @@ o.IncludeSectionMeta = false
 } else {
 
 
+
 o.IncludeSectionMeta = true
 
 }
+
 
 return o
 }
 
 func (o csvOpts) cap(s string) string {
 
+
 s = normalizeNewlines(s)
+
 
 s = strings.ReplaceAll(s, "\t", " ")
 
+
 s = strings.TrimRight(s, " ")
+
 
 
 if s == "" {
 
 
+
 return ""
+
 
 }
 
-if runeLen(s) <= o.MaxCellChars {
+
+
+if csvRuneLen(s) <= o.MaxCellChars {
+
 
 
 return s
 
+
 }
+
 
 return truncateRunes(s, o.MaxCellChars) + "..."
 }
 
 func normalizeNewlines(s string) string {
 
+
 s = strings.ReplaceAll(s, "\r\n", "\n")
 
+
 s = strings.ReplaceAll(s, "\r", "\n")
+
 
 // remove NULs deterministically
 
 s = strings.ReplaceAll(s, "\x00", "")
+
 
 return s
 }
 
 func sortedKeys(m map[string]string) []string {
 
+
 keys := make([]string, 0, len(m))
+
 
 for k := range m {
 
 
+
 k = strings.TrimSpace(k)
+
 
 
 if k == "" {
 
 
 
+
 continue
 
 
+
 }
+
 
 
 keys = append(keys, k)
 
+
 }
 
+
 sort.Strings(keys)
+
 
 return keys
 }
 
 func stringifyCell(v any) string {
 
+
 if v == nil {
+
 
 
 return ""
 
+
 }
 
+
 switch t := v.(type) {
+
 
 case string:
 
 
+
 return t
 
+
 case bool:
+
 
 
 if t {
 
 
 
+
 return "true"
+
 
 
 }
 
 
+
 return "false"
+
 
 case float64:
 
 
+
 return strconv.FormatFloat(t, 'g', -1, 64)
+
 
 case float32:
 
 
+
 return strconv.FormatFloat(float64(t), 'g', -1, 64)
+
 
 case int:
 
 
+
 return strconv.Itoa(t)
+
 
 case int64:
 
 
+
 return strconv.FormatInt(t, 10)
+
 
 case int32:
 
 
+
 return strconv.FormatInt(int64(t), 10)
+
 
 case uint:
 
 
+
 return strconv.FormatUint(uint64(t), 10)
+
 
 case uint64:
 
 
+
 return strconv.FormatUint(t, 10)
+
 
 case uint32:
 
 
+
 return strconv.FormatUint(uint64(t), 10)
+
 
 default:
 
 
+
 b, err := json.Marshal(t)
+
 
 
 if err != nil {
 
 
 
+
 return ""
 
 
+
 }
+
 
 
 return string(b)
 
+
 }
 }
 
-func runeLen(s string) int {
+func csvRuneLen(s string) int {
+
 
 return utf8.RuneCountInString(s)
 }
 
 func truncateRunes(s string, max int) string {
 
+
 if max <= 0 {
+
 
 
 return ""
 
+
 }
 
+
 rs := []rune(s)
+
 
 if len(rs) <= max {
 
 
+
 return s
 
+
 }
+
 
 return string(rs[:max])
 }
