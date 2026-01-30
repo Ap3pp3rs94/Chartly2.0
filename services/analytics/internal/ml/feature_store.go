@@ -2,8 +2,6 @@ package ml
 
 import (
 
-"bytes"
-
 "crypto/sha256"
 
 "encoding/base64"
