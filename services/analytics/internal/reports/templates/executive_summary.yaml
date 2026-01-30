@@ -1,0 +1,208 @@
+# Chartly 2.0  Report Template (DATA-ONLY)
+#
+# IMPORTANT:
+# - This YAML file is a template catalog artifact for FUTURE loading.
+# - It does NOT by itself enable reports or endpoints.
+# - A loader/registry is required to parse YAML and register templates into the report engine.
+#
+# Template format aligns with:
+# services/analytics/internal/reports/report_engine.go
+#   - Template
+#   - SectionTemplate
+#
+# Placeholder expansion:
+# - Use {{key}} tokens in strings.
+# - Keys come from:
+#   - Reserved keys: report_id, tenant_id, request_id, generated_at, template_id
+#   - Flattened input dot-path keys (including [idx] arrays)
+#   - Optional opt.Vars overrides at build time
+
+template:
+  id: "exec_summary_v1"
+  title: "Executive Summary  {{tenant_id}}"
+  subtitle: "Source {{source_id}}  Job {{job_id}}  {{generated_at}}"
+  summary: >
+    High-level operational and analytical summary for tenant {{tenant_id}}.
+    This report composes narrative, KPIs, charts, anomaly overlays, and raw artifacts
+    from the provided input payload. (Template-only; generation depends on report engine usage.)
+
+  meta:
+    template_family: "executive_summary"
+    owner: "analytics"
+    version: "v1"
+    stability: "draft"
+    notes: "Data-only scaffold; requires loader/registry to be used."
+
+  sections:
+    - id: "context"
+      title: "Context"
+      kind: "text"
+      text: |-
+        **Tenant:** {{tenant_id}}
+        **Request:** {{request_id}}
+        **Report:** {{report_id}}
+        **Template:** {{template_id}}
+
+        **Ingestion Context**
+        - Source: {{source_id}}
+        - Connector: {{connector_id}}
+        - Job: {{job_id}}
+
+        **Narrative**
+        This executive summary provides a concise operational readout:
+        - Current health snapshot and data freshness (if provided by upstream input).
+        - KPI deltas and distribution highlights.
+        - Trend direction and anomaly flags for rapid triage.
+
+        _Note: This report is assembled from the input payload fields. Missing sections may be marked
+        as missing if strict mode is disabled._
+
+      meta:
+        role: "narrative"
+        audience: "exec"
+
+    - id: "kpis"
+      title: "Key Performance Indicators"
+      kind: "table"
+      table_key: "kpis.table"
+      meta:
+        role: "kpi_table"
+        expectation: "Input should provide kpis.table as {columns,rows} or array of row objects."
+
+    - id: "trend"
+      title: "Trend Overview"
+      kind: "chart"
+      chart_key: "charts.trend"
+      meta:
+        role: "trend_chart"
+        expectation: "Input should provide charts.trend as a chart spec object (or JSON string)."
+
+    - id: "anomalies"
+      title: "Anomaly Overlay"
+      kind: "chart"
+      chart_key: "charts.anomalies"
+      meta:
+        role: "anomaly_chart"
+        expectation: "Input should provide charts.anomalies as a chart spec object (or JSON string)."
+
+    - id: "forecast_summary"
+      title: "Forecast & Risk Signals"
+      kind: "json"
+      json_key: "forecast.summary"
+      meta:
+        role: "forecast_json"
+        expectation: "Input should provide forecast.summary as an object (model, horizon, metrics, notes)."
+
+    - id: "forecast_chart"
+      title: "Forecast Projection"
+      kind: "chart"
+      chart_key: "charts.forecast"
+      meta:
+        role: "forecast_chart"
+        expectation: "Optional. If present, should be a chart spec object (or JSON string)."
+
+    - id: "raw_artifacts"
+      title: "Raw Artifacts (Excerpt)"
+      kind: "json"
+      json_key: "raw"
+      meta:
+        role: "raw_payload"
+        caution: "May contain sensitive fields depending on upstream handling."
+
+    - id: "recommendations"
+      title: "Operational Recommendations"
+      kind: "text"
+      text: |-
+        The recommendations below are template guidance and should be refined by the upstream
+        pipeline that populates this report.
+
+        **If anomalies are present**
+        - Validate whether spikes correspond to known deployments, campaigns, or connector bursts.
+        - Cross-check queue/worker saturation indicators (if provided) and consider throttling.
+
+        **If KPI deltas regress**
+        - Confirm source availability and connector error rates.
+        - Ensure normalization profiles align with current schema versions.
+
+        **If forecast indicates drift**
+        - Review rolling windows, season length assumptions, and sampling interval.
+        - Consider separating by tenant/source segments for improved stability.
+
+        _Placeholders (examples):_
+        - Primary metric: {{kpis.primary_metric}}
+        - Current value: {{kpis.current_value}}
+        - Change: {{kpis.delta_pct}}%
+
+      meta:
+        role: "recommendations"
+        audience: "ops_exec"
+
+constraints:
+  # Descriptive only (template consumers may display these hints).
+  required_paths:
+    - "kpis.table"
+    - "charts.trend"
+  optional_paths:
+    - "charts.anomalies"
+    - "forecast.summary"
+    - "charts.forecast"
+    - "raw"
+  placeholder_expectations:
+    - "tenant_id, request_id, source_id, job_id are recommended top-level vars."
+    - "Flattened dot-path vars may be referenced if upstream input includes them."
+
+example_input:
+  # Illustrative only. The report engine input is an object map (map[string]any).
+  tenant_id: "acme"
+  request_id: "req_123"
+  source_id: "src_001"
+  connector_id: "conn_http"
+  job_id: "job_20260130_0001"
+  generated_at: "2026-01-30T12:34:56Z"
+
+  kpis:
+    primary_metric: "requests"
+    current_value: "1200"
+    delta_pct: "4.2"
+    table:
+      columns: ["kpi", "value", "delta"]
+      rows:
+        - ["requests", 1200, "4.2%"]
+        - ["errors", 12, "-1.0%"]
+
+  charts:
+    trend:
+      type: "line"
+      title: "Requests over time"
+      series:
+        - name: "requests"
+          kind: "line"
+          data:
+            - { x: "2026-01-30T12:00:00Z", y: 100 }
+            - { x: "2026-01-30T12:01:00Z", y: 120 }
+    anomalies:
+      type: "line"
+      title: "Requests with anomalies"
+      series:
+        - name: "requests"
+          kind: "line"
+          data:
+            - { x: "2026-01-30T12:00:00Z", y: 100 }
+            - { x: "2026-01-30T12:01:00Z", y: 500 }
+      annotations:
+        - { name: "anomalies", ts: "2026-01-30T12:01:00Z", y: 500, score: 4.2, direction: "high", reason: "spike" }
+
+  forecast:
+    summary:
+      model: "holt_winters_add"
+      horizon: 12
+      metrics:
+        mae: 1.23
+        rmse: 2.34
+      notes:
+        backtest: "example only"
+
+  raw:
+    # Raw artifacts are typically large; this is only an example snippet.
+    payload:
+      sample: "..."
