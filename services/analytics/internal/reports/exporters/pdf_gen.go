@@ -17,7 +17,7 @@ import (
 "unicode/utf8"
 
 
-"Chartly2.0/services/analytics/internal/reports"
+"github.com/Ap3pp3rs94/Chartly2.0/services/analytics/internal/reports"
 )
 
 const (
