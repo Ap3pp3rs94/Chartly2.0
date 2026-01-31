@@ -467,7 +467,8 @@ totalPts := 0
 for i := range seriesSnapshot {
 
 
-\t// Sort points deterministically (sharded for large series).\n\tseriesSnapshot[i].points = sortPointsDeterministic(seriesSnapshot[i].points)
+	// Sort points deterministically (sharded for large series).
+	seriesSnapshot[i].points = sortPointsDeterministic(seriesSnapshot[i].points)
 
 
 
