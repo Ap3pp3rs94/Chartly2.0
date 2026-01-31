@@ -151,7 +151,7 @@ func CompactSeriesPoints(in []SeriesPoints, opts CompactionOptions) ([]SeriesPoi
 			if err := validatePoint(pn, o.AllowNaN); err != nil {
 				return nil, CompactResult{}, fmt.Errorf("%w: %w: %v", ErrCompact, ErrCompactInvalid, err)
 			}
-			ts, err := parseRFC3339(pn.TS)
+			ts, err := parseRFC3339Point(pn.TS)
 			if err != nil {
 				return nil, CompactResult{}, fmt.Errorf("%w: %w: %v", ErrCompact, ErrCompactInvalid, err)
 			}
@@ -332,7 +332,7 @@ func CompactToChunk(ctx context.Context, sink Sink, meta ChunkMeta, objectKeyPre
 		outside := 0
 
 		for _, p := range compactSeries[i].Points {
-			ts, e := parseRFC3339(p.TS)
+			ts, e := parseRFC3339Point(p.TS)
 			if e != nil {
 				return ChunkRef{}, CompactResult{}, fmt.Errorf("%w: %w: %v", ErrCompact, ErrCompactInvalid, e)
 			}
