@@ -206,11 +206,10 @@ series: make(map[string]seriesBuf),
 
 func (w *Writer) Reset() {
 
-w.mu.Lock()
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
-w.mu.Unlock()
-
-w.series = make(map[string]seriesBuf)
+	w.series = make(map[string]seriesBuf)
 }
 
 func (w *Writer) Stats() map[string]any {
