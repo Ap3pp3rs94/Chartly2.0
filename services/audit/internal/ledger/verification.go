@@ -15,7 +15,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 )
 
@@ -178,12 +177,4 @@ func normalizeVerifyOptions(opts VerifyOptions) VerifyOptions {
 		o.MaxEvents = 200000
 	}
 	return o
-}
-
-func normCollapse(s string) string {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	if s == "" {
-		return ""
-	}
-	return strings.Join(strings.Fields(s), " ")
 }
