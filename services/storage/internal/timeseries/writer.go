@@ -34,36 +34,22 @@ package timeseries
 //   - Optional gzip body compression uses a fixed ModTime (unix epoch) and stable settings.
 
 import (
-
-"bytes"
-
-"compress/gzip"
-
-"context"
-
-"crypto/sha256"
-
-"encoding/binary"
-
-"encoding/hex"
-
-"encoding/json"
-
-"errors"
-
-"fmt"
-
-"hash/crc32"
-
-"math"
-
-"sort"
-
-"strings"
-
-"sync"
-
-"time"
+	"bytes"
+	"compress/gzip"
+	"context"
+	"container/heap"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"hash/crc32"
+	"math"
+	"sort"
+	"strings"
+	"sync"
+	"time"
 )
 
 var (
