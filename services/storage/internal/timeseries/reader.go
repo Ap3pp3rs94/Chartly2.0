@@ -255,13 +255,13 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 
 	// Verify BodyCRC32:
 	// - BodyCRC32 is the last 4 bytes of BODY.
-	// - Coverage is everything before it, excluding SeriesCount (first 4 bytes).
+	// - Coverage is everything before it (SeriesCount through last SeriesCRC32).
 	bodyWithoutCRC := body[:len(body)-4]
 	wantBodyCRC := binary.LittleEndian.Uint32(body[len(body)-4:])
 	if len(bodyWithoutCRC) < 4 {
 		return nil, decodeCounts{}, fmt.Errorf("%w: body too small", ErrDecodeInvalid)
 	}
-	gotBodyCRC := crc32.ChecksumIEEE(bodyWithoutCRC[4:])
+	gotBodyCRC := crc32.ChecksumIEEE(bodyWithoutCRC)
 	if gotBodyCRC != wantBodyCRC {
 		return nil, decodeCounts{}, fmt.Errorf("%w: body crc mismatch", ErrDecodeCRC)
 	}
