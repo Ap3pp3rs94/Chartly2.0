@@ -419,15 +419,6 @@ func parseRFC3339Strict(s string) (time.Time, error) {
 	return t.UTC(), nil
 }
 
-func normCollapse(s string) string {
-	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	if s == "" {
-		return ""
-	}
-	// Collapse whitespace deterministically.
-	return strings.Join(strings.Fields(s), " ")
-}
-
 // Optional helper: stable float formatting if a caller wants to embed numbers as strings.
 // Not used in canonicalization, but useful for debugging; kept deterministic.
 func formatFloatStable(f float64) string {
