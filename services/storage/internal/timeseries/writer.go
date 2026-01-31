@@ -467,77 +467,7 @@ totalPts := 0
 for i := range seriesSnapshot {
 
 
-// Sort points by ts asc, then by value, then by meta string (deterministic tiebreak).
-
-
-sort.Slice(seriesSnapshot[i].points, func(a, b int) bool {
-
-
-
-pa := seriesSnapshot[i].points[a]
-
-
-
-pb := seriesSnapshot[i].points[b]
-
-
-
-if pa.ts.Before(pb.ts) {
-
-
-
-
-return true
-
-
-
-}
-
-
-
-if pa.ts.After(pb.ts) {
-
-
-
-
-return false
-
-
-
-}
-
-
-
-if pa.val < pb.val {
-
-
-
-
-return true
-
-
-
-}
-
-
-
-if pa.val > pb.val {
-
-
-
-
-return false
-
-
-
-}
-
-
-
-return canonicalMetaString(pa.meta) < canonicalMetaString(pb.meta)
-
-
-})
+\t// Sort points deterministically (sharded for large series).\n\tseriesSnapshot[i].points = sortPointsDeterministic(seriesSnapshot[i].points)
 
 
 
@@ -1853,9 +1783,9 @@ return b.String()
 
 func normalizeWriterOptions(opts WriterOptions) WriterOptions {
 
-o := opts
+	o := opts
 
-if o.MaxPointsPerChunk <= 0 {
+	if o.MaxPointsPerChunk <= 0 {
 
 
 o.MaxPointsPerChunk = 200000
@@ -1869,5 +1799,109 @@ o.MaxSeriesPerChunk = 5000
 
 }
 
-return o
+	return o
 }
+
+// sortPointsDeterministic sorts points deterministically. For large series, it shards
+// the input into smaller slices, sorts each, then performs a stable k-way merge.
+func sortPointsDeterministic(points []pointBuf) []pointBuf {
+	if len(points) <= 1 {
+		return points
+	}
+
+	const shardSize = 50000
+	if len(points) <= shardSize {
+		sort.Slice(points, func(i, j int) bool {
+			return comparePoints(points[i], points[j]) < 0
+		})
+		return points
+	}
+
+	// Shard + sort
+	shards := make([][]pointBuf, 0, (len(points)+shardSize-1)/shardSize)
+	for i := 0; i < len(points); i += shardSize {
+		end := i + shardSize
+		if end > len(points) {
+			end = len(points)
+		}
+		sh := points[i:end]
+		sort.Slice(sh, func(a, b int) bool {
+			return comparePoints(sh[a], sh[b]) < 0
+		})
+		shards = append(shards, sh)
+	}
+
+	// Merge
+	out := make([]pointBuf, 0, len(points))
+	h := &pointHeap{shards: shards}
+	for i := range shards {
+		if len(shards[i]) > 0 {
+			h.items = append(h.items, heapItem{shard: i, idx: 0})
+		}
+	}
+	heap.Init(h)
+	for h.Len() > 0 {
+		it := heap.Pop(h).(heapItem)
+		p := h.shards[it.shard][it.idx]
+		out = append(out, p)
+		it.idx++
+		if it.idx < len(h.shards[it.shard]) {
+			heap.Push(h, it)
+		}
+	}
+	return out
+}
+
+func comparePoints(a, b pointBuf) int {
+	if a.ts.Before(b.ts) {
+		return -1
+	}
+	if a.ts.After(b.ts) {
+		return 1
+	}
+	if a.val < b.val {
+		return -1
+	}
+	if a.val > b.val {
+		return 1
+	}
+	ma := canonicalMetaString(a.meta)
+	mb := canonicalMetaString(b.meta)
+	if ma < mb {
+		return -1
+	}
+	if ma > mb {
+		return 1
+	}
+	return 0
+}
+
+type heapItem struct {
+	shard int
+	idx   int
+}
+
+type pointHeap struct {
+	shards [][]pointBuf
+	items  []heapItem
+}
+
+func (h pointHeap) Len() int { return len(h.items) }
+func (h pointHeap) Less(i, j int) bool {
+	a := h.shards[h.items[i].shard][h.items[i].idx]
+	b := h.shards[h.items[j].shard][h.items[j].idx]
+	return comparePoints(a, b) < 0
+}
+func (h pointHeap) Swap(i, j int) { h.items[i], h.items[j] = h.items[j], h.items[i] }
+
+func (h *pointHeap) Push(x any) {
+	h.items = append(h.items, x.(heapItem))
+}
+
+func (h *pointHeap) Pop() any {
+	n := len(h.items)
+	it := h.items[n-1]
+	h.items = h.items[:n-1]
+	return it
+}
+

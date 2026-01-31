@@ -19,24 +19,17 @@ package timeseries
 // - No randomness, no time.Now.
 
 import (
-
-"bytes"
-
-"compress/gzip"
-
-"context"
-
-"encoding/json"
-
-"errors"
-
-"fmt"
-
-"io"
-
-"sort"
-
-"strings"
+	"bufio"
+	"compress/gzip"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"sort"
+	"strings"
 )
 
 var (
@@ -236,78 +229,52 @@ return ref, warnings, nil
 
 func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, error) {
 
-max := opts.MaxBytes
+	max := opts.MaxBytes
+	if max <= 0 {
+		max = 64 * 1024 * 1024
+	}
 
-if max <= 0 {
+	warnings := make([]string, 0, 2)
 
+	// Limit raw bytes read (compressed or uncompressed).
+	lr := &io.LimitedReader{R: r, N: max + 1}
+	br := bufio.NewReader(lr)
 
-max = 64 * 1024 * 1024
+	// Detect gzip by magic header without consuming stream.
+	hdr, _ := br.Peek(2)
+	useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
 
-}
+	var reader io.Reader = br
+	var gz *gzip.Reader
+	var err error
 
-
-raw, err := io.ReadAll(io.LimitReader(r, max+1))
-
-if err != nil {
-
-
-return IngestPayload{}, nil, fmt.Errorf("%w: read failed", ErrDecode)
-
-}
-
-if int64(len(raw)) > max {
-
-
-return IngestPayload{}, nil, fmt.Errorf("%w: input exceeds max bytes", ErrTooLarge)
-
-}
-
-
-data := raw
-
-warnings := make([]string, 0, 2)
-
-
-if opts.AllowGzip && looksLikeGzip(raw) {
-
-
-		dec, err := gunzipAll(raw, max)
-
-
+	if useGzip {
+		gz, err = gzip.NewReader(br)
 		if err != nil {
-
-
 			return IngestPayload{}, warnings, fmt.Errorf("%w: gzip decode failed", ErrDecode)
-
-
 		}
-
-
-		data = dec
-
-
+		defer gz.Close()
+		reader = gz
 		warnings = append(warnings, "payload_gzip_decoded")
+	}
 
-}
+	// Limit decompressed bytes too.
+	dlr := &io.LimitedReader{R: reader, N: max + 1}
+	hasher := sha256.New()
+	tee := io.TeeReader(dlr, hasher)
 
-
-var payload IngestPayload
-
-dec := json.NewDecoder(bytes.NewReader(data))
-
-if opts.DisallowUnknownFields {
-
-
+	dec := json.NewDecoder(tee)
+	if opts.DisallowUnknownFields {
 		dec.DisallowUnknownFields()
+	}
 
-}
-
-if err := dec.Decode(&payload); err != nil {
-
-
+	var payload IngestPayload
+	if err := dec.Decode(&payload); err != nil {
+		if lr.N <= 0 || dlr.N <= 0 {
+			return IngestPayload{}, warnings, fmt.Errorf("%w: input exceeds max bytes", ErrTooLarge)
+		}
 		return IngestPayload{}, warnings, fmt.Errorf("%w: invalid json", ErrDecode)
-
-}
+	}
 
 	// Ensure there is no trailing junk
 	var extra any
@@ -316,6 +283,18 @@ if err := dec.Decode(&payload); err != nil {
 	} else if err != io.EOF {
 		return IngestPayload{}, warnings, fmt.Errorf("%w: trailing data", ErrDecode)
 	}
+
+	// Enforce size limits deterministically.
+	if lr.N <= 0 || dlr.N <= 0 {
+		return IngestPayload{}, warnings, fmt.Errorf("%w: input exceeds max bytes", ErrTooLarge)
+	}
+
+	// Attach payload checksum to meta for traceability (deterministic).
+	sum := hex.EncodeToString(hasher.Sum(nil))
+	if payload.Meta.Meta == nil {
+		payload.Meta.Meta = make(map[string]string)
+	}
+	payload.Meta.Meta["ingest.payload_sha256"] = sum
 
 
 // Basic shape validation (more validation happens in Writer/Flush).
@@ -345,51 +324,7 @@ if len(payload.Series) == 0 {
 return payload, warnings, nil
 }
 
-func looksLikeGzip(b []byte) bool {
-
-if len(b) < 2 {
-
-
-		return false
-
-}
-
-return b[0] == 0x1f && b[1] == 0x8b
-}
-
-func gunzipAll(b []byte, max int64) ([]byte, error) {
-
-zr, err := gzip.NewReader(bytes.NewReader(b))
-
-if err != nil {
-
-
-		return nil, err
-
-}
-
-
-defer zr.Close()
-
-
-out, err := io.ReadAll(io.LimitReader(zr, max+1))
-
-if err != nil {
-
-
-		return nil, err
-
-}
-
-if int64(len(out)) > max {
-
-
-		return nil, fmt.Errorf("%w: decompressed exceeds max bytes", ErrTooLarge)
-
-}
-
-return out, nil
-}
+// (gzip helpers removed; streaming decode handles gzip directly)
 
 ////////////////////////////////////////////////////////////////////////////////
 // Normalization helpers
