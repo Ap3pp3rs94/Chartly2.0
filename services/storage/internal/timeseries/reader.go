@@ -460,11 +460,11 @@ func validateChunkMetaForDecode(m ChunkMeta) error {
 		return fmt.Errorf("%w: start/end required", ErrDecodeMeta)
 	}
 
-	startT, err := parseRFC3339Meta(m.Start)
+startT, err := parseRFC3339MetaDecode(m.Start)
 	if err != nil {
 		return err
 	}
-	endT, err := parseRFC3339Meta(m.End)
+endT, err := parseRFC3339MetaDecode(m.End)
 	if err != nil {
 		return err
 	}
@@ -472,14 +472,14 @@ func validateChunkMetaForDecode(m ChunkMeta) error {
 		return fmt.Errorf("%w: end must be after start", ErrDecodeMeta)
 	}
 	if strings.TrimSpace(m.ProducedAt) != "" {
-		if _, err := parseRFC3339Meta(m.ProducedAt); err != nil {
+		if _, err := parseRFC3339MetaDecode(m.ProducedAt); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func parseRFC3339Meta(s string) (time.Time, error) {
+func parseRFC3339MetaDecode(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
 	if s == "" {
