@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  OWNER: Ap3pp3rs94
+  OWNER: ap3pp3rs94
 
 jobs:
   build:
