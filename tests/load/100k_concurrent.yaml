@@ -17,9 +17,10 @@ load:
   timeout_sec: 10
 run:
   command: >
-    powershell -NoProfile -ExecutionPolicy Bypass
-    -File "C:\Chartly2.0\tests\load\run_load.ps1"
-    -Endpoint "/health" -N 100000 -C 100000 -TimeoutSec 10
+    powershell -NoProfile -ExecutionPolicy Bypass -Command
+    "$env:CHARTLY_LOAD='1'; $env:CHARTLY_BASE_URL='http://localhost:8080';
+    & 'C:\Chartly2.0\tests\load\run_load.ps1' -BaseUrl $env:CHARTLY_BASE_URL
+    -Endpoint '/health' -N 100000 -C 100000 -TimeoutSec 10"
 assumptions:
   - "A POSIX shell is available on Windows (Git Bash or WSL) and configured (CHARTLY_SH if needed)."
   - "The target stack is horizontally scaled; 100k concurrent requests is not realistic for a single-node dev stack."
