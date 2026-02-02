@@ -1,13 +1,15 @@
 /**
  * Chartly 2.0  TypeScript SDK (v0)
  *
- * Thin HTTP client:
+ * Thin HTTP client with an extensible (but tiny) middleware pipeline.
+ *
+ * Goals:
  * - Consistent calling patterns + headers (tenant/request id)
  * - W3C trace-context propagation (traceparent/tracestate)
- * - Bounded request/response sizes
+ * - Bounded request/response sizes (streaming only)
+ * - Deterministic JSON (stable key ordering) with strict serialization
  * - Structured error decoding (Chartly envelope)
- *
- * No retries (v0): callers may wrap with their own retry policy.
+ * - No retries by default (can be added via middleware later)
  */
 
 export type HttpMethod =
@@ -35,7 +37,7 @@ export type ClientOptions = {
   requestId?: string;
 
   /**
-   * Default timeout in milliseconds (applies per request).
+   * Default timeout budget in milliseconds (covers fetch + streaming read).
    */
   timeoutMs?: number;
 
@@ -53,6 +55,11 @@ export type ClientOptions = {
    * Optional fetch implementation (for Node <18 or custom environments).
    */
   fetchImpl?: typeof globalThis.fetch;
+
+  /**
+   * Optional middleware pipeline (executed in order).
+   */
+  middleware?: Middleware[];
 };
 
 export type RequestOptions = {
@@ -110,7 +117,6 @@ export class APIError extends Error {
 
 /**
  * Chartly response envelope (best-effort).
- * We only rely on it when shape matches.
  */
 type ChartlyEnvelope = {
   ok?: boolean;
@@ -119,11 +125,34 @@ type ChartlyEnvelope = {
   data?: unknown;
 };
 
+type RequestContext = {
+  method: HttpMethod;
+  url: string;
+  path: string;
+  headers: Record<string, string>;
+  bodyText?: string;
+  timeoutMs: number;
+};
+
+type ResponseContext = {
+  status: number;
+  headers: Headers;
+  bodyText: string;
+  requestId?: string;
+};
+
+export type Middleware = {
+  beforeRequest?: (ctx: RequestContext) => Promise<void> | void;
+  afterResponse?: (req: RequestContext, res: ResponseContext) => Promise<void> | void;
+  onError?: (req: RequestContext, err: unknown) => Promise<void> | void;
+};
+
 const DEFAULT_MAX_REQ = 4 * 1024 * 1024; // 4MB
 const DEFAULT_MAX_RES = 8 * 1024 * 1024; // 8MB
 
 const MAX_HEADER_VAL_LEN = 1024;
 const MAX_EXTRA_HEADERS = 64;
+const ERROR_SNIPPET_MAX = 512;
 
 function isAsciiPrintable(ch: string): boolean {
   const c = ch.charCodeAt(0);
@@ -139,11 +168,20 @@ function sanitizeHeaderValue(v: string): string {
   return out;
 }
 
+function normalizeHeaders(input: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (!k) continue;
+    out[k.toLowerCase()] = sanitizeHeaderValue(String(v));
+  }
+  return out;
+}
+
 function mergeHeaders(
   base: Record<string, string>,
   extra?: Record<string, string>
 ): Record<string, string> {
-  const out: Record<string, string> = { ...base };
+  const out: Record<string, string> = { ...normalizeHeaders(base) };
   if (!extra) return out;
 
   let seen = 0;
@@ -158,7 +196,7 @@ function mergeHeaders(
 
 /**
  * Stable JSON stringify: sorts object keys recursively.
- * Rejects undefined/functions/symbols for deterministic behavior.
+ * Rejects undefined/functions/symbols/bigint for deterministic behavior.
  */
 function stableStringify(value: unknown): string {
   const normalized = stableNormalize(value);
@@ -171,7 +209,7 @@ function stableNormalize(value: unknown): unknown {
   const t = typeof value;
 
   // Reject values that cannot be represented in JSON deterministically.
-  if (t === "undefined" || t === "function" || t === "symbol") {
+  if (t === "undefined" || t === "function" || t === "symbol" || t === "bigint") {
     throw new TypeError(`Value of type ${t} is not JSON-serializable`);
   }
 
@@ -185,13 +223,10 @@ function stableNormalize(value: unknown): unknown {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
     const out: Record<string, unknown> = {};
-    for (const k of keys) {
-      out[k] = stableNormalize(obj[k]);
-    }
+    for (const k of keys) out[k] = stableNormalize(obj[k]);
     return out;
   }
 
-  // bigint not valid JSON; other exotic types rejected above
   throw new TypeError(`Value of type ${t} is not JSON-serializable`);
 }
 
@@ -240,10 +275,12 @@ function randomHex(bytes: number): string {
   return out;
 }
 
+/**
+ * Bounded streaming reader.
+ * NOTE: We intentionally do NOT fall back to resp.text() to avoid OOM.
+ */
 async function readBoundedText(resp: Response, maxBytes: number): Promise<string> {
   const reader = resp.body?.getReader();
-
-  // IMPORTANT: Do not fall back to resp.text() because it can OOM before bounds check.
   if (!reader) {
     throw new Error("Response body streaming not supported; cannot enforce size limit safely");
   }
@@ -299,6 +336,11 @@ function tryParseEnvelope(text: string): ChartlyEnvelope | null {
   }
 }
 
+function isAbortError(e: any): boolean {
+  // DOMException in browsers, Error with name in some fetch impls
+  return e?.name === "AbortError";
+}
+
 export class Client {
   private readonly baseUrl: string;
   private readonly tenantId?: string;
@@ -307,11 +349,12 @@ export class Client {
   private readonly maxRequestBytes: number;
   private readonly maxResponseBytes: number;
   private readonly fetchImpl: typeof globalThis.fetch;
+  private readonly middleware: Middleware[];
 
   constructor(opts: ClientOptions) {
     if (!opts?.baseUrl) throw new Error("baseUrl is required");
 
-    // Basic URL validation early (fail fast).
+    // Fail fast on invalid baseUrl.
     try {
       // eslint-disable-next-line no-new
       new URL(opts.baseUrl);
@@ -329,6 +372,7 @@ export class Client {
     if (!this.fetchImpl) {
       throw new Error("fetch is not available in this environment; provide fetchImpl");
     }
+    this.middleware = Array.isArray(opts.middleware) ? opts.middleware : [];
   }
 
   public async health(): Promise<unknown> {
@@ -369,7 +413,6 @@ export class Client {
     const traceparent = sanitizeHeaderValue(options?.traceparent ?? generateTraceparent(false));
     const tracestate = options?.tracestate ? sanitizeHeaderValue(options.tracestate) : undefined;
 
-    // Keep all header keys lowercased for consistency.
     const baseHeaders: Record<string, string> = {
       accept: "application/json",
       "content-type": "application/json",
@@ -390,6 +433,20 @@ export class Client {
       }
     }
 
+    const reqCtx: RequestContext = {
+      method,
+      url,
+      path,
+      headers,
+      bodyText,
+      timeoutMs,
+    };
+
+    // Middleware: beforeRequest
+    for (const m of this.middleware) {
+      if (m.beforeRequest) await m.beforeRequest(reqCtx);
+    }
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -397,46 +454,69 @@ export class Client {
     let text: string;
 
     try {
-      resp = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: bodyText,
+      resp = await this.fetchImpl(reqCtx.url, {
+        method: reqCtx.method,
+        headers: reqCtx.headers,
+        body: reqCtx.bodyText,
         signal: controller.signal,
       });
 
-      // CRITICAL FIX: read within the try so timeout remains active during streaming read.
+      // CRITICAL: timeout budget covers streaming read too.
       text = await readBoundedText(resp, this.maxResponseBytes);
+
+      const resCtx: ResponseContext = {
+        status: resp.status,
+        headers: resp.headers,
+        bodyText: text,
+        requestId: extractRequestId(resp.headers),
+      };
+
+      // Middleware: afterResponse
+      for (const m of this.middleware) {
+        if (m.afterResponse) await m.afterResponse(reqCtx, resCtx);
+      }
+
+      if (!resp.ok) {
+        const env = tryParseEnvelope(text);
+        const reqId = resCtx.requestId;
+
+        if (env?.error) {
+          throw new APIError({
+            message: env.error.message ?? `HTTP ${resp.status}`,
+            status: resp.status,
+            code: env.error.code,
+            retryable: env.error.retryable,
+            details: env.error.details,
+            requestId: env.request_id ?? reqId,
+          });
+        }
+
+        throw new APIError({
+          message: `HTTP ${resp.status}: ${text.slice(0, ERROR_SNIPPET_MAX)}`,
+          status: resp.status,
+          requestId: reqId,
+        });
+      }
+
+      return text;
     } catch (e: any) {
-      if (e?.name === "AbortError") {
+      // Middleware: onError
+      for (const m of this.middleware) {
+        if (m.onError) await m.onError(reqCtx, e);
+      }
+
+      if (isAbortError(e)) {
         throw new Error(`Request timeout after ${timeoutMs}ms`);
       }
+
+      // Preserve APIError unchanged
+      if (e instanceof APIError) {
+        throw e;
+      }
+
       throw new Error(`Network error calling ${method} ${url}: ${String(e)}`);
     } finally {
       clearTimeout(timeout);
     }
-
-    if (!resp.ok) {
-      const reqId = extractRequestId(resp.headers);
-      const env = tryParseEnvelope(text);
-
-      if (env?.error) {
-        throw new APIError({
-          message: env.error.message ?? `HTTP ${resp.status}`,
-          status: resp.status,
-          code: env.error.code,
-          retryable: env.error.retryable,
-          details: env.error.details,
-          requestId: env.request_id ?? reqId,
-        });
-      }
-
-      throw new APIError({
-        message: `HTTP ${resp.status}: ${text.slice(0, 512)}`,
-        status: resp.status,
-        requestId: reqId,
-      });
-    }
-
-    return text;
   }
 }
