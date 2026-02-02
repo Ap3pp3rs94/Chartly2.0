@@ -18,7 +18,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${CHARTLY_DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres} # dev-only default; override via env
+      # Dev default only; override via env. Do not use in production.
+      POSTGRES_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres}
       POSTGRES_DB: ${CHARTLY_DB_NAME:-chartly}
     ports:
       - "${CHARTLY_POSTGRES_PORT:-5432}:5432"
@@ -26,6 +27,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - chartly_dev
+    # Note: $$ escapes $ in docker-compose; becomes $POSTGRES_USER/$POSTGRES_DB inside container.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -59,27 +61,26 @@ services:
       - qdrant_data:/qdrant/storage
     networks:
       - chartly_dev
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+    # Dev simplicity: no healthcheck (image is minimal; avoids wget/curl assumptions).
+    # Production should use external monitoring/health validation.
 
   gateway:
-    # Canonical dev template: this service is a placeholder until the gateway image/build is finalized.
-    # Provide either:
-    #   - CHARTLY_GATEWAY_IMAGE (recommended), or
-    #   - a build section once the gateway Dockerfile path is locked.
+    # Canonical dev template: placeholder until gateway image/build is finalized.
+    #
+    # IMPORTANT (honest behavior):
+    # - If "build.context" does NOT exist on disk, Docker Compose will FAIL when building.
+    # - If you want to run from a prebuilt image, set CHARTLY_GATEWAY_IMAGE to a valid image name/tag
+    #   and ensure the build context path exists (or use a compose variant that omits "build").
     image: ${CHARTLY_GATEWAY_IMAGE:-chartly-gateway:dev}
+    build:
+      context: ${CHARTLY_GATEWAY_BUILD_CONTEXT:-../../services/gateway}
+      dockerfile: ${CHARTLY_GATEWAY_DOCKERFILE:-Dockerfile}
     container_name: chartly-gateway
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_healthy
+      - postgres
+      - redis
+      - qdrant
     environment:
       CHARTLY_ENV: ${CHARTLY_ENV:-dev}
       CHARTLY_HTTP_PORT: "8080"
@@ -89,7 +90,8 @@ services:
       CHARTLY_DB_PORT: "5432"
       CHARTLY_DB_NAME: ${CHARTLY_DB_NAME:-chartly}
       CHARTLY_DB_USER: ${CHARTLY_DB_USER:-postgres}
-      CHARTLY_DB_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres} # dev-only default; override via env
+      # Dev default only; override via env. Do not use in production.
+      CHARTLY_DB_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres}
 
       CHARTLY_REDIS_HOST: redis
       CHARTLY_REDIS_PORT: "6379"
@@ -100,8 +102,5 @@ services:
       - "${CHARTLY_GATEWAY_PORT:-8080}:8080"
     networks:
       - chartly_dev
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
+    # Dev simplicity: no healthcheck (gateway image may be scratch/distroless).
+    # Keep health checks in scripts/testing (smoke_test.sh) which already validate /health and /ready.
