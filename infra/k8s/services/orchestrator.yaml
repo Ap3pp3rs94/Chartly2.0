@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chartly-orchestrator
+  namespace: chartly
+  labels:
+    app.kubernetes.io/name: chartly
+    app.kubernetes.io/part-of: chartly
+    app.kubernetes.io/component: orchestrator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: chartly
+      app.kubernetes.io/component: orchestrator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: chartly
+        app.kubernetes.io/part-of: chartly
+        app.kubernetes.io/component: orchestrator
+    spec:
+      containers:
+        - name: orchestrator
+          image: chartly-orchestrator:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8081
+              protocol: TCP
+          env:
+            # Non-secret defaults only. Real values should be injected via ConfigMap/Secret at deploy time.
+            - name: CHARTLY_ENV
+              value: "dev"
+            - name: CHARTLY_HTTP_ADDR
+              value: "0.0.0.0:8081"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chartly-orchestrator
+  namespace: chartly
+  labels:
+    app.kubernetes.io/name: chartly
+    app.kubernetes.io/part-of: chartly
+    app.kubernetes.io/component: orchestrator
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: chartly
+    app.kubernetes.io/component: orchestrator
+  ports:
+    - name: http
+      port: 8081
+      targetPort: http
+      protocol: TCP
