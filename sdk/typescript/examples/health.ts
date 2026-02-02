@@ -7,7 +7,7 @@ function env(name: string, fallback = ""): string {
 async function main(): Promise<void> {
   const baseUrl = env("CHARTLY_BASE_URL", "http://localhost:8080");
   const tenantId = env("CHARTLY_TENANT_ID", "local");
-  const requestId = env("CHARTLY_REQUEST_ID", "req_ts_basic_client");
+  const requestId = env("CHARTLY_REQUEST_ID", "req_ts_health");
 
   const c = new Client({ baseUrl, tenantId, requestId });
 
@@ -22,6 +22,6 @@ async function main(): Promise<void> {
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("basic client failed:", err);
+  console.error("health example failed:", err);
   process.exit(1);
 });

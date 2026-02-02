@@ -7,21 +7,22 @@ function env(name: string, fallback = ""): string {
 async function main(): Promise<void> {
   const baseUrl = env("CHARTLY_BASE_URL", "http://localhost:8080");
   const tenantId = env("CHARTLY_TENANT_ID", "local");
-  const requestId = env("CHARTLY_REQUEST_ID", "req_ts_basic_client");
+  const requestId = env("CHARTLY_REQUEST_ID", "req_ts_request_json");
 
   const c = new Client({ baseUrl, tenantId, requestId });
 
-  const health = await c.health();
+  // requestJson demonstrates typed decoding (best-effort).
+  const health = await c.requestJson<Record<string, unknown>>("GET", "/health");
   // eslint-disable-next-line no-console
-  console.log("/health:", health);
+  console.log("health keys:", Object.keys(health));
 
-  const ready = await c.ready();
+  const ready = await c.requestJson<Record<string, unknown>>("GET", "/ready");
   // eslint-disable-next-line no-console
-  console.log("/ready:", ready);
+  console.log("ready keys:", Object.keys(ready));
 }
 
 main().catch((err) => {
   // eslint-disable-next-line no-console
-  console.error("basic client failed:", err);
+  console.error("request-json example failed:", err);
   process.exit(1);
 });
