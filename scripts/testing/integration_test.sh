@@ -24,6 +24,9 @@ usage() {
   echo "  --events-path <path>  If set, POST a sample event to this path and require 2xx"
   echo "  --yes                 Required for any mutating step (e.g., --seed)"
   echo "  -h, --help            Show help"
+  echo ""
+  echo "Env:"
+  echo "  CHARTLY_BASE_URL, CHARTLY_TIMEOUT_SEC, CHARTLY_TENANT_ID, CHARTLY_REQUEST_ID, CHARTLY_EVENTS_PATH"
 }
 
 # Defaults (env overridable)
@@ -38,22 +41,53 @@ seed_name="default"
 seed_count="100"
 yes="0"
 
+base_url_set="0"
+timeout_set="0"
+tenant_set="0"
+request_set="0"
+seed_name_set="0"
+seed_count_set="0"
+events_path_set="0"
+
 # Args
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --base-url) base_url="${2:-}"; shift 2 ;;
-    --timeout) timeout="${2:-}"; shift 2 ;;
-    --tenant-id) tenant_id="${2:-}"; shift 2 ;;
-    --request-id) request_id="${2:-}"; shift 2 ;;
+    --base-url) base_url="${2:-}"; base_url_set="1"; shift 2 ;;
+    --timeout) timeout="${2:-}"; timeout_set="1"; shift 2 ;;
+    --tenant-id) tenant_id="${2:-}"; tenant_set="1"; shift 2 ;;
+    --request-id) request_id="${2:-}"; request_set="1"; shift 2 ;;
     --seed) do_seed="1"; shift ;;
-    --seed-name) seed_name="${2:-}"; shift 2 ;;
-    --seed-count) seed_count="${2:-}"; shift 2 ;;
-    --events-path) events_path="${2:-}"; shift 2 ;;
+    --seed-name) seed_name="${2:-}"; seed_name_set="1"; shift 2 ;;
+    --seed-count) seed_count="${2:-}"; seed_count_set="1"; shift 2 ;;
+    --events-path) events_path="${2:-}"; events_path_set="1"; shift 2 ;;
     --yes) yes="1"; shift ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown arg: $1 (use --help)" ;;
   esac
 done
+
+# Missing-value guards for flags that require values
+if [ "$base_url_set" = "1" ] && [ -z "$base_url" ]; then
+  die "--base-url requires a value"
+fi
+if [ "$timeout_set" = "1" ] && [ -z "$timeout" ]; then
+  die "--timeout requires a value"
+fi
+if [ "$tenant_set" = "1" ] && [ -z "$tenant_id" ]; then
+  die "--tenant-id requires a value"
+fi
+if [ "$request_set" = "1" ] && [ -z "$request_id" ]; then
+  die "--request-id requires a value"
+fi
+if [ "$seed_name_set" = "1" ] && [ -z "$seed_name" ]; then
+  die "--seed-name requires a value"
+fi
+if [ "$seed_count_set" = "1" ] && [ -z "$seed_count" ]; then
+  die "--seed-count requires a value"
+fi
+if [ "$events_path_set" = "1" ] && [ -z "$events_path" ]; then
+  die "--events-path requires a value"
+fi
 
 # Normalize base_url (strip trailing slashes)
 while :; do
