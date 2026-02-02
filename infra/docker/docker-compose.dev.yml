@@ -1,0 +1,107 @@
+version: "3.9"
+
+name: chartly-dev
+
+networks:
+  chartly_dev:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chartly-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${CHARTLY_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres} # dev-only default; override via env
+      POSTGRES_DB: ${CHARTLY_DB_NAME:-chartly}
+    ports:
+      - "${CHARTLY_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - chartly_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: chartly-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "${CHARTLY_REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - chartly_dev
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: chartly-qdrant
+    restart: unless-stopped
+    ports:
+      - "${CHARTLY_QDRANT_PORT:-6333}:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - chartly_dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  gateway:
+    # Canonical dev template: this service is a placeholder until the gateway image/build is finalized.
+    # Provide either:
+    #   - CHARTLY_GATEWAY_IMAGE (recommended), or
+    #   - a build section once the gateway Dockerfile path is locked.
+    image: ${CHARTLY_GATEWAY_IMAGE:-chartly-gateway:dev}
+    container_name: chartly-gateway
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    environment:
+      CHARTLY_ENV: ${CHARTLY_ENV:-dev}
+      CHARTLY_HTTP_PORT: "8080"
+
+      # Connection hints (gateway should read its own config; these are common defaults)
+      CHARTLY_DB_HOST: postgres
+      CHARTLY_DB_PORT: "5432"
+      CHARTLY_DB_NAME: ${CHARTLY_DB_NAME:-chartly}
+      CHARTLY_DB_USER: ${CHARTLY_DB_USER:-postgres}
+      CHARTLY_DB_PASSWORD: ${CHARTLY_DB_PASSWORD:-postgres} # dev-only default; override via env
+
+      CHARTLY_REDIS_HOST: redis
+      CHARTLY_REDIS_PORT: "6379"
+
+      CHARTLY_QDRANT_HOST: qdrant
+      CHARTLY_QDRANT_PORT: "6333"
+    ports:
+      - "${CHARTLY_GATEWAY_PORT:-8080}:8080"
+    networks:
+      - chartly_dev
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
