@@ -1,0 +1,27 @@
+name: "100k_concurrent"
+description: "Extremely aggressive load profile intended to stress a fully provisioned Chartly stack."
+safety:
+  opt_in_env: "CHARTLY_LOAD=1"
+  notes:
+    - "DANGEROUS: This profile can overwhelm local machines, networks, and services."
+    - "Run only in an isolated environment you control (never against production)."
+    - "Expect very high CPU/RAM usage on the load generator and on the target."
+    - "Prefer a dedicated load generator host and a properly sized backend."
+    - "If your shell or OS cannot sustain this concurrency, reduce concurrency first."
+target:
+  base_url_env: "CHARTLY_BASE_URL"
+  default_endpoint: "/health"
+load:
+  requests: 100000
+  concurrency: 100000
+  timeout_sec: 10
+run:
+  command: >
+    powershell -NoProfile -ExecutionPolicy Bypass
+    -File "C:\Chartly2.0\tests\load\run_load.ps1"
+    -Endpoint "/health" -N 100000 -C 100000 -TimeoutSec 10
+assumptions:
+  - "A POSIX shell is available on Windows (Git Bash or WSL) and configured (CHARTLY_SH if needed)."
+  - "The target stack is horizontally scaled; 100k concurrent requests is not realistic for a single-node dev stack."
+  - "Network and OS limits (ephemeral ports, ulimit/file handles, NAT) have been tuned appropriately."
+  - "You are monitoring the target (CPU/RAM/DB/queue) and the load generator during the run."
