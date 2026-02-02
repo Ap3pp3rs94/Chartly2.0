@@ -2,6 +2,7 @@ package integration_test
 
 import (
 "bytes"
+"context"
 "encoding/json"
 "fmt"
 "io"
@@ -57,7 +58,7 @@ t.Fatalf("http request failed: %v", err)
 return resp.StatusCode, readSnippetRG(resp.Body, 2048)
 }
 
-func parseIntEnvMS(t *testing.T, key, def string) time.Duration {
+func parseEnvMS(t *testing.T, key, def string) time.Duration {
 t.Helper()
 ms := getenvRG(key, def)
 d, err := time.ParseDuration(ms + "ms")
@@ -119,6 +120,13 @@ return true
 }return false
 }
 
+func minDur(a, b time.Duration) time.Duration {
+if a <= b {
+return a
+
+}return b
+}
+
 func TestE2E_ReportGeneration(t *testing.T) {
 if strings.TrimSpace(os.Getenv("CHARTLY_E2E")) != "1" {
 t.Skip("skipping e2e: set CHARTLY_E2E=1 to enable")
@@ -142,9 +150,9 @@ if requestID == "" {
 requestID = fmt.Sprintf("e2e-%d", os.Getpid())
 
 
-}perReqTimeout := parseIntEnvMS(t, "CHARTLY_TIMEOUT_MS", "15000")
-pollInterval := parseIntEnvMS(t, "CHARTLY_POLL_INTERVAL_MS", "500")
-pollBudget := parseIntEnvMS(t, "CHARTLY_POLL_TIMEOUT_MS", "20000")
+}perReqTimeout := parseEnvMS(t, "CHARTLY_TIMEOUT_MS", "15000")
+pollInterval := parseEnvMS(t, "CHARTLY_POLL_INTERVAL_MS", "500")
+pollBudget := parseEnvMS(t, "CHARTLY_POLL_TIMEOUT_MS", "20000")
 
 client := &http.Client{Timeout: perReqTimeout}
 
@@ -160,7 +168,7 @@ req.Header.Set("x-chartly-tenant", tenantID)
 }// health
 
 {url := joinURLRG(baseURL, healthPath)
-req, _ := http.NewRequest(http.MethodGet, url, nil)
+req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 commonHeaders(req)
 code, body := doReqRG(t, client, req)
 if code < 200 || code > 299 {
@@ -171,7 +179,7 @@ t.Fatalf("GET %s expected 2xx, got %d. body:\n%s", url, code, body)
 }// ready
 
 {url := joinURLRG(baseURL, readyPath)
-req, _ := http.NewRequest(http.MethodGet, url, nil)
+req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 commonHeaders(req)
 code, body := doReqRG(t, client, req)
 if code < 200 || code > 299 {
@@ -193,7 +201,7 @@ t.Fatalf("json.Marshal request failed: %v", err)
 
 
 }genURL := joinURLRG(baseURL, genPath)
-req, _ := http.NewRequest(http.MethodPost, genURL, bytes.NewReader(bb))
+req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost, genURL, bytes.NewReader(bb))
 commonHeaders(req)
 req.Header.Set("content-type", "application/json")
 
@@ -217,29 +225,55 @@ if jobID == "" {
 t.Fatalf("POST %s returned 202 but no job id found. body:\n%s", genURL, body)
 
 
-}deadline := time.Now().Add(pollBudget)
-statusURL := joinURLRG(baseURL, statusPath) + "/" + jobID
+}statusURL := joinURLRG(baseURL, statusPath) + "/" + jobID
 fetchURL := joinURLRG(baseURL, fetchPath) + "/" + jobID
 
-// Poll status until ready
+deadline := time.Now().Add(pollBudget)
+var lastCode int
+var lastBody string
+
+// Poll status until ready (SPEC: only consider ready when scode == 200).
 for {
-if time.Now().After(deadline) {
-t.Fatalf("poll timeout after %s. last status url=%s", pollBudget.String(), statusURL)
+remaining := time.Until(deadline)
+if remaining <= 0 {
+t.Fatalf(
+"poll timeout after %s. status_url=%s last_code=%d last_body:\n%s",
+pollBudget.String(), statusURL, lastCode, lastBody,
 
+)
 
-}sreq, _ := http.NewRequest(http.MethodGet, statusURL, nil)
+}// Ensure each poll request cannot exceed remaining budget.
+reqTimeout := minDur(perReqTimeout, remaining)
+ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+
+sreq, _ := http.NewRequestWithContext(ctx, http.MethodGet, statusURL, nil)
 commonHeaders(sreq)
 scode, sbody := doReqRG(t, client, sreq)
+cancel()
 
-if scode >= 200 && scode <= 299 && isReady(sbody) {
+lastCode = scode
+lastBody = sbody
+
+if scode == 200 && isReady(sbody) {
 break
 
 
-}time.Sleep(pollInterval)
+}// Sleep, but don't overshoot deadline.
+if pollInterval > 0 {
+sleepFor := pollInterval
+remAfter := time.Until(deadline)
+if remAfter <= 0 {
+continue
 
+}if sleepFor > remAfter {
+sleepFor = remAfter
+
+}time.Sleep(sleepFor)
+
+}
 
 }// Fetch report result
-freq, _ := http.NewRequest(http.MethodGet, fetchURL, nil)
+freq, _ := http.NewRequestWithContext(context.Background(), http.MethodGet, fetchURL, nil)
 commonHeaders(freq)
 fcode, fbody := doReqRG(t, client, freq)
 
