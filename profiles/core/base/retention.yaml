@@ -1,9 +1,9 @@
 version: "1.0"
 
 retention_engine:
-  enforcement: "planned"   # planned|enabled
+  enforcement: "roadmap"   # roadmap|enabled
   notes:
-    - "Retention is enforced by orchestrator-managed lifecycle jobs (planned)."
+    - "Retention is enforced by orchestrator-managed lifecycle jobs (roadmap)."
     - "Profiles define desired retention; actual enforcement must respect tenancy quotas and legal hold."
   lifecycle_job_model:
     owner_service: "orchestrator"
@@ -40,10 +40,10 @@ planes:
       enabled: true
       strategy: "time_bucket_compaction"
       bucket_granularity: "day"
-      downsampling_planned: true
+      downsampling_roadmap: true
     notes:
       - "Canonical retention should exceed raw retention to support analytics."
-      - "Downsampling is planned for high-volume metrics."
+      - "Downsampling is roadmap for high-volume metrics."
 
   audit_plane:
     enabled: true
@@ -69,7 +69,7 @@ tenant_overrides:
 
 privacy_and_compliance:
   gdpr_delete_policy:
-    planned: true
+    status: "roadmap"
     notes:
       - "GDPR right-to-erasure is implemented as targeted deletion/redaction workflows, not blanket retention changes."
       - "All deletions/redactions must be recorded in audit plane."

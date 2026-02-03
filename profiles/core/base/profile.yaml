@@ -81,7 +81,7 @@ canonicalization:
   numeric_policy:
     # Apply numeric coercion rules during normalization
     allow_string_numbers: true
-    decimal_handling: "float64"       # float64|decimal (decimal is planned)
+    decimal_handling: "float64"       # float64|decimal (decimal is roadmap)
     invalid_numeric: "quarantine"     # quarantine|null|drop
     bounds:
       allow_nan: false
