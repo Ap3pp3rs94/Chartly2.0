@@ -75,7 +75,7 @@ func (r *RingBuffer) TryPush(chunk []byte) error {
 	select {
 	case <-r.slots:
 		// proceed
-		// case <-r.closedCh:
+	case <-r.closedCh:
 		r.dropped.Add(1)
 		return ErrClosed
 	default:
@@ -131,16 +131,23 @@ func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 func (r *RingBuffer) TryPop() ([]byte, error) {
 	select {
 	case <-r.items:
-		// proceed
-		// case <-r.closedCh:
+		r.mu.Lock()
+		chunk := r.popLocked()
+		r.mu.Unlock()
+		// return slot
+		r.slots <- struct{}{}
+		return chunk, nil
+	case <-r.closedCh:
 		// if closed and empty, return closed
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		if r.size == 0 {
 			return nil, ErrClosed
 		}
-		// fall through to pop without token (should not happen)
-		return r.popLocked(), nil
+		chunk := r.popLocked()
+		// return slot
+		r.slots <- struct{}{}
+		return chunk, nil
 	default:
 		if r.closed.Load() {
 			r.mu.Lock()
@@ -151,13 +158,6 @@ func (r *RingBuffer) TryPop() ([]byte, error) {
 		}
 		return nil, ErrWouldBlock
 	}
-	r.mu.Lock()
-	chunk := r.popLocked()
-	r.mu.Unlock()
-
-	// return slot
-	r.slots <- struct{}{}
-	return chunk, nil
 }
 func (r *RingBuffer) Pop(ctx context.Context) ([]byte, error) {
 	if ctx.Err() != nil {
