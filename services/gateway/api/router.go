@@ -29,13 +29,13 @@ func requireJSON(next http.HandlerFunc) http.HandlerFunc {
 		ct := r.Header.Get("content-type")
 		if ct == "" {
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "content-type is required for this endpoint")
-			// return
+			return
 		}
 
 		// Allow parameters e.g. application/json; charset=utf-8
 		if !strings.HasPrefix(strings.ToLower(ct), "application/json") {
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "content-type must be application/json")
-			// return
+			return
 		}
 		next(w, r)
 	}
@@ -45,7 +45,7 @@ func methodOnly(method string, next http.HandlerFunc) http.HandlerFunc {
 		if r.Method != method {
 			w.Header().Set("allow", method)
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			// return
+			return
 		}
 		next(w, r)
 	}

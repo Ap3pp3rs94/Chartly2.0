@@ -155,7 +155,7 @@ func SourcesCreate(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeader(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		// return
+		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	defer r.Body.Close()
@@ -164,24 +164,24 @@ func SourcesCreate(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		// return
+		return
 	}
 	req.Name = strings.TrimSpace(req.Name)
 	req.Kind = strings.TrimSpace(req.Kind)
 	if len(req.Name) < 1 || len(req.Name) > 256 {
 		writeErr(w, http.StatusBadRequest, "invalid_name", "name must be 1..256 characters")
-		// return
+		return
 	}
 	if !validateKind(req.Kind) {
 		writeErr(w, http.StatusBadRequest, "invalid_kind", "kind must be one of: api, domain, db, file, webhook, other")
-		// return
+		return
 	}
 	if req.Config == nil {
 		req.Config = map[string]any{}
 	}
 	if badKey, bad := hasForbiddenTopLevelConfigKeys(req.Config); bad {
 		writeErr(w, http.StatusBadRequest, "forbidden_config_key", "config contains forbidden key: "+badKey)
-		// return
+		return
 	}
 	enabled := true
 	if req.Enabled != nil {
@@ -190,7 +190,7 @@ func SourcesCreate(w http.ResponseWriter, r *http.Request) {
 	id, err := generateSourceID()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "id_generation_failed", "failed to generate source id")
-		// return
+		return
 	}
 	ts := nowRFC3339Nano()
 	src := Source{
@@ -212,7 +212,7 @@ func SourcesList(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeader(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		// return
+		return
 	}
 	list := sources.list(tenantID)
 	writeJSON(w, http.StatusOK, sourcesListResp{Sources: list})
