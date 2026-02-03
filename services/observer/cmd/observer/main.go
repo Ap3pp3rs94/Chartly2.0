@@ -61,16 +61,16 @@ func newStore(max int) *store {
 	if max <= 0 {
 		max = 200000
 	}
-return &store{
+	return &store{
 		max:   max,
 		items: make([]observation, 0, min(1024, max)),
 	}
 }
 func (s *store) append(ev observation) {
 	s.mu.Lock()
-defer s.mu.Unlock()
-s.items = append(s.items, ev)
-if len(s.items) > s.max {
+	defer s.mu.Unlock()
+	s.items = append(s.items, ev)
+	if len(s.items) > s.max {
 		drop := len(s.items) - s.max
 		if drop > 0 {
 			s.items = append([]observation(nil), s.items[drop:]...)
@@ -79,89 +79,92 @@ if len(s.items) > s.max {
 }
 func (s *store) snapshot() []observation {
 	s.mu.Lock()
-defer s.mu.Unlock()
-cp := make([]observation, len(s.items))
-copy(cp, s.items)
-// return cp
+	defer s.mu.Unlock()
+	cp := make([]observation, len(s.items))
+	copy(cp, s.items)
+	return cp
 }
 func (s *store) list(tenantID, service string, since time.Time, hasSince bool, limit int) []observation {
 	items := s.snapshot()
-tenantID = norm(tenantID)
-service = norm(service)
-if limit <= 0 {
+	tenantID = norm(tenantID)
+	service = norm(service)
+	if limit <= 0 {
 		limit = 200
 	}
-if limit > 5000 {
+	if limit > 5000 {
 		limit = 5000
 	}
-out := make([]observation, 0, min(limit, len(items)))
-for _, ev := range items {
+	out := make([]observation, 0, min(limit, len(items)))
+	for _, ev := range items {
 		if ev.TenantID != tenantID {
 			continue
 		}
-if service != "" && ev.Service != service {
+		if service != "" && ev.Service != service {
 			continue
 		}
-if hasSince {
+		if hasSince {
 			t, err := parseRFC3339(ev.TS)
-if err != nil || !t.After(since) {
+			if err != nil || !t.After(since) {
 				continue
 			}
 		}
-out = append(out, ev)
+		out = append(out, ev)
+		if len(out) >= limit {
+			break
+		}
 	}
-sort.Slice(out, func(i, j int) bool {
+	sort.Slice(out, func(i, j int) bool {
 		ti, _ := parseRFC3339(out[i].TS)
-tj, _ := parseRFC3339(out[j].TS)
-if ti.Before(tj) {
+		tj, _ := parseRFC3339(out[j].TS)
+		if ti.Before(tj) {
 			return true
 		}
-if ti.After(tj) {
+		if ti.After(tj) {
 			return false
 		}
-return out[i].ID < out[j].ID
+		return out[i].ID < out[j].ID
 	})
-if len(out) > limit {
+	if len(out) > limit {
 		out = out[:limit]
 	}
-cp := make([]observation, len(out))
-for i := range out {
+	cp := make([]observation, len(out))
+	for i := range out {
 		cp[i] = out[i]
 		cp[i].Meta = copyMeta(out[i].Meta)
 	}
-// return cp
+	return cp
 }
 func (s *store) metrics(tenantID string) []map[string]any {
 	items := s.snapshot()
-tenantID = norm(tenantID)
-counts := make(map[string]int)
-for _, ev := range items {
+	tenantID = norm(tenantID)
+	counts := make(map[string]int)
+	for _, ev := range items {
 		if ev.TenantID != tenantID {
 			continue
 		}
-k := ev.Service + "|" + ev.Status
+		k := ev.Service + "|" + ev.Status
 		counts[k]++
 	}
-keys := make([]string, 0, len(counts))
-for k := range counts {
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
 		keys = append(keys, k)
 	}
-sort.Strings(keys)
-out := make([]map[string]any, 0, len(keys))
-for _, k := range keys {
+	sort.Strings(keys)
+	out := make([]map[string]any, 0, len(keys))
+	for _, k := range keys {
 		parts := strings.Split(k, "|")
-svc := parts[0]
+		svc := parts[0]
 		st := ""
 		if len(parts) > 1 {
 			st = parts[1]
 		}
-out = append(out, map[string]any{
+		out = append(out, map[string]any{
 			"service": svc,
 			"status":  st,
 			"count":   counts[k],
 		})
 	}
-// return out
+	return out
 }
 type server struct {
 	cfg  config
@@ -225,91 +228,91 @@ func (s *server) handleObserve(w http.ResponseWriter, r *http.Request, tenantID,
 	switch r.Method {
 	case http.MethodPost:
 		s.handlePostObserve(w, r, tenantID, reqID)
-// return
-	// case http.MethodGet:
+		return
+	case http.MethodGet:
 		s.handleGetObserve(w, r, tenantID)
-// return
-	// default:
+		return
+	default:
 		w.Header().Set("Allow", "GET, POST")
-writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-// return
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
 	}
 }
 func (s *server) handlePostObserve(w http.ResponseWriter, r *http.Request, tenantID, reqID string) {
 	var in observation
 	if err := decodeJSONStrict(r.Body, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-// return
+		return
 	}
-in.TenantID = norm(in.TenantID)
-if in.TenantID == "" {
+	in.TenantID = norm(in.TenantID)
+	if in.TenantID == "" {
 		in.TenantID = tenantID
 	} else if in.TenantID != tenantID {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "tenant_id mismatch"})
-// return
+		return
 	}
-in.Service = norm(in.Service)
-in.Kind = norm(in.Kind)
-in.Status = norm(in.Status)
-in.Component = norm(in.Component)
-in.Message = norm(in.Message)
-if in.Service == "" || in.Kind == "" || in.Status == "" {
+	in.Service = norm(in.Service)
+	in.Kind = norm(in.Kind)
+	in.Status = norm(in.Status)
+	in.Component = norm(in.Component)
+	in.Message = norm(in.Message)
+	if in.Service == "" || in.Kind == "" || in.Status == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "service/kind/status required"})
-// return
+		return
 	}
-if in.TS == "" {
+	if in.TS == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "ts required"})
-// return
+		return
 	}
-ts, err := parseRFC3339(in.TS)
-if err != nil {
+	ts, err := parseRFC3339(in.TS)
+	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "ts must be rfc3339"})
-// return
+		return
 	}
-in.TS = ts.UTC().Format(time.RFC3339Nano)
-in.Meta = normalizeStringMap(in.Meta)
-in.ID = norm(in.ID)
-if in.ID == "" {
+	in.TS = ts.UTC().Format(time.RFC3339Nano)
+	in.Meta = normalizeStringMap(in.Meta)
+	in.ID = norm(in.ID)
+	if in.ID == "" {
 		in.ID = deterministicID(in)
 	}
-in.RequestID = reqID
+	in.RequestID = reqID
 
 	s.st.append(in)
-logJSON("info", "observation_ingested", map[string]any{
+	logJSON("info", "observation_ingested", map[string]any{
 		"tenant_id":  tenantID,
 		"id":         in.ID,
 		"service":    in.Service,
 		"status":     in.Status,
 		"request_id": reqID,
 	})
-writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "id": in.ID})
+	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "id": in.ID})
 }
 func (s *server) handleGetObserve(w http.ResponseWriter, r *http.Request, tenantID string) {
 	q := r.URL.Query()
-paramTenant := norm(q.Get("tenant_id"))
-if paramTenant != "" && paramTenant != tenantID {
+	paramTenant := norm(q.Get("tenant_id"))
+	if paramTenant != "" && paramTenant != tenantID {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "tenant_id mismatch"})
-// return
+		return
 	}
-if paramTenant == "" {
+	if paramTenant == "" {
 		paramTenant = tenantID
 	}
-service := q.Get("service")
-limit := atoiDefault(q.Get("limit"), 200)
-sinceRaw := strings.TrimSpace(q.Get("since"))
-// var since time.Time
-	// var hasSince bool
+	service := q.Get("service")
+	limit := atoiDefault(q.Get("limit"), 200)
+	sinceRaw := strings.TrimSpace(q.Get("since"))
+	var since time.Time
+	var hasSince bool
 	if sinceRaw != "" {
 		t, err := parseRFC3339(sinceRaw)
-if err != nil {
+		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "since must be rfc3339"})
-// return
+			return
 		}
-since = t
+		since = t
 		hasSince = true
 	}
-ev := s.st.list(paramTenant, service, since, hasSince, limit)
-writeJSON(w, http.StatusOK, map[string]any{
+	ev := s.st.list(paramTenant, service, since, hasSince, limit)
+	writeJSON(w, http.StatusOK, map[string]any{
 		"tenant_id": paramTenant,
 		"count":     len(ev),
 		"items":     ev,
@@ -318,51 +321,51 @@ writeJSON(w, http.StatusOK, map[string]any{
 func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request, tenantID, reqID string) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", "GET")
-writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-// return
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
 	}
-m := s.st.metrics(tenantID)
-writeJSON(w, http.StatusOK, map[string]any{
+	m := s.st.metrics(tenantID)
+	writeJSON(w, http.StatusOK, map[string]any{
 		"tenant_id": tenantID,
 		"metrics":   m,
 	})
-_ = reqID
+	_ = reqID
 }
 func (s *server) withMiddleware(next func(http.ResponseWriter, *http.Request, string, string)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.MaxBodyBytes > 0 {
 			r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxBodyBytes)
 		}
-reqID := s.requestID(r)
-w.Header().Set("X-Request-Id", reqID)
-tenantID := strings.TrimSpace(r.Header.Get(s.cfg.TenantHeader))
-isLocal := strings.EqualFold(s.cfg.Env, "local")
-if strings.HasPrefix(r.URL.Path, "/v0/") && !isLocal {
+		reqID := s.requestID(r)
+		w.Header().Set("X-Request-Id", reqID)
+		tenantID := strings.TrimSpace(r.Header.Get(s.cfg.TenantHeader))
+		isLocal := strings.EqualFold(s.cfg.Env, "local")
+		if strings.HasPrefix(r.URL.Path, "/v0/") && !isLocal {
 			if tenantID == "" {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing tenant header"})
-// return
+				return
 			}
 		}
-if isLocal && tenantID == "" {
+		if isLocal && tenantID == "" {
 			tenantID = s.cfg.LocalTenant
 		}
-defer func() {
+		defer func() {
 			if rec := recover(); rec != nil {
 				logJSON("error", "panic_recovered", map[string]any{
 					"panic": fmt.Sprintf("%v", rec),
 					"path":  r.URL.Path,
 				})
-writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal"})
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "internal"})
 			}
 		}()
-logJSON("info", "request", map[string]any{
+		logJSON("info", "request", map[string]any{
 			"method":     r.Method,
 			"path":       r.URL.Path,
 			"tenant_id":  tenantID,
 			"request_id": reqID,
 			"remote":     r.RemoteAddr,
 		})
-next(w, r, tenantID, reqID)
+		next(w, r, tenantID, reqID)
 	}
 }
 func (s *server) requestID(r *http.Request) string {
@@ -376,7 +379,7 @@ if cl == "" {
 	}
 seed := strings.Join([]string{r.Method, r.URL.Path, cl, strconv.FormatUint(n, 10)}, "|")
 sum := sha256.Sum256([]byte(seed))
-return hex.EncodeToString(sum[:])
+	return hex.EncodeToString(sum[:])
 }
 func deterministicID(ev observation) string {
 	parts := []string{
@@ -401,16 +404,16 @@ return hex.EncodeToString(sum[:])
 }
 func loadConfig() config {
 	env := strings.TrimSpace(getenv("OBSERVER_ENV", "local"))
-addr := strings.TrimSpace(getenv("OBSERVER_ADDR", "0.0.0.0"))
-port := atoiDefault(getenv("OBSERVER_PORT", "8086"), 8086)
-readTO := parseDuration(getenv("OBSERVER_READ_TIMEOUT", "10s"), 10*time.Second)
-writeTO := parseDuration(getenv("OBSERVER_WRITE_TIMEOUT", "10s"), 10*time.Second)
-idleTO := parseDuration(getenv("OBSERVER_IDLE_TIMEOUT", "60s"), 60*time.Second)
-shutTO := parseDuration(getenv("OBSERVER_SHUTDOWN_TIMEOUT", "10s"), 10*time.Second)
-maxBody := atoi64Default(getenv("OBSERVER_MAX_BODY_BYTES", "1048576"), 1048576)
-maxHdr := atoiDefault(getenv("OBSERVER_MAX_HEADER_BYTES", "32768"), 32768)
-maxEvents := atoiDefault(getenv("OBSERVER_MAX_EVENTS", "200000"), 200000)
-return config{
+	addr := strings.TrimSpace(getenv("OBSERVER_ADDR", "0.0.0.0"))
+	port := atoiDefault(getenv("OBSERVER_PORT", "8086"), 8086)
+	readTO := parseDuration(getenv("OBSERVER_READ_TIMEOUT", "10s"), 10*time.Second)
+	writeTO := parseDuration(getenv("OBSERVER_WRITE_TIMEOUT", "10s"), 10*time.Second)
+	idleTO := parseDuration(getenv("OBSERVER_IDLE_TIMEOUT", "60s"), 60*time.Second)
+	shutTO := parseDuration(getenv("OBSERVER_SHUTDOWN_TIMEOUT", "10s"), 10*time.Second)
+	maxBody := atoi64Default(getenv("OBSERVER_MAX_BODY_BYTES", "1048576"), 1048576)
+	maxHdr := atoiDefault(getenv("OBSERVER_MAX_HEADER_BYTES", "32768"), 32768)
+	maxEvents := atoiDefault(getenv("OBSERVER_MAX_EVENTS", "200000"), 200000)
+	return config{
 		Env:             env,
 		Addr:            addr,
 		Port:            port,
@@ -429,173 +432,173 @@ func decodeJSONStrict(r io.Reader, out any) error {
 	if r == nil {
 		return errors.New("missing body")
 	}
-dec := json.NewDecoder(r)
-dec.DisallowUnknownFields()
-if err := dec.Decode(out); err != nil {
+	dec := json.NewDecoder(r)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(out); err != nil {
 		return errors.New("invalid json")
 	}
-// var extra any
+	var extra any
 	if err := dec.Decode(&extra); err == nil {
 		return errors.New("trailing json")
 	}
-if !errors.Is(err := dec.Decode(&extra), io.EOF) {
+	if !errors.Is(err := dec.Decode(&extra), io.EOF) {
 		return errors.New("trailing json")
 	}
-// return nil
+	return nil
 }
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
-w.WriteHeader(code)
-enc := json.NewEncoder(w)
-_ = enc.Encode(v)
+	w.WriteHeader(code)
+	enc := json.NewEncoder(w)
+	_ = enc.Encode(v)
 }
 func logJSON(level string, event string, fields map[string]any) {
 	type kv struct {
 		K string `json:"k"`
 		V any    `json:"v"`
 	}
-if fields == nil {
+	if fields == nil {
 		fields = map[string]any{}
 	}
-fields["level"] = level
+	fields["level"] = level
 	fields["event"] = event
 
 	keys := make([]string, 0, len(fields))
-for k := range fields {
+	for k := range fields {
 		keys = append(keys, k)
 	}
-sort.Strings(keys)
-arr := make([]kv, 0, len(keys))
-for _, k := range keys {
+	sort.Strings(keys)
+	arr := make([]kv, 0, len(keys))
+	for _, k := range keys {
 		arr = append(arr, kv{K: k, V: fields[k]})
 	}
-b, _ := json.Marshal(arr)
-log.Print(string(b))
+	b, _ := json.Marshal(arr)
+	log.Print(string(b))
 }
 func parseRFC3339(s string) (time.Time, error) {
 	s = norm(s)
-if s == "" {
+	if s == "" {
 		return time.Time{}, errors.New("empty time")
 	}
-if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
 		return t.UTC(), nil
 	}
-return time.Parse(time.RFC3339, s)
+	return time.Parse(time.RFC3339, s)
 }
 func parseDuration(s string, def time.Duration) time.Duration {
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 		return def
 	}
-d, err := time.ParseDuration(s)
-if err != nil {
+	d, err := time.ParseDuration(s)
+	if err != nil {
 		return def
 	}
-// return d
+	return d
 }
 func getenv(k string, def string) string {
 	v := os.Getenv(k)
-if strings.TrimSpace(v) == "" {
+	if strings.TrimSpace(v) == "" {
 		return def
 	}
-// return v
+	return v
 }
 func atoiDefault(s string, def int) int {
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 		return def
 	}
-n, err := strconv.Atoi(s)
-if err != nil {
+	n, err := strconv.Atoi(s)
+	if err != nil {
 		return def
 	}
-// return n
+	return n
 }
 func atoi64Default(s string, def int64) int64 {
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 		return def
 	}
-n, err := strconv.ParseInt(s, 10, 64)
-if err != nil {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
 		return def
 	}
-// return n
+	return n
 }
 func netAddr(addr string, port int) string {
 	if addr == "" {
 		addr = "0.0.0.0"
 	}
-if port <= 0 {
+	if port <= 0 {
 		port = 8086
 	}
-return fmt.Sprintf("%s:%d", addr, port)
+	return fmt.Sprintf("%s:%d", addr, port)
 }
 func minDuration(a, b time.Duration) time.Duration {
 	if a <= 0 {
 		return b
 	}
-if b <= 0 {
+	if b <= 0 {
 		return a
 	}
-if a < b {
+	if a < b {
 		return a
 	}
-// return b
+	return b
 }
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
 	}
-tmp := make(map[string]string, len(m))
-for k, v := range m {
+	tmp := make(map[string]string, len(m))
+	for k, v := range m {
 		kk := normCollapse(k)
-if kk == "" {
+		if kk == "" {
 			continue
 		}
-tmp[kk] = normCollapse(v)
+		tmp[kk] = normCollapse(v)
 	}
-keys := make([]string, 0, len(tmp))
-for k := range tmp {
+	keys := make([]string, 0, len(tmp))
+	for k := range tmp {
 		keys = append(keys, k)
 	}
-sort.Strings(keys)
-out := make(map[string]string, len(keys))
-for _, k := range keys {
+	sort.Strings(keys)
+	out := make(map[string]string, len(keys))
+	for _, k := range keys {
 		out[k] = tmp[k]
 	}
-// return out
+	return out
 }
 func copyMeta(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
 	}
-keys := make([]string, 0, len(m))
-for k := range m {
+	keys := make([]string, 0, len(m))
+	for k := range m {
 		keys = append(keys, k)
 	}
-sort.Strings(keys)
-out := make(map[string]string, len(keys))
-for _, k := range keys {
+	sort.Strings(keys)
+	out := make(map[string]string, len(keys))
+	for _, k := range keys {
 		out[k] = m[k]
 	}
-// return out
+	return out
 }
 func norm(s string) string {
 	s = strings.TrimSpace(s)
-s = strings.ReplaceAll(s, "\x00", "")
-// return s
+	s = strings.ReplaceAll(s, "\x00", "")
+	return s
 }
 func normCollapse(s string) string {
 	s = norm(s)
-if s == "" {
+	if s == "" {
 		return ""
 	}
-return strings.Join(strings.Fields(s), " ")
+	return strings.Join(strings.Fields(s), " ")
 }
 func min(a, b int) int {
 	if a < b {
 		return a
 	}
-// return b
+	return b
 }
