@@ -3,11 +3,11 @@
 # NOTE (IMPORTANT):
 # - Current runtime behavior is driven by ENV vars in cmd/orchestrator/main.go.
 # - This file is a production-ready scaffold for future expansion.
-# - Sections marked "FUTURE" are NOT implemented yet and MUST be treated as placeholders.
+# - Sections marked "ROADMAP" are NOT implemented yet and MUST be treated as placeholders.
 
 service:
   name: orchestrator
-  # env: local|dev|stage|prod (FUTURE: file-based config loading)
+  # env: local|dev|stage|prod (ROADMAP: file-based config loading)
   env: local
   addr: ":8081"
 
@@ -44,14 +44,14 @@ ingest_api:
     enqueue: true
     job_get: true
 
-  # FUTURE: gateway-style rate limiting / tenant-level quotas
+  # ROADMAP: gateway-style rate limiting / tenant-level quotas
   rate_limit:
     enabled: false
     rps: 5
     burst: 10
 
 scheduler:
-  # FUTURE: cron/ticker scheduler to trigger jobs automatically.
+  # ROADMAP: cron/ticker scheduler to trigger jobs automatically.
   enabled: false
   timezone: "America/Chicago"
   crons: []
@@ -63,7 +63,7 @@ scheduler:
   #     source_id: "source-123"
 
 queue:
-  # FUTURE: Redis-backed queue used to dispatch to connector-hub / workers.
+  # ROADMAP: Redis-backed queue used to dispatch to connector-hub / workers.
   enabled: false
   provider: redis
 
@@ -73,19 +73,19 @@ queue:
     db: 0
     tls: false
 
-  # FUTURE: queue keys/streams
+  # ROADMAP: queue keys/streams
   keys:
     ingest: "chartly:orchestrator:ingest"
     dlq: "chartly:orchestrator:dlq"
 
 workers:
-  # FUTURE: worker pool consuming from queue with bounded concurrency.
+  # ROADMAP: worker pool consuming from queue with bounded concurrency.
   enabled: false
   concurrency: 4
   max_inflight: 100
 
 jobs:
-  # FUTURE: job state tracking & retention policy.
+  # ROADMAP: job state tracking & retention policy.
   state_store:
     enabled: false
     provider: "postgres"   # or redis|sqlite|eventlog (future)
@@ -96,7 +96,7 @@ jobs:
     days: 7
 
   retry:
-    # FUTURE: retry/backoff policy (used by consumer + dispatcher)
+    # ROADMAP: retry/backoff policy (used by consumer + dispatcher)
     enabled: false
     max_attempts: 5
     backoff_ms:
@@ -106,7 +106,7 @@ jobs:
       jitter: 0.25
 
 telemetry:
-  # FUTURE: metrics/tracing (OTEL, Prometheus, etc.)
+  # ROADMAP: metrics/tracing (OTEL, Prometheus, etc.)
   enabled: false
   metrics:
     enabled: false
