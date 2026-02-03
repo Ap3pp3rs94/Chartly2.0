@@ -28,11 +28,15 @@ type StreamSink interface {
 	// error
 }
 type Limits interface {
-	Acquire(ctx context.Context, domain string) (release func(), err error) } type Breaker interface {
+	Acquire(ctx context.Context, domain string) (release func(), err error)
+}
+type Breaker interface {
 	Allow(key string) (ok bool, state string, reason string)
 	Report(key string, success bool)
 }
-type LoggerFn func(level, msg string, fields map[string]any) type StreamManager struct {
+type LoggerFn func(level, msg string, fields map[string]any)
+
+type StreamManager struct {
 	mu sync.Mutex
 
 	buffers map[StreamID]*RingBuffer
@@ -156,7 +160,7 @@ func (m *StreamManager) readerLoop(ctx context.Context, id StreamID, meta Meta, 
 			"event":     "source_nil",
 			"stream_id": string(id),
 		})
-		// return
+		return
 	}
 	rc, err := m.source.Open(ctx, meta)
 	if err != nil {
@@ -165,7 +169,7 @@ func (m *StreamManager) readerLoop(ctx context.Context, id StreamID, meta Meta, 
 			"stream_id": string(id),
 			"error":     err.Error(),
 		})
-		// return
+		return
 	}
 	defer rc.Close()
 	tmp := make([]byte, m.chunkSize)
@@ -186,7 +190,7 @@ func (m *StreamManager) readerLoop(ctx context.Context, id StreamID, meta Meta, 
 		}
 		if rerr != nil {
 			// EOF or read error: end stream
-			// return
+			return
 		}
 	}
 }
@@ -205,7 +209,7 @@ func (m *StreamManager) writerLoop(ctx context.Context, id StreamID, meta Meta, 
 			"event":     "sink_nil",
 			"stream_id": string(id),
 		})
-		// return
+		return
 	}
 	key := meta.ConnectorID
 	if key == "" {
@@ -241,7 +245,7 @@ func (m *StreamManager) writerLoop(ctx context.Context, id StreamID, meta Meta, 
 					"reason":    reason,
 				})
 				m.breaker.Report(key, false)
-				// return
+				return
 			}
 		}
 
@@ -268,7 +272,7 @@ func (m *StreamManager) writerLoop(ctx context.Context, id StreamID, meta Meta, 
 				"stream_id": string(id),
 				"error":     werr.Error(),
 			})
-			// return
+			return
 		}
 	}
 }
