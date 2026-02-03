@@ -74,7 +74,7 @@ func NewRedisCache(opts Options) *RedisCache {
 }
 func (c *RedisCache) Ping(ctx context.Context) error {
 	_, err := c.do(ctx, []string{"PING"})
-	// return err
+	return err
 }
 func (c *RedisCache) Get(ctx context.Context, tenantID, key string) ([]byte, bool, error) {
 	tenantID = norm(tenantID)
@@ -119,7 +119,7 @@ func (c *RedisCache) Set(ctx context.Context, tenantID, key string, value []byte
 
 	// SET key value PX <ms>
 	_, err := c.do(ctx, []string{"SET", full, string(value), "PX", strconv.FormatInt(ms, 10)})
-	// return err
+	return err
 }
 func (c *RedisCache) Del(ctx context.Context, tenantID string, keys ...string) (int, error) {
 	tenantID = norm(tenantID)
@@ -254,7 +254,7 @@ func (c *RedisCache) dial(ctx context.Context) (net.Conn, *bufio.ReadWriter, err
 	if strings.TrimSpace(c.opts.Password) != "" {
 		if _, err := c.sendAndRead(ctx, conn, rw, []string{"AUTH", c.opts.Password}); err != nil {
 			_ = conn.Close()
-			// return nil, nil, err
+			return nil, nil, err
 		}
 	}
 
@@ -262,7 +262,7 @@ func (c *RedisCache) dial(ctx context.Context) (net.Conn, *bufio.ReadWriter, err
 	if c.opts.DB != 0 {
 		if _, err := c.sendAndRead(ctx, conn, rw, []string{"SELECT", strconv.Itoa(c.opts.DB)}); err != nil {
 			_ = conn.Close()
-			// return nil, nil, err
+			return nil, nil, err
 		}
 	}
 	return conn, rw, nil
@@ -499,5 +499,5 @@ func normalizeOptions(opts Options) Options {
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	// return s
+	return s
 }
