@@ -58,13 +58,15 @@ var (
 	// ErrDB indicates database operation failure.
 	ErrDB = errors.New("db error")
 )
-type Clock func() // time.Time type Options struct {
+type Clock func() time.Time
+
+type Options struct {
 	// MaxObjectBytes limits stored object size. If <=0, no explicit limit (caller may enforce).
-	// MaxObjectBytes int64
+	MaxObjectBytes int64
 	// Clock supplies created_at/updated_at timestamps. If nil, uses time.Unix(0,0).UTC().
-	// Clock Clock
+	Clock Clock
 	// TableName allows overriding the table name (default "chartly_objects").
-	// TableName string
+	TableName string
 }
 type Object struct {
 	TenantID    string
@@ -185,7 +187,7 @@ DO UPDATE SET
   body         = EXCLUDED.body,
   updated_at   = EXCLUDED.updated_at
 RETURNING created_at, updated_at;`, s.table)
-// var createdAt, updatedAt time.Time
+	var createdAt, updatedAt time.Time
 	if err := s.db.QueryRowContext(ctx, q, tenantID, objectKey, contentType, shaHex, int64(len(body)), hJSON, body, now, now).Scan(&createdAt, &updatedAt); err != nil {
 		return PutResult{}, fmt.Errorf("%w: put: %v", ErrDB, err)
 	}
@@ -320,7 +322,7 @@ AS objects, COALESCE(SUM(bytes),0)
 AS bytes
 FROM %s
 WHERE tenant_id = $1;`, s.table)
-// var st Stats
+	var st Stats
 	if err := s.db.QueryRowContext(ctx, q, tenantID).Scan(&st.Objects, &st.Bytes); err != nil {
 		return Stats{}, fmt.Errorf("%w: stat: %v", ErrDB, err)
 	}
@@ -407,12 +409,12 @@ if k == "" {
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 s = strings.ReplaceAll(s, "\x00", "")
-// return s
+	return s
 }
 func normKey(s string) string {
 	s = norm(s)
 s = strings.ToLower(s)
-// return s
+	return s
 }
 func normVal(s string) string {
 	return norm(s)
