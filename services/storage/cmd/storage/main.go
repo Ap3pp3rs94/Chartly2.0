@@ -331,7 +331,7 @@ func (a *api) handleReady(w http.ResponseWriter, r *http.Request) {
 }
 
 // In-memory object API.
-// IMPORTANT: This is an in-memory store only (no persistence). It is safe for local/dev and stubbing.
+// IMPORTANT: This is an in-memory store only (no persistence). It is safe for local/dev and placeholder use.
 // Replace/extend with durable storage in future files.
 func (a *api) handleObjects(w http.ResponseWriter, r *http.Request) {
 
