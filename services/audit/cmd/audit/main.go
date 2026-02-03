@@ -79,7 +79,7 @@ func (s *store) add(ev auditEvent) error {
 	}
 	if _, exists := s.idx[ev.TenantID][ev.EventID]; exists {
 		// Idempotent insert: ignore duplicates deterministically.
-		// return nil
+		return nil
 	}
 	pos := len(s.events)
 	s.events = append(s.events, ev)
@@ -200,42 +200,42 @@ func (s *server) handleEvents(w http.ResponseWriter, r *http.Request, tenantID s
 	switch r.Method {
 	case http.MethodPost:
 		s.handlePostEvent(w, r, tenantID, reqID)
-		// return
-		// case http.MethodGet:
+		return
+	case http.MethodGet:
 		s.handleGetEvents(w, r, tenantID)
-		// return
-		// default:
+		return
+	default:
 		w.Header().Set("Allow", "GET, POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		// return
+		return
 	}
 }
 func (s *server) handlePostEvent(w http.ResponseWriter, r *http.Request, tenantID string, reqID string) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "read body failed"})
-		// return
+		return
 	}
 	if len(body) == 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "empty body"})
-		// return
+		return
 	}
 	var ev auditEvent
 	dec := json.NewDecoder(bytesReader(body))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&ev); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid json"})
-		// return
+		return
 	}
 
 	// Ensure no trailing junk.
-	// var extra any
+	var extra any
 	if err := dec.Decode(&extra); err == nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trailing json"})
-		// return
+		return
 	} else if err != io.EOF {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "trailing json"})
-		// return
+		return
 	}
 
 	// Enforce tenant scope: tenant header overrides payload if missing; if payload mismatches header, reject.
@@ -244,25 +244,25 @@ func (s *server) handlePostEvent(w http.ResponseWriter, r *http.Request, tenantI
 		ev.TenantID = tenantID
 	} else if ev.TenantID != tenantID {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "tenant_id mismatch"})
-		// return
+		return
 	}
 	ev.EventID = strings.TrimSpace(ev.EventID)
 	ev.Action = strings.TrimSpace(ev.Action)
 	ev.Outcome = strings.TrimSpace(ev.Outcome)
 	if ev.EventID == "" || ev.Action == "" || ev.Outcome == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "event_id/action/outcome required"})
-		// return
+		return
 	}
 
 	// Validate event_ts format.
 	ev.EventTS = strings.TrimSpace(ev.EventTS)
 	if ev.EventTS == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "event_ts required"})
-		// return
+		return
 	}
 	if _, err := parseRFC3339(ev.EventTS); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "event_ts must be rfc3339"})
-		// return
+		return
 	}
 
 	// Attach request context
@@ -273,7 +273,7 @@ func (s *server) handlePostEvent(w http.ResponseWriter, r *http.Request, tenantI
 	ev.Meta = normalizeStringMap(ev.Meta)
 	if err := s.store.add(ev); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		// return
+		return
 	}
 	logJSON("info", "event_ingested", map[string]any{
 		"tenant_id":  ev.TenantID,
@@ -291,7 +291,7 @@ func (s *server) handleGetEvents(w http.ResponseWriter, r *http.Request, tenantI
 	evs, err := s.store.list(tenantID, since, limit)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		// return
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"tenant_id": tenantID,
@@ -308,16 +308,16 @@ func (s *server) withMiddleware(next func(http.ResponseWriter, *http.Request, st
 		reqID := s.requestID(r)
 		w.Header().Set("X-Request-Id", reqID)
 		tenantID, terr := s.tenantID(r)
-		if terr != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": terr.Error()})
-			// return
-		}
+	if terr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": terr.Error()})
+		return
+	}
 
 		// Tenant required for /v0/* unless local env
 		if strings.HasPrefix(r.URL.Path, "/v0/") && strings.ToLower(s.cfg.Env) != "local" {
 			if tenantID == "" {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing tenant header"})
-				// return
+				return
 			}
 		}
 
@@ -371,7 +371,7 @@ func (s *server) tenantID(r *http.Request) (string, error) {
 	}
 	v := strings.TrimSpace(r.Header.Get(h))
 	// local env may default later
-	// return v, nil
+	return v, nil
 }
 func loadConfig() config {
 	env := strings.TrimSpace(getenv("AUDIT_ENV", "local"))

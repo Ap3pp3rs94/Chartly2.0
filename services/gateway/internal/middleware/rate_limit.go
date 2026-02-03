@@ -145,7 +145,7 @@ func RateLimit(next http.Handler) http.Handler {
 		ok, retry := globalLimiter.allow(key)
 		if ok {
 			next.ServeHTTP(w, r)
-			// return
+			return
 		}
 
 		// Retry-After best-effort (integer seconds)
