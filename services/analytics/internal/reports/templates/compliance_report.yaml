@@ -233,7 +233,7 @@ example_input:
     sink_type: "none"
 
   signoff:
-    reviewer: "TBD"
+    reviewer: "unassigned"
     date: "2026-01-30"
-    decision: "TBD"
-    notes: "TBD"
+    decision: "pending"
+    notes: "none"
