@@ -8,7 +8,7 @@ inherits:
     - "do_not_change: audit append-only semantics"
 
 retention_engine:
-  enforcement: "planned"
+  enforcement: "roadmap"
   notes:
     - "Healthcare domain handles PHI; minimize retention of raw payloads when feasible."
     - "Retention must still support investigation and reproducibility for audits."
@@ -32,7 +32,7 @@ planes:
       enabled: true
       strategy: "time_bucket_compaction"
       bucket_granularity: "day"
-      downsampling_planned: true
+      downsampling_roadmap: true
     notes:
       - "Canonical plane should be PHI-minimized; retain for operational analytics."
 

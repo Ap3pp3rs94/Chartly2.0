@@ -8,7 +8,7 @@ inherits:
     - "do_not_change: append-only audit semantics"
 
 retention_engine:
-  enforcement: "planned"
+  enforcement: "roadmap"
   notes:
     - "Finance domain requires longer retention for audit defensibility."
     - "Lifecycle jobs must record deletions/compactions as audit records."
@@ -30,7 +30,7 @@ planes:
       enabled: true
       strategy: "time_bucket_compaction"
       bucket_granularity: "day"
-      downsampling_planned: true
+      downsampling_roadmap: true
     notes:
       - "Canonical retained for multi-year reporting and trend analysis."
 

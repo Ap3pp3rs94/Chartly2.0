@@ -8,7 +8,7 @@ inherits:
     - "add: GDPR workflow notes"
 
 retention_engine:
-  enforcement: "planned"
+  enforcement: "roadmap"
   notes:
     - "Ecommerce raw payloads may contain PII; keep raw retention short."
     - "Canonical outputs should be PII-minimized; retain for analytics."
@@ -33,7 +33,7 @@ planes:
       enabled: true
       strategy: "time_bucket_compaction"
       bucket_granularity: "day"
-      downsampling_planned: true
+      downsampling_roadmap: true
     notes:
       - "Canonical retention supports year-over-year comparisons."
 
@@ -49,7 +49,7 @@ planes:
       - "Audit records must outlive raw data for governance and compliance."
 
 gdpr_workflows:
-  planned: true
+  status: "roadmap"
   right_to_erasure:
     supported: true
     approach:
