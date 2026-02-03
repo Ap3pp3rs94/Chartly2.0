@@ -12,7 +12,7 @@ var (
 	ErrCircuitOpen = errors.New("circuit open")
 )
 
-// type State string
+type State string
 
 const (
 	StateClosed   State = "closed"
@@ -139,7 +139,7 @@ func (m *Manager) Report(key string, success bool) {
 		if success {
 			// optional: prune old failures on success
 			m.pruneLocked(c, now)
-			// return
+			return
 		}
 		c.failures = append(c.failures, now)
 		m.pruneLocked(c, now)

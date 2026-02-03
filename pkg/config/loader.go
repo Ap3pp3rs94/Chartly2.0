@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 "bytes"
@@ -200,13 +200,11 @@ ctx = context.Background()
 }
 abs, rel, err := l.safeJoin(relPath)
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 doc, err := l.readDoc(ctx, abs, "explicit")
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 doc.Path = rel
 // return doc, nil
@@ -226,8 +224,7 @@ merged := map[string]any{}
 if l.opts.ExplicitPath != "" {
 doc, err := l.loadAnyPath(ctx, l.opts.ExplicitPath, "explicit")
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 docs = append(docs, *doc)
 merged = deepMergeDeterministic(merged, doc.Data, l.opts.MaxDepth)
@@ -244,8 +241,7 @@ if errors.Is(err, ErrNotFound) {
 // continue
 
 }
-// return nil, err
-
+return nil, err
 }
 docs = append(docs, *doc)
 merged = deepMergeDeterministic(merged, doc.Data, l.opts.MaxDepth)
@@ -256,8 +252,7 @@ merged = deepMergeDeterministic(merged, doc.Data, l.opts.MaxDepth)
 if l.opts.EnableEnvOverrides {
 envMap, err := l.envOverrides()
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 if envMap != nil && len(envMap) > 0 {
 merged = deepMergeDeterministic(merged, envMap, l.opts.MaxDepth)
@@ -325,7 +320,7 @@ out = append(out, tierPath{tier: "tenant", path: filepath.Join("tenants", l.opts
 
 }
 }
-// return out
+return out
 }
 func tierRank(tier string) int {
 switch tier {
@@ -352,8 +347,7 @@ if errors.Is(err, fs.ErrNotExist) {
 // return nil, ErrNotFound
 
 }
-// return nil, err
-
+return nil, err
 }
 if !withinRoot(l.rootAbs, absEval) {
 // return nil, ErrPathEscape
@@ -361,8 +355,7 @@ if !withinRoot(l.rootAbs, absEval) {
 }
 doc, err := l.readDoc(ctx, absEval, tier)
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 doc.Path = relSlash(l.rootAbs, absEval)
 // return &doc, nil
@@ -371,13 +364,11 @@ doc.Path = relSlash(l.rootAbs, absEval)
 }
 abs, rel, err := l.safeJoin(relOrAbs)
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 doc, err := l.readDoc(ctx, abs, tier)
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 doc.Path = rel
 // return &doc, nil
@@ -413,7 +404,7 @@ return "", "", ErrPathEscape
 
 }
 rel = relSlash(l.rootAbs, absEval)
-// return absEval, rel, nil
+return absEval, rel, nil
 }
 func withinRoot(rootAbs, targetAbs string) bool {
 root := strings.ToLower(filepath.Clean(rootAbs))
@@ -438,7 +429,7 @@ rel = abs
 rel = filepath.Clean(rel)
 rel = filepath.ToSlash(rel)
 rel = strings.TrimPrefix(rel, "./")
-// return rel
+return rel
 }
 func (l *Loader) readDoc(ctx context.Context, absPath string, tier string) (Document, error) {
 if err := ctx.Err(); err != nil {
@@ -525,12 +516,12 @@ Data:     obj,
 func decodeStrictJSON(b []byte, out *map[string]any) error {
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 dec.UseNumber()
-// var v any
+var v any
 	if err := dec.Decode(&v); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 
 	}
-// var extra any
+var extra any
 	if err := dec.Decode(&extra); err == nil {
 		return fmt.Errorf("%w: trailing tokens", ErrInvalidJSON)
 	} else if err != io.EOF {
@@ -549,7 +540,7 @@ if len(b) >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF {
 return b[3:]
 
 }
-// return b
+return b
 }
 
 // ---- deterministic merge ----
@@ -597,7 +588,7 @@ out[k] = deepMergeDeterministicDepth(dm, sm, depth+1, maxDepth)
 out[k] = sv
 
 }
-// return out
+return out
 }
 
 // ---- env overrides ----
@@ -682,7 +673,7 @@ if len(out) == 0 {
 // return nil, nil
 
 }
-// return out, nil
+return out, nil
 }
 func parseEnvValue(s string) any {
 s = strings.TrimSpace(s)
@@ -690,14 +681,13 @@ if s == "" {
 return ""
 
 }
-// var v any
+var v any
 dec := json.NewDecoder(strings.NewReader(s))
 dec.UseNumber()
 if err := dec.Decode(&v); err == nil && !dec.More() {
-// return v
-
+return v
 }
-// return s
+return s
 }
 func setPath(root map[string]any, segs []string, val any, maxDepth int) error {
 if maxDepth > 0 && len(segs) > maxDepth {
@@ -709,8 +699,7 @@ for i := 0; i < len(segs); i++ {
 k := segs[i]
 if i == len(segs)-1 {
 cur[k] = val
-// return nil
-
+return nil
 }
 nxt, ok := cur[k]
 if ok {
@@ -725,7 +714,7 @@ cur[k] = m
 cur = m
 
 }
-// return nil
+return nil
 }
 
 // ---- canonical json ----
@@ -739,9 +728,7 @@ write := func(b []byte) error {
 
 }
 _, _ = buf.Write(b)
-// return nil
-
-
+return nil
 }
 var enc func(any) // error enc = func(v any) error {
 switch x := v.(type) {
@@ -781,19 +768,16 @@ return write([]byte("null"))
 return write(b)
 case []any:
 if err := write([]byte("[")); err != nil {
-// return err
-
+return err
 }
 for i := 0; i < len(x); i++ {
 if i > 0 {
 if err := write([]byte(",")); err != nil {
-// return err
-
+return err
 }
 }
 if err := enc(x[i]); err != nil {
-// return err
-
+return err
 }
 }
 return write([]byte("]"))
@@ -805,28 +789,23 @@ keys = append(keys, k)
 }
 sort.Strings(keys)
 if err := write([]byte("{")); err != nil {
-// return err
-
+return err
 }
 for i, k := range keys {
 if i > 0 {
 if err := write([]byte(",")); err != nil {
-// return err
-
+return err
 }
 }
 kb, _ := json.Marshal(k)
 if err := write(kb); err != nil {
-// return err
-
+return err
 }
 if err := write([]byte(":")); err != nil {
-// return err
-
+return err
 }
 if err := enc(x[k]); err != nil {
-// return err
-
+return err
 }
 }
 return write([]byte("}"))
@@ -843,8 +822,7 @@ return write(b)
 
 }// Root is always object for merged config.
 if err := enc(root); err != nil {
-// return nil, err
-
+return nil, err
 }
 return buf.Bytes(), nil
 }
@@ -853,5 +831,6 @@ if a < b {
 // return a
 
 }
-// return b
+return b
 }
+

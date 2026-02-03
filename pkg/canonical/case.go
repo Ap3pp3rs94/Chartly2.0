@@ -1,4 +1,4 @@
-package canonical
+﻿package canonical
 
 import (
 	"bytes"
@@ -32,13 +32,11 @@ import (
 // - CaseType normalized lower-case, safe charset.
 // - Tenant REQUIRED.
 
-// type CaseID string
-// type CaseType string
-
-// type CaseSeverity string
-// type CasePriority string
-// type CaseStatus string
-
+type CaseID string
+type CaseType string
+type CaseSeverity string
+type CasePriority string
+type CaseStatus string
 const (
 	SeverityLow      CaseSeverity = "low"
 	SeverityMedium   CaseSeverity = "medium"
@@ -58,8 +56,7 @@ const (
 	StatusRejected    CaseStatus = "rejected"
 )
 
-// type EvidenceKind string
-
+type EvidenceKind string
 const (
 	EvidenceEvent  EvidenceKind = "event"
 	EvidenceEntity EvidenceKind = "entity"
@@ -647,7 +644,7 @@ func (c *Case) ComputeHash(prevHash string) error {
 	}
 	sum := sha256.Sum256(b)
 	c.Meta.Hash = hex.EncodeToString(sum[:])
-	// return nil
+	return nil
 }
 
 // VerifyHash recomputes hash from current PrevHash and canonical bytes and compares.
@@ -673,3 +670,4 @@ func (c Case) PartitionKey() (string, error) {
 	day := c.Meta.Created.UTC().Format("2006-01-02")
 	return fmt.Sprintf("%s/%s/%s/%s", c.Meta.Tenant, c.Meta.Type, c.Meta.Status, day), nil
 }
+

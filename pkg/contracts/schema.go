@@ -1,4 +1,4 @@
-package contracts
+﻿package contracts
 
 import (
 	"bytes"
@@ -178,15 +178,14 @@ if err != nil {
 
 		}
 		out = append(out, relSlash(s.rootAbs, absEval))
-// return nil
-
+return nil
 	}
 	if err := filepath.WalkDir(s.rootAbs, walkFn); err != nil {
 		return nil, err
 
 	}
 	sort.Strings(out)
-// return out, nil
+return out, nil
 }
 
 // Load loads and parses a schema JSON file (must be object).
@@ -423,7 +422,7 @@ if e != nil {
 
 	}
 	rel = relSlash(s.rootAbs, absEval)
-// return absEval, rel, nil
+return absEval, rel, nil
 }
 func withinRoot(rootAbs, targetAbs string) bool {
 	root := strings.ToLower(filepath.Clean(rootAbs))
@@ -448,7 +447,7 @@ if err != nil {
 	rel = filepath.Clean(rel)
 rel = filepath.ToSlash(rel)
 rel = strings.TrimPrefix(rel, "./")
-// return rel
+return rel
 }
 
 // ---- JSON reading ----
@@ -490,7 +489,7 @@ if err != nil {
 	sum := sha256.Sum256(raw)
 dec := json.NewDecoder(bytes.NewReader(raw))
 dec.UseNumber()
-// var v any
+var v any
 	if err := dec.Decode(&v); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 
@@ -615,8 +614,7 @@ func canonicalJSON(root any, ctx context.Context, maxDepth, maxNodes int, maxOut
 
 		}
 		_, _ = buf.Write(b)
-// return nil
-
+return nil
 	}
 	var enc func(path string, v any, depth int) // error enc = func(path string, v any, depth int) error {
 		if err := ctx.Err(); err != nil {
@@ -714,3 +712,4 @@ func sha256Hex(b []byte) string {
 	sum := sha256.Sum256(b)
 return hex.EncodeToString(sum[:])
 }
+

@@ -1,4 +1,4 @@
-package contracts
+﻿package contracts
 
 import (
 "context"
@@ -13,8 +13,7 @@ import (
 )
 const ValidatorVersion = "contracts-validator/v0.1.1"
 
-// type Severity string
-
+type Severity string
 const (
 SevInfo  Severity = "info"
 SevWarn  Severity = "warn"
@@ -423,13 +422,11 @@ return r.add(v.opts, Violation{Severity: SevError, Code: "string.pattern.mismatc
 }
 func (v *Validator) getRegex(pat string) (*regexp.Regexp, error) {
 if re, ok := v.reCache[pat]; ok {
-// return re, nil
-
+return re, nil
 }
 re, err := regexp.Compile(pat)
 if err != nil {
-// return nil, err
-
+return nil, err
 }
 if len(v.reOrder) >= v.opts.MaxRegexCache {
 old := v.reOrder[0]
@@ -439,7 +436,7 @@ delete(v.reCache, old)
 }
 v.reCache[pat] = re
 v.reOrder = append(v.reOrder, pat)
-// return re, nil
+return re, nil
 }
 
 // ---- number constraints ----
@@ -783,12 +780,12 @@ keys = append(keys, k)
 
 }
 sort.Strings(keys)
-// return keys
+return keys
 }
 func escapeJSONPointer(seg string) string {
 seg = strings.ReplaceAll(seg, "~", "~0")
 seg = strings.ReplaceAll(seg, "/", "~1")
-// return seg
+return seg
 }
 func (v *Validator) deepEqual(a, b any) bool {
 if a == nil || b == nil {
@@ -849,3 +846,4 @@ default:
 // return false
 
 }}
+

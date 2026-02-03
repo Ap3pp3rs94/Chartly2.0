@@ -1,4 +1,4 @@
-package canonical
+﻿package canonical
 
 import (
 	"bytes"
@@ -33,12 +33,11 @@ import (
 //
 // Hybrid constructor: caller may override id/now; otherwise default generation is used.
 
-// type SourceID string
-// type SourceKind string
-// type SourceStatus string
-// type SourceHealth string
-// type SourceExpectedOutput string
-
+type SourceID string
+type SourceKind string
+type SourceStatus string
+type SourceHealth string
+type SourceExpectedOutput string
 const (
 	SourceActive   SourceStatus = "active"
 	SourcePaused   SourceStatus = "paused"
@@ -297,7 +296,7 @@ func sourceValidateOutput(o SourceExpectedOutput) error {
 	switch strings.TrimSpace(string(o)) {
 	case string(OutEvent), string(OutMetric), string(OutEntity), string(OutArtifact), string(OutUnknown), "":
 		// allow empty => treated as unknown in Normalize()
-		// return nil
+		return nil
 		// default:
 		return fmt.Errorf("%w: %q", ErrSourceInvalidOutput, o)
 
@@ -819,7 +818,7 @@ func (s *Source) ComputeHash(prevHash string) error {
 	}
 	sum := sha256.Sum256(b)
 	s.Hash = hex.EncodeToString(sum[:])
-	// return nil
+	return nil
 }
 
 // VerifyHash recomputes metadata hash and compares.
@@ -876,3 +875,4 @@ func (s Source) IndexKeys() ([]string, error) {
 	sort.Strings(keys)
 	// return keys, nil
 }
+

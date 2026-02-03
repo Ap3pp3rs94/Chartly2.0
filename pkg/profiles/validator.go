@@ -1,4 +1,4 @@
-package profiles
+﻿package profiles
 
 import (
 	"context"
@@ -21,8 +21,7 @@ const (
 	MaxIssuesPerReport = 10000
 	MaxPathLen         = 512
 )
-// type Severity string
-
+type Severity string
 const (
 	SevInfo  Severity = "info"
 	SevWarn  Severity = "warn"
@@ -194,8 +193,7 @@ return finalizeReport(r)
 				DocPath: d.Path, Path: path,
 				Message: fmt.Sprintf("max depth exceeded (%d)", v.opts.MaxDepth),
 			})
-// return nil
-
+return nil
 		}
 		if nodeBudget <= 0 {
 			r.addIssue(Issue{
@@ -203,8 +201,7 @@ return finalizeReport(r)
 				DocPath: d.Path, Path: path,
 				Message: fmt.Sprintf("max nodes exceeded (%d)", v.opts.MaxNodes),
 			})
-// return nil
-
+return nil
 		}
 		nodeBudget--
 		r.CheckedNodes++
@@ -217,8 +214,7 @@ return finalizeReport(r)
 					DocPath: d.Path, Path: path,
 					Message: fmt.Sprintf("map has too many keys (%d>%d)", len(x), v.opts.MaxMapKeys),
 				})
-// return nil
-
+return nil
 			}
 			keys := make([]string, 0, len(x))
 for k := range x {
@@ -250,8 +246,7 @@ if v.opts.CheckTraversalKeys && v.reBadKey.MatchString(k) {
 					DocPath: d.Path, Path: path,
 					Message: fmt.Sprintf("array too long (%d>%d)", len(x), v.opts.MaxArrayLen),
 				})
-// return nil
-
+return nil
 			}
 			for i := 0; i < len(x); i++ {
 				ip := joinIndexPath(path, i)
@@ -277,8 +272,7 @@ if err := walk(ip, x[i], depth+1); err != nil {
 					DocPath: d.Path, Path: path,
 					Message: fmt.Sprintf("string too large (%d>%d)", len(x), v.opts.MaxStringBytes),
 				})
-// return nil
-
+return nil
 			}
 			if v.opts.CheckEnvPlaceholders {
 				if v.reEnv1.MatchString(x) || v.reEnv2.MatchString(x) {
@@ -312,16 +306,14 @@ if err := walk(ip, x[i], depth+1); err != nil {
 				DocPath: d.Path, Path: path,
 				Message: "float64 encountered (expected json.Number); consider decoding with UseNumber",
 			})
-// return nil
-
+return nil
 		default:
 			r.addIssue(Issue{
 				Severity: SevError, Code: "type.unsupported",
 				DocPath: d.Path, Path: path,
 				Message: fmt.Sprintf("unsupported value type %T", val),
 			})
-// return nil
-
+return nil
 		}
 
 	}
@@ -441,3 +433,4 @@ func sevRank(s Severity) int {
 
 	}
 }
+

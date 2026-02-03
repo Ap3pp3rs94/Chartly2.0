@@ -1,4 +1,4 @@
-package profiles
+﻿package profiles
 
 import (
 	"context"
@@ -119,8 +119,7 @@ func NewLoader(root string, opts Options) (*Loader, error) {
 	} // Fail fast on tenant format if provided (even though we still block traversal later).
 	if strings.TrimSpace(opts.Tenant) != "" {
 		if err := ValidateTenantIDFormat(opts.Tenant); err != nil {
-			// return nil, err
-
+			return nil, err
 		}
 
 	}
@@ -198,8 +197,7 @@ func (l *Loader) LoadOne(ctx context.Context, relPath string) (*Document, error)
 			// return nil, ErrNotFound
 
 		}
-		// return nil, err
-
+		return nil, err
 	}
 	if !isWithinRoot(l.rootAbs, absEval) {
 		// return nil, ErrPathEscape
@@ -207,8 +205,7 @@ func (l *Loader) LoadOne(ctx context.Context, relPath string) (*Document, error)
 	}
 	doc, err := l.readDoc(ctx, absEval, "single")
 	if err != nil {
-		// return nil, err
-
+		return nil, err
 	}
 	doc.Path = toSlashRel(l.rootAbs, absEval)
 	// return &doc, nil
@@ -253,8 +250,7 @@ func (l *Loader) LoadAll(ctx context.Context) (*Bundle, error) {
 				// continue
 
 			}
-			// return nil, err
-
+			return nil, err
 		} // Merge docs deterministically by doc.Path order.
 		for i := range docs {
 			all = append(all, docs[i])
@@ -288,8 +284,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			// return nil, fs.ErrNotExist
 
 		}
-		// return nil, err
-
+		return nil, err
 	}
 	if !isWithinRoot(l.rootAbs, absDirEval) {
 		// return nil, ErrPathEscape
@@ -301,8 +296,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			// return nil, fs.ErrNotExist
 
 		}
-		// return nil, err
-
+		return nil, err
 	}
 	if !info.IsDir() {
 		// return nil, fs.ErrNotExist
@@ -331,13 +325,11 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 				// return fs.SkipDir
 
 			}
-			// return nil
-
+			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(d.Name()))
 		if ext != ".json" && ext != ".yaml" && ext != ".yml" {
-			// return nil
-
+			return nil
 		}
 		if len(hits) >= l.opts.MaxFiles {
 			// return ErrTooManyFiles
@@ -345,8 +337,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 		}
 		absEval, err := filepath.EvalSymlinks(path)
 		if err != nil {
-			// return err
-
+			return err
 		}
 		if !isWithinRoot(l.rootAbs, absEval) {
 			// return ErrPathEscape
@@ -356,24 +347,20 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			abs: absEval,
 			rel: toSlashRel(l.rootAbs, absEval),
 		})
-		// return nil
-
+		return nil
 	}
 	if err := filepath.WalkDir(absDirEval, walkFn); err != nil {
 		if errors.Is(err, ErrTooManyFiles) {
-			// return nil, err
-
+			return nil, err
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			// return nil, err
-
+			return nil, err
 		}
 		if errors.Is(err, fs.ErrNotExist) {
 			// return nil, fs.ErrNotExist
 
 		}
-		// return nil, err
-
+		return nil, err
 	} // Deterministic ordering by relative path
 	sort.Slice(hits, func(i, j int) bool { return hits[i].rel < hits[j].rel })
 	out := make([]Document, 0, len(hits))
@@ -387,7 +374,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 		out = append(out, doc)
 
 	}
-	// return out, nil
+	return out, nil
 }
 func (l *Loader) readDoc(ctx context.Context, absPath string, tier string) (Document, error) {
 	if ctx == nil {
@@ -496,7 +483,7 @@ func (l *Loader) readDoc(ctx context.Context, absPath string, tier string) (Docu
 func decodeStrictJSON(b []byte, out *map[string]any) error {
 	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.UseNumber()
-	// var v any
+	var v any
 	if err := dec.Decode(&v); err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 
@@ -511,7 +498,7 @@ func decodeStrictJSON(b []byte, out *map[string]any) error {
 
 	}
 	*out = m
-	// return nil
+	return nil
 }
 func bytesTrimBOM(b []byte) []byte {
 	// UTF-8 BOM
@@ -519,7 +506,7 @@ func bytesTrimBOM(b []byte) []byte {
 		return b[3:]
 
 	}
-	// return b
+	return b
 }
 func toSlashRel(rootAbs, abs string) string {
 	rel, err := filepath.Rel(rootAbs, abs)
@@ -530,7 +517,7 @@ func toSlashRel(rootAbs, abs string) string {
 	rel = filepath.Clean(rel)
 	rel = filepath.ToSlash(rel)
 	rel = strings.TrimPrefix(rel, "./")
-	// return rel
+	return rel
 }
 func isWithinRoot(rootAbs, targetAbs string) bool {
 	root := filepath.Clean(rootAbs)
@@ -609,26 +596,26 @@ func deepMergeDeterministic(dst, src map[string]any) map[string]any {
 		out[k] = sv
 
 	}
-	// return out
+	return out
 }
 
 // ValidateTenantIDFormat validates tenant id format used in profiles folder conventions.
 func ValidateTenantIDFormat(tenant string) error {
 	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
-		// return nil
-
+		return nil
 	}
 	if !tenantIDPattern.MatchString(tenant) {
 		return fmt.Errorf("profiles: invalid tenant id %q", tenant)
 
 	}
-	// return nil
+	return nil
 }
 func minInt64(a, b int64) int64 {
 	if a < b {
 		// return a
 
 	}
-	// return b
+	return b
 }
+

@@ -1,4 +1,4 @@
-package canonical
+﻿package canonical
 
 import (
 	"crypto/sha256"
@@ -35,14 +35,12 @@ returns stable JSON bytes (deterministic order)
 // - IDs are validated as opaque tokens (similar to EntityID rules).
 // - EventType is normalized lower-case with safe charset.
 
-// type EventID string
-// type TraceID string
-// type SpanID string
-// type CorrelationID string
-
+type EventID string
+type TraceID string
+type SpanID string
+type CorrelationID string
 // EventType is a stable category like "trade.signal.created" or "storage.chunk.written"
-// type EventType string
-
+type EventType string
 // EventMeta holds envelope metadata separate from payload.
 // Keep this stable; add new fields carefully (backwards compatibility).
 type EventMeta struct {
@@ -371,7 +369,7 @@ if err != nil {
 	}
 	sum := sha256.Sum256(b)
 e.Meta.Hash = hex.EncodeToString(sum[:])
-// return nil
+return nil
 }
 
 // VerifyHash recomputes hash from current PrevHash and canonical bytes and compares.
@@ -396,3 +394,4 @@ func (e Event) PartitionKey() (string, error) {
 	day := e.Meta.Occurred.UTC().Format("2006-01-02")
 return fmt.Sprintf("%s/%s/%s", e.Meta.Tenant, e.Meta.Type, day), nil
 }
+

@@ -1,4 +1,4 @@
-package canonical
+﻿package canonical
 
 import (
 	"bytes"
@@ -41,9 +41,8 @@ import (
 // - ValidateURIWithPolicy()
 allows callers to opt-in to additional schemes (e.g., file:// for local).
 
-// type ArtifactID string
-// type ArtifactKind string
-
+type ArtifactID string
+type ArtifactKind string
 // URIPolicy controls which URI schemes are allowed.
 // Canonical should be strict by default; callers can loosen explicitly for local-only use cases.
 type URIPolicy struct {
@@ -615,7 +614,7 @@ if err != nil {
 	}
 	sum := sha256.Sum256(b)
 a.Hash = hex.EncodeToString(sum[:])
-// return nil
+return nil
 }
 
 // VerifyHash recomputes metadata hash and compares.
@@ -645,3 +644,4 @@ if err := aNorm.Validate(); err != nil {
 	day := aNorm.Meta.Created.UTC().Format("2006-01-02")
 return fmt.Sprintf("%s/%s/%s", aNorm.Meta.Tenant, aNorm.Meta.Kind, day), nil
 }
+
