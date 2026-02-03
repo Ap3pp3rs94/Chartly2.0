@@ -36,7 +36,7 @@ source_config_schema:
       type: "array<string>"
       rules:
         - "Each path must start with '/'."
-        - "Paths may include templated variables resolved by orchestrator (planned) but must be explicit."
+        - "Paths may include templated variables resolved by orchestrator (roadmap) but must be explicit."
         - "Max 100 paths per source by default; larger requires explicit approval."
     headers:
       type: "object"
@@ -93,7 +93,7 @@ http:
     allow_private_ips: true      # local/internal services may use private IPs
   paths_policy:
     max_paths_per_source: 100
-    allow_path_templates: false  # planned
+    allow_path_templates: false  # roadmap
   headers_policy:
     forbid_secret_literals: true
     env_ref_syntax: "${ENV:VAR_NAME}"

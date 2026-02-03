@@ -80,7 +80,7 @@ graphql:
     forbidden_header_keys:
       - "Proxy-Authorization"
   persisted_queries:
-    planned: true
+    status: "roadmap"
     notes:
       - "Persisted queries reduce payload size and improve security; implement later."
 

@@ -47,19 +47,19 @@ rss:
       User-Agent: "Chartly/2.0"
       Accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9"
   conditional_get:
-    planned: true
+    status: "roadmap"
     etag_support: true
     last_modified_support: true
     notes:
       - "Store and reuse ETag/Last-Modified per source to reduce bandwidth."
-      - "Conditional GET state stored in storage metadata (planned)."
+      - "Conditional GET state stored in storage metadata (roadmap)."
 
 politeness_and_compliance:
   tos_respect_required: true
   user_agent: "Chartly/2.0"
   crawl_delay_seconds_default: 10
   robots_respect:
-    planned: true
+    status: "roadmap"
     notes:
       - "RSS feeds typically publish content for consumption, but robots/ToS must still be respected."
   rate_limit_defaults:

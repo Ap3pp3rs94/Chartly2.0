@@ -101,14 +101,14 @@ incremental_ingestion:
     description: "Use a monotonic timestamp or numeric field as watermark."
     required_fields: ["field", "initial_value"]
     state_storage:
-      planned: true
+      status: "roadmap"
       notes:
         - "Watermark state stored in relational metadata (storage service) keyed by tenant_id+source_id."
   cursor:
     description: "Use a primary key cursor for incremental paging."
     required_fields: ["field", "initial_value"]
     state_storage:
-      planned: true
+      status: "roadmap"
   safety_limits:
     max_lookback_seconds: 86400
     notes:

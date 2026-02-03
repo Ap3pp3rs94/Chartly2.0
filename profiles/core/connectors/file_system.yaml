@@ -94,7 +94,7 @@ file_system:
 
 change_detection:
   modes: ["polling"]
-  planned_modes: ["event_watch"]
+  roadmap_modes: ["event_watch"]
   polling:
     default_interval_seconds: 300
     min_interval_seconds: 30
@@ -103,7 +103,7 @@ change_detection:
     algorithm: "sha256"
     when: "on_change_or_first_seen"
   state_tracking:
-    planned: true
+    status: "roadmap"
     notes:
       - "Store cursor state (path + mtime + sha256) keyed by tenant/source."
       - "Prevent reprocessing unchanged files; idempotency remains a safety net."
