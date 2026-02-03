@@ -101,7 +101,7 @@ func (b BaseConnector) Ingest(ctx context.Context, cfg map[string]string, req re
 		return registry.IngestResult{Accepted: false, ConnectorID: b.id, Notes: "timeout"}, ctx.Err()
 	default:
 	}
-	return registry.IngestResult{Accepted: false, ConnectorID: b.id, Notes: "not implemented"}, registry.ErrNotImplemented
+	return registry.IngestResult{Accepted: false, ConnectorID: b.id, Notes: "feature unavailable"}, registry.ErrNotImplemented
 }
 func normalizeCaps(in []string) []string {
 	set := make(map[string]struct{}, len(in))

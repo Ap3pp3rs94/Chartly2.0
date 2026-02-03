@@ -79,6 +79,6 @@ func (c S3Connector) Ingest(ctx context.Context, cfg map[string]string, req regi
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
-		Notes:       "aws sdk not available in Go standard library; not implemented",
+		Notes:       "aws sdk not available in Go standard library; feature unavailable",
 	}, registry.ErrNotImplemented
 }

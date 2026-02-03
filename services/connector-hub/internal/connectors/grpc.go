@@ -64,7 +64,7 @@ func (c GRPCConnector) Ingest(ctx context.Context, cfg map[string]string, req re
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
-		Notes:       "grpc client not available in Go standard library; not implemented",
+		Notes:       "grpc client not available in Go standard library; feature unavailable",
 	}, registry.ErrNotImplemented
 }
 func parseTarget(raw string) (*url.URL, error) {

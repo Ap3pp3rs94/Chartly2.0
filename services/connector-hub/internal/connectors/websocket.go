@@ -62,6 +62,6 @@ func (c WebSocketConnector) Ingest(ctx context.Context, cfg map[string]string, r
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
-		Notes:       "websocket client not available in Go standard library; not implemented",
+		Notes:       "websocket client not available in Go standard library; feature unavailable",
 	}, registry.ErrNotImplemented
 }

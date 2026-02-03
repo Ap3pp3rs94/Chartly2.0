@@ -67,7 +67,7 @@ func (c DatabaseConnector) Ingest(ctx context.Context, cfg map[string]string, re
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
-		Notes:       "sql driver not available in Go standard library; not implemented",
+		Notes:       "sql driver not available in Go standard library; feature unavailable",
 	}, registry.ErrNotImplemented
 }
 

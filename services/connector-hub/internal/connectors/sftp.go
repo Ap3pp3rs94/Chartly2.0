@@ -74,6 +74,6 @@ func (c SFTPConnector) Ingest(ctx context.Context, cfg map[string]string, req re
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
-		Notes:       "sftp client not available in Go standard library; not implemented",
+		Notes:       "sftp client not available in Go standard library; feature unavailable",
 	}, registry.ErrNotImplemented
 }
