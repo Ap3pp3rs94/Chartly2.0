@@ -23,7 +23,10 @@ type Handler interface {
 type RetryPolicy interface {
 	Next(jobID string, attempt int) (delay time.Duration, ok bool, reason string)
 }
-type LoggerFn func(level, msg string, fields map[string]any) // ChannelSource adapts an in-memory envelope channel to Source. type ChannelSource struct {
+type LoggerFn func(level, msg string, fields map[string]any)
+
+// ChannelSource adapts an in-memory envelope channel to Source.
+type ChannelSource struct {
 	ch <-chan Envelope
 }
 
@@ -118,7 +121,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 					"event":     "source_closed",
 					"worker_id": workerID,
 				})
-				// return
+				return
 			}
 			if errors.Is(err, ErrEmpty) {
 				sleep := jitterDuration(c, emptyBackoff, 0.25)
@@ -251,9 +254,9 @@ func jitterDuration(c *Consumer, base time.Duration, pct float64) time.Duration 
 		return base
 	}
 	min := float64(base)
-	*(1.0 - pct)
+	min = min * (1.0 - pct)
 	max := float64(base)
-	*(1.0 + pct)
+	max = max * (1.0 + pct)
 	if min < 0 {
 		min = 0
 	}

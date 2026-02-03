@@ -15,7 +15,12 @@ var (
 	ErrCloseNil       = errors.New("close func is nil")
 )
 
-type Factory func(ctx context.Context) (any, error) type CloseFunc func(any) // error type HealthFunc func(any) // error type LoggerFn func(level, msg string, fields map[string]any) type Config struct {
+type Factory func(ctx context.Context) (any, error)
+type CloseFunc func(any) error
+type HealthFunc func(any) error
+type LoggerFn func(level, msg string, fields map[string]any)
+
+type Config struct {
 	MaxSize        int           `json:"max_size"`
 	MinSize        int           `json:"min_size"`
 	AcquireTimeout time.Duration `json:"acquire_timeout"`
@@ -48,7 +53,9 @@ type pooled struct {
 	created  time.Time
 	lastUsed time.Time
 }
-type ReleaseFunc func(healthy bool) type Pool struct {
+type ReleaseFunc func(healthy bool)
+
+type Pool struct {
 	cfg     Config
 	factory Factory
 	closeFn CloseFunc
@@ -66,12 +73,12 @@ type ReleaseFunc func(healthy bool) type Pool struct {
 	wg sync.WaitGroup
 
 	// metrics
-	// total           atomic.Uint64
-	// idle            atomic.Uint64
-	// inUse           atomic.Uint64
-	// created         atomic.Uint64
-	// closedCount     atomic.Uint64
-	// acquireTimeouts atomic.Uint64
+	total           atomic.Uint64
+	idle            atomic.Uint64
+	inUse           atomic.Uint64
+	created         atomic.Uint64
+	closedCount     atomic.Uint64
+	acquireTimeouts atomic.Uint64
 }
 
 func New(cfg Config, factory Factory, closeFn CloseFunc, health HealthFunc, logger LoggerFn) (*Pool, error) {
@@ -291,12 +298,12 @@ func (p *Pool) makeRelease(it *pooled) ReleaseFunc {
 			if p.isClosed() {
 				_ = p.closeResource(it.res)
 				p.total.Add(^uint64(0))
-				// return
+				return
 			}
 			if !healthy {
 				_ = p.closeResource(it.res)
 				p.total.Add(^uint64(0))
-				// return
+				return
 			}
 
 			// return to idle if possible; otherwise close
