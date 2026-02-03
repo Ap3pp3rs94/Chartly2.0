@@ -18,7 +18,7 @@ type Schema struct {
 	Fields      []Field `json:"fields"`
 }
 
-// type DriftType string
+type DriftType string
 
 const (
 	DriftAdded           DriftType = "added"
@@ -73,7 +73,7 @@ func Diff(oldS, newS Schema) []DriftEvent {
 				From:      of.Type,
 				To:        "",
 			})
-			// continue
+			continue
 		}
 		if of.Type != nf.Type {
 			out = append(out, DriftEvent{
@@ -113,7 +113,7 @@ func Diff(oldS, newS Schema) []DriftEvent {
 		}
 		return out[i].FieldPath < out[j].FieldPath
 	})
-	// return out
+	return out
 }
 func boolStr(b bool) string {
 	if b {
@@ -144,7 +144,7 @@ func (s *DriftStore) Put(connectorID, sourceID string, schema Schema) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// var prev Schema
+	var prev Schema
 	hist := s.schemas[key]
 	if len(hist) > 0 {
 		prev = hist[len(hist)-1]
@@ -194,7 +194,7 @@ func (s *DriftStore) History(connectorID, sourceID string) []Schema {
 	h := s.schemas[key]
 	out := make([]Schema, len(h))
 	copy(out, h)
-	// return out
+	return out
 }
 func (s *DriftStore) Events(connectorID, sourceID string) []DriftEvent {
 	key := storeKey(connectorID, sourceID)
@@ -203,7 +203,7 @@ func (s *DriftStore) Events(connectorID, sourceID string) []DriftEvent {
 	ev := s.events[key]
 	out := make([]DriftEvent, len(ev))
 	copy(out, ev)
-	// return out
+	return out
 }
 func storeKey(connectorID, sourceID string) string {
 	return strings.ToLower(strings.TrimSpace(connectorID)) + "|" + strings.ToLower(strings.TrimSpace(sourceID))
