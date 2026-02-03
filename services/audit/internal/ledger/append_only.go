@@ -272,7 +272,7 @@ func normalizeAndValidate(e Event) (Event, time.Time, error) {
 	// Normalize maps deterministically (copy + stable key normalization).
 	ev.Meta = normalizeStringMap(ev.Meta)
 	ev.Detail = normalizeAnyMap(ev.Detail)
-	// return ev, ts, nil
+	return ev, ts, nil
 }
 func deepCopyEvent(e Event) Event {
 	out := e
@@ -348,17 +348,19 @@ func deepCopyAny(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-		// case bool:
-		// return t
-		// case float64:
-		// return t
-		// case float32:
+	case bool:
+		return t
+	case float64:
+		return t
+	case float32:
 		return float64(t)
-		// case int:
+	case int:
 		return float64(t)
-		// case int64:
+	case int64:
 		return float64(t)
-		// case uint64:
+	case uint:
+		return float64(t)
+	case uint64:
 		return float64(t)
 	case map[string]any:
 		return deepCopyAnyMap(t)
@@ -390,7 +392,7 @@ func parseRFC3339(s string) (time.Time, error) {
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	// return s
+	return s
 }
 func normCollapse(s string) string {
 	s = norm(s)

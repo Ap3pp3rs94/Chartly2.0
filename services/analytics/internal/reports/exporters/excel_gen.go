@@ -232,7 +232,7 @@ func (s *sheet) addRow(cells ...cell) {
 		// preserve spacing with one empty cell
 
 		s.rows = append(s.rows, []cell{{typ: "s", style: 0, val: ""}})
-		// return
+		return
 
 	}
 	s.rows = append(s.rows, cells)
@@ -437,7 +437,7 @@ func (wb *workbook) renderSectionBody(sh *sheet, kind string, sec reports.Sectio
 		if strings.TrimSpace(sec.Text) == "" {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(no text)"})
-			// return
+			return
 
 		}
 		for _, ln := range splitLinesPreserve(sec.Text, wb.opts.MaxCellChars) {
@@ -450,7 +450,7 @@ func (wb *workbook) renderSectionBody(sh *sheet, kind string, sec reports.Sectio
 		if sec.Table == nil {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(no table)"})
-			// return
+			return
 
 		}
 		wb.renderTable(sh, *sec.Table)
@@ -459,20 +459,20 @@ func (wb *workbook) renderSectionBody(sh *sheet, kind string, sec reports.Sectio
 		if wb.opts.OmitCharts {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(chart spec omitted)"})
-			// return
+			return
 
 		}
 		if sec.Chart == nil {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(no chart spec)"})
-			// return
+			return
 
 		}
 		b, err := json.MarshalIndent(sec.Chart, "", "  ")
 		if err != nil {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(invalid chart json)"})
-			// return
+			return
 
 		}
 		for _, ln := range splitLinesPreserve(string(b), wb.opts.MaxCellChars) {
@@ -486,7 +486,7 @@ func (wb *workbook) renderSectionBody(sh *sheet, kind string, sec reports.Sectio
 		if err != nil {
 
 			sh.addRow(cell{typ: "s", style: 0, val: "(invalid json)"})
-			// return
+			return
 
 		}
 		for _, ln := range splitLinesPreserve(string(b), wb.opts.MaxCellChars) {
@@ -516,7 +516,7 @@ func (wb *workbook) renderTable(sh *sheet, t reports.Table) {
 	if len(cols) == 0 {
 
 		sh.addRow(cell{typ: "s", style: 0, val: "(empty table columns)"})
-		// return
+		return
 
 	}
 
@@ -749,7 +749,7 @@ func (wb *workbook) bytes(r reports.Report) ([]byte, error) {
 
 		}
 		_, err = w.Write(content)
-		// return err
+		return err
 
 	}
 
@@ -802,7 +802,7 @@ func (wb *workbook) bytes(r reports.Report) ([]byte, error) {
 		if err := writeFile(f.name, f.content); err != nil {
 
 			_ = zw.Close()
-			// return nil, err
+			return nil, err
 
 		}
 
@@ -995,7 +995,7 @@ func buildCorePropsXML(title string, t time.Time) []byte {
 
 	ts := t.UTC().Format(time.RFC3339)
 	title = xlsxSanitizeText(title)
-	// var b bytes.Buffer
+	var b bytes.Buffer
 
 	b.WriteString(xmlHeader())
 	b.WriteString(`<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">` + "\n")
@@ -1181,7 +1181,7 @@ func sortedKeys(m map[string]string) []string {
 
 	}
 	sort.Strings(keys)
-	// return keys
+	return keys
 }
 func truncateRunes(s string, max int) string {
 
@@ -1214,7 +1214,7 @@ func xlsxSanitizeText(s string) string {
 	s = strings.ReplaceAll(s, "\t", " ")
 	s = strings.ReplaceAll(s, "\r\n", "\n")
 	s = strings.ReplaceAll(s, "\r", "\n")
-	// var b strings.Builder
+	var b strings.Builder
 
 	b.Grow(len(s))
 	for _, r := range s {
@@ -1224,13 +1224,13 @@ func xlsxSanitizeText(s string) string {
 		if r == '\n' {
 
 			b.WriteRune('\n')
-			// continue
+			continue
 
 		}
 		if r < 0x20 {
 
 			b.WriteRune(' ')
-			// continue
+			continue
 
 		}
 
@@ -1246,7 +1246,7 @@ func xlsxSanitizeText(s string) string {
 	}
 	out := b.String()
 	out = strings.TrimRight(out, " ")
-	// return out
+	return out
 }
 
 ////////////////////////////////////////////////////////////////////////////////

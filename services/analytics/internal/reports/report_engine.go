@@ -25,6 +25,17 @@ import (
 )
 
 type LoggerFn func(level, msg string, fields map[string]any) var ( ErrTemplateExists  = errors.New("template exists") ErrTemplateMissing = errors.New("template missing") ErrInvalidTemplate = errors.New("invalid template") ErrInvalidInput    = errors.New("invalid input") ErrRender          = errors.New("render failed") ) type Template struct {
+type LoggerFn func(level, msg string, fields map[string]any)
+
+var (
+	ErrTemplateExists  = errors.New("template exists")
+	ErrTemplateMissing = errors.New("template missing")
+	ErrInvalidTemplate = errors.New("invalid template")
+	ErrInvalidInput    = errors.New("invalid input")
+	ErrRender          = errors.New("render failed")
+)
+
+type Template struct {
 	ID string `json:"id"`
 
 	Title string `json:"title"`
@@ -482,12 +493,8 @@ func (e *Engine) Build(templateID string, input map[string]any, opt BuildOptions
 ////////////////////////////////////////////////////////////////////////////////
 
 type Renderer interface {
-	Name()
-	// string
-
-	ContentType()
-	// string
-
+	Name() string
+	ContentType() string
 	Render(r Report) ([]byte, error)
 }
 type JSONRenderer struct {
@@ -703,7 +710,7 @@ func writeMDTable(b *bytes.Buffer, t Table, maxRows int) {
 	if len(t.Columns) == 0 {
 
 		b.WriteString("_Empty table._\n\n")
-		// return
+		return
 
 	}
 	cols := make([]string, len(t.Columns))

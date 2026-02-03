@@ -35,7 +35,7 @@ var (
 	ErrSOXPolicy  = errors.New("sox policy")
 )
 
-// type Control string
+type Control string
 
 const (
 	ControlAccess             Control = "access"
@@ -132,7 +132,7 @@ func MapControls(action string, outcome string, rules []MappingRule) ([]Control,
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return string(out[i]) < string(out[j]) })
-	// return out, nil
+	return out, nil
 }
 
 // DecideRetention returns keep/drop guidance for a control at time "now" relative to eventTS.
@@ -247,7 +247,7 @@ func normalizeRules(rules []MappingRule) []MappingRule {
 		}
 		return n[i].OutcomeEquals < n[j].OutcomeEquals
 	})
-	// return n
+	return n
 }
 func normalizeControls(in []Control) []Control {
 	if len(in) == 0 {
@@ -265,7 +265,7 @@ func normalizeControls(in []Control) []Control {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return string(out[i]) < string(out[j]) })
-	// return out
+	return out
 }
 func normalizeRetention(p RetentionPolicy) RetentionPolicy {
 	pp := p
@@ -314,17 +314,19 @@ func canonicalizeAny(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-		// case bool:
-		// return t
-		// case float64:
-		// return t
-		// case float32:
+	case bool:
+		return t
+	case float64:
+		return t
+	case float32:
 		return float64(t)
-		// case int:
+	case int:
 		return float64(t)
-		// case int64:
+	case int64:
 		return float64(t)
-		// case uint64:
+	case uint:
+		return float64(t)
+	case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))
@@ -406,12 +408,12 @@ func normalizePathList(in []string) []string {
 		if pn == "" {
 			continue
 		}
-		tmp = append(tmp, pn)
-	}
-	sort.Strings(tmp)
-	out := make([]string, 0, len(tmp))
-	// var last string
-	for _, p := range tmp {
+	tmp = append(tmp, pn)
+}
+sort.Strings(tmp)
+out := make([]string, 0, len(tmp))
+	var last string
+for _, p := range tmp {
 		if p != last {
 			out = append(out, p)
 			last = p

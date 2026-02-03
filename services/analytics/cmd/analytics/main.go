@@ -318,11 +318,10 @@ func intFromEnv(k string, def int) int {
 func msDuration(k string, defMS int) time.Duration {
 
 	ms := intFromEnv(k, defMS)
-	return time.Duration(ms)
-	*time.Millisecond
+	return time.Duration(ms) * time.Millisecond
 }
 
-// type ctxKey string
+type ctxKey string
 
 var (
 	ctxRequestID ctxKey = "request_id"
@@ -361,7 +360,7 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				// return
+				return
 
 			}
 
@@ -382,7 +381,7 @@ func withLocalCORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 
 			w.WriteHeader(http.StatusNoContent)
-			// return
+			return
 
 		}
 		next.ServeHTTP(w, r)

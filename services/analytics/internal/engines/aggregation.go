@@ -64,7 +64,7 @@ func Compute(xs []float64) Stats {
 
 	}
 	std := math.Sqrt(ss / float64(len(xs)))
-return Stats{
+	return Stats{
 
 		Count: len(xs),
 
@@ -97,8 +97,8 @@ func Percentile(xs []float64, p float64) float64 {
 
 	}
 	cp := make([]float64, len(xs))
-copy(cp, xs)
-sort.Float64s(cp)
+	copy(cp, xs)
+	sort.Float64s(cp)
 
 	// nearest-rank: rank = ceil(p/100 * N)
 if p == 0 {
@@ -123,9 +123,9 @@ if rank < 1 {
 func GroupBy(records []map[string]any, groupKey, valueKey string) (map[string]Stats, []string) {
 
 	groupKey = strings.TrimSpace(groupKey)
-valueKey = strings.TrimSpace(valueKey)
-tmp := make(map[string][]float64)
-for _, r := range records {
+	valueKey = strings.TrimSpace(valueKey)
+	tmp := make(map[string][]float64)
+	for _, r := range records {
 
 		if r == nil {
 
@@ -140,13 +140,13 @@ for _, r := range records {
 
 		}
 		gs, ok := gv.(string)
-if !ok {
+		if !ok {
 
 			continue
 
 		}
 		gs = strings.TrimSpace(gs)
-if gs == "" {
+		if gs == "" {
 
 			continue
 
@@ -159,7 +159,7 @@ if gs == "" {
 
 		}
 		f, ok := toFloat(vv)
-if !ok {
+		if !ok {
 
 			continue
 
@@ -168,26 +168,26 @@ if !ok {
 
 	}
 	out := make(map[string]Stats, len(tmp))
-keys := make([]string, 0, len(tmp))
-for k, xs := range tmp {
+	keys := make([]string, 0, len(tmp))
+	for k, xs := range tmp {
 
 		keys = append(keys, k)
-out[k] = Compute(xs)
+		out[k] = Compute(xs)
 
 	}
 	sort.Strings(keys)
-// return out, keys
+	return out, keys
 }
 func SortedKeys(m map[string]Stats) []string {
 
 	keys := make([]string, 0, len(m))
-for k := range m {
+	for k := range m {
 
 		keys = append(keys, k)
 
 	}
 	sort.Strings(keys)
-// return keys
+	return keys
 }
 func toFloat(v any) (float64, bool) {
 

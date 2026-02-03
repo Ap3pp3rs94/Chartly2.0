@@ -241,7 +241,7 @@ func normalizeEntry(e Entry) (Entry, time.Time, string, error) {
 		return Entry{}, time.Time{}, "", fmt.Errorf("%w: %w: invalid ts", ErrAgg, ErrAggInvalid)
 	}
 	key := entryKey(en)
-	// return en, ts, key, nil
+	return en, ts, key, nil
 }
 func entryKey(e Entry) string {
 	return e.TenantID + "|" + e.TS + "|" + e.Service + "|" + e.Level + "|" + e.Event
@@ -286,7 +286,7 @@ func parseRFC3339(s string) (time.Time, error) {
 }
 func norm(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	// return s
+	return s
 }
 func normCollapse(s string) string {
 	s = norm(s)

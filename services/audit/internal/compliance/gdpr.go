@@ -42,7 +42,7 @@ var (
 
 // SubjectID is an identifier for a data subject (user/customer/device/etc.).
 // It is treated as a string in normalized form.
-// type SubjectID string
+type SubjectID string
 
 // Pseudonym describes a deterministic pseudonymous token derived from a SubjectID.
 type Pseudonym struct {
@@ -332,17 +332,19 @@ func canonicalizeAny(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-		// case bool:
-		// return t
-		// case float64:
-		// return t
-		// case float32:
+	case bool:
+		return t
+	case float64:
+		return t
+	case float32:
 		return float64(t)
-		// case int:
+	case int:
 		return float64(t)
-		// case int64:
+	case int64:
 		return float64(t)
-		// case uint64:
+	case uint:
+		return float64(t)
+	case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))

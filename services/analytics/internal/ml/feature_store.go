@@ -25,13 +25,13 @@ import (
 )
 var (
 	ErrFeatureExists = errors.New("feature exists")
-ErrFeatureMissing = errors.New("feature missing")
-ErrInvalidFeature = errors.New("invalid feature")
-ErrInvalidWrite = errors.New("invalid write")
-ErrInvalidQuery = errors.New("invalid query")
-ErrStoreClosed = errors.New("feature store closed")
+	ErrFeatureMissing = errors.New("feature missing")
+	ErrInvalidFeature = errors.New("invalid feature")
+	ErrInvalidWrite   = errors.New("invalid write")
+	ErrInvalidQuery   = errors.New("invalid query")
+	ErrStoreClosed    = errors.New("feature store closed")
 )
-// type FeatureType string
+type FeatureType string
 
 const (
 	FeatureNumber FeatureType = "number"
@@ -42,7 +42,7 @@ const (
 
 	FeatureJSON FeatureType = "json"
 )
-// type Granularity string
+type Granularity string
 
 const (
 	GranularityEvent Granularity = "event"
@@ -151,26 +151,26 @@ func NewFeatureStore() *FeatureStore {
 func (fs *FeatureStore) Close() {
 
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-fs.closed = true
+	defer fs.mu.Unlock()
+	fs.closed = true
 }
 func (fs *FeatureStore) Define(def FeatureDef) error {
 
 	def = normalizeDef(def)
-if err := validateDef(def); err != nil {
+	if err := validateDef(def); err != nil {
 
 		return err
 
 	}
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-if fs.closed {
+	defer fs.mu.Unlock()
+	if fs.closed {
 
 		return ErrStoreClosed
 
 	}
 	k := defKeyString(def.Key)
-if _, ok := fs.defs[k]; ok {
+	if _, ok := fs.defs[k]; ok {
 
 		return ErrFeatureExists
 
@@ -182,24 +182,24 @@ if _, ok := fs.defs[k]; ok {
 func (fs *FeatureStore) GetDefinition(key FeatureKey) (FeatureDef, bool) {
 
 	key = normalizeKey(key)
-fs.mu.RLock()
-defer fs.mu.RUnlock()
-def, ok := fs.defs[defKeyString(key)]
+	fs.mu.RLock()
+	defer fs.mu.RUnlock()
+	def, ok := fs.defs[defKeyString(key)]
 
 	return def, ok
 }
 func (fs *FeatureStore) ListDefinitions(tenantID string) []FeatureDef {
 
 	tenantID = strings.TrimSpace(tenantID)
-if tenantID == "" {
+	if tenantID == "" {
 
 		return nil
 
 	}
 	fs.mu.RLock()
-defer fs.mu.RUnlock()
-out := make([]FeatureDef, 0, len(fs.defs))
-for _, d := range fs.defs {
+	defer fs.mu.RUnlock()
+	out := make([]FeatureDef, 0, len(fs.defs))
+	for _, d := range fs.defs {
 
 		if d.Key.TenantID == tenantID {
 
@@ -213,19 +213,19 @@ for _, d := range fs.defs {
 		return defKeyString(out[i].Key) < defKeyString(out[j].Key)
 
 	})
-// return out
+	return out
 }
 func (fs *FeatureStore) Put(point FeaturePoint) error {
 
 	point = normalizePoint(point)
-if err := validatePointBasics(point); err != nil {
+	if err := validatePointBasics(point); err != nil {
 
 		return err
 
 	}
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-if fs.closed {
+	defer fs.mu.Unlock()
+	if fs.closed {
 
 		return ErrStoreClosed
 
@@ -252,16 +252,16 @@ if fs.closed {
 	// Parse ts
 
 	ts, err := parseTS(point.TS)
-if err != nil {
+	if err != nil {
 
 		return err
 
 	}
 	seriesK := seriesKeyString(point.Key)
-fs.evictExpiredLocked(seriesK, def, nowFromMeta(point.Meta))
-sp := storedPoint{ts: ts, tsS: point.TS, val: point.Value, meta: normalizeMeta(point.Meta)}
+	fs.evictExpiredLocked(seriesK, def, nowFromMeta(point.Meta))
+	sp := storedPoint{ts: ts, tsS: point.TS, val: point.Value, meta: normalizeMeta(point.Meta)}
 	fs.points[seriesK] = insertPointSorted(fs.points[seriesK], sp)
-// return nil
+	return nil
 }
 func (fs *FeatureStore) PutBatch(points []FeaturePoint) (ok int, failed int, err error) {
 
@@ -288,21 +288,21 @@ func (fs *FeatureStore) PutBatch(points []FeaturePoint) (ok int, failed int, err
 func (fs *FeatureStore) Query(q Query) (Result, error) {
 
 	q = normalizeQuery(q)
-if err := validateQuery(q); err != nil {
+	if err := validateQuery(q); err != nil {
 
 		return Result{}, err
 
 	}
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-if fs.closed {
+	defer fs.mu.Unlock()
+	if fs.closed {
 
 		return Result{}, ErrStoreClosed
 
 	}
 
 	// Find def (needed for TTL/type awareness)
-key := FeatureKey{
+	key := FeatureKey{
 
 		TenantID: q.TenantID,
 
@@ -326,9 +326,9 @@ key := FeatureKey{
 	seriesK := seriesKeyString(key)
 
 	// TTL eviction uses "now" (optional)
-now := nowFromCursorOrMeta(q.NextCursor, q)
-fs.evictExpiredLocked(seriesK, def, now)
-pts := fs.points[seriesK]
+	now := nowFromCursorOrMeta(q.NextCursor, q)
+	fs.evictExpiredLocked(seriesK, def, now)
+	pts := fs.points[seriesK]
 
 	if len(pts) == 0 {
 
@@ -336,7 +336,7 @@ pts := fs.points[seriesK]
 
 	}
 	startTS, _ := parseTSIfProvided(q.Start)
-endTS, _ := parseTSIfProvided(q.End)
+	endTS, _ := parseTSIfProvided(q.End)
 
 	// Determine start index using cursor or start time
 
@@ -345,12 +345,12 @@ endTS, _ := parseTSIfProvided(q.End)
 	if strings.TrimSpace(q.NextCursor) != "" {
 
 		cur, ok := decodeCursor(q.NextCursor)
-if ok && cur.Hash == queryHash(q) {
+		if ok && cur.Hash == queryHash(q) {
 
 			// forward-only for Asc=true
 
 			startIdx = clampInt(cur.LastIdx+1, 0, len(pts))
-if !cur.LastTS.IsZero() {
+			if !cur.LastTS.IsZero() {
 
 				// ensure we don't move backwards if underlying series shifted
 
@@ -371,8 +371,8 @@ if !cur.LastTS.IsZero() {
 	}
 
 	// Apply end time by calculating end index (exclusive)
-endIdx := len(pts)
-if !endTS.IsZero() {
+	endIdx := len(pts)
+	if !endTS.IsZero() {
 
 		endIdx = minInt(endIdx, lowerBoundTS(pts, endTS))
 
@@ -402,7 +402,7 @@ if !endTS.IsZero() {
 		for i := startIdx; i < endIdx && n < limit; i++ {
 
 			res.Points = append(res.Points, materializePoint(key, pts[i], q.IncludeMeta))
-n++
+			n++
 
 		}
 		if startIdx+n < endIdx {
@@ -440,7 +440,7 @@ n++
 		for i := endIdx - 1; i >= startIdx && n < limit; i-- {
 
 			res.Points = append(res.Points, materializePoint(key, pts[i], q.IncludeMeta))
-n++
+			n++
 
 		}
 		if endIdx-n > startIdx {
@@ -460,20 +460,20 @@ n++
 func (fs *FeatureStore) ExportTenant(tenantID string) ([]byte, error) {
 
 	tenantID = strings.TrimSpace(tenantID)
-if tenantID == "" {
+	if tenantID == "" {
 
 		return nil, fmt.Errorf("%w: tenant_id required", ErrInvalidQuery)
 
 	}
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-if fs.closed {
+	defer fs.mu.Unlock()
+	if fs.closed {
 
 		return nil, ErrStoreClosed
 
 	}
 	defs := make([]FeatureDef, 0)
-for _, d := range fs.defs {
+	for _, d := range fs.defs {
 
 		if d.Key.TenantID == tenantID {
 
@@ -483,13 +483,13 @@ for _, d := range fs.defs {
 
 	}
 	sort.Slice(defs, func(i, j int) bool { return defKeyString(defs[i].Key) < defKeyString(defs[j].Key) })
-type exportedSeries struct {
+	type exportedSeries struct {
 		Key FeatureKey `json:"key"`
 
 		Points []FeaturePoint `json:"points"`
 	}
 	seriesKeys := make([]string, 0)
-for sk := range fs.points {
+	for sk := range fs.points {
 
 		if strings.HasPrefix(sk, tenantID+"|") {
 
@@ -499,22 +499,22 @@ for sk := range fs.points {
 
 	}
 	sort.Strings(seriesKeys)
-series := make([]exportedSeries, 0, len(seriesKeys))
-for _, sk := range seriesKeys {
+	series := make([]exportedSeries, 0, len(seriesKeys))
+	for _, sk := range seriesKeys {
 
 		key := parseSeriesKey(sk)
-def, ok := fs.defs[defKeyString(key)]
+		def, ok := fs.defs[defKeyString(key)]
 
 		if ok {
 
 			// Optional eviction based on any stored "now" (best-effort)
-fs.evictExpiredLocked(sk, def, time.Time{})
+			fs.evictExpiredLocked(sk, def, time.Time{})
 
 		}
 		stored := fs.points[sk]
 
 		points := make([]FeaturePoint, 0, len(stored))
-for _, sp := range stored {
+		for _, sp := range stored {
 
 			points = append(points, materializePoint(key, sp, true))
 
@@ -537,7 +537,7 @@ for _, sp := range stored {
 		Series: series,
 	}
 	b, err := json.MarshalIndent(payload, "", "  ")
-if err != nil {
+	if err != nil {
 
 		return nil, fmt.Errorf("%w: %v", ErrInvalidQuery, err)
 
@@ -551,7 +551,7 @@ if err != nil {
 func (fs *FeatureStore) ImportTenant(tenantID string, payload []byte) error {
 
 	tenantID = strings.TrimSpace(tenantID)
-if tenantID == "" {
+	if tenantID == "" {
 
 		return fmt.Errorf("%w: tenant_id required", ErrInvalidQuery)
 
@@ -583,8 +583,8 @@ if tenantID == "" {
 
 	}
 	fs.mu.Lock()
-defer fs.mu.Unlock()
-if fs.closed {
+	defer fs.mu.Unlock()
+	if fs.closed {
 
 		return ErrStoreClosed
 
@@ -595,7 +595,7 @@ if fs.closed {
 	for _, d := range doc.Defs {
 
 		d = normalizeDef(d)
-if d.Key.TenantID == "" {
+		if d.Key.TenantID == "" {
 
 			d.Key.TenantID = tenantID
 
@@ -611,7 +611,7 @@ if d.Key.TenantID == "" {
 
 		}
 		k := defKeyString(d.Key)
-if existing, ok := fs.defs[k]; ok {
+		if existing, ok := fs.defs[k]; ok {
 
 			// deterministic conflict: keep existing if differs
 
@@ -634,7 +634,7 @@ if existing, ok := fs.defs[k]; ok {
 	for _, s := range doc.Series {
 
 		k := normalizeKey(s.Key)
-if k.TenantID == "" {
+		if k.TenantID == "" {
 
 			k.TenantID = tenantID
 
@@ -652,10 +652,10 @@ if k.TenantID == "" {
 
 		}
 		seriesK := seriesKeyString(k)
-for _, p := range s.Points {
+		for _, p := range s.Points {
 
 			p = normalizePoint(p)
-p.Key = k
+			p.Key = k
 
 			if p.TS == "" {
 
@@ -663,7 +663,7 @@ p.Key = k
 
 			}
 			ts, err := parseTS(p.TS)
-if err != nil {
+			if err != nil {
 
 				continue
 
@@ -708,12 +708,12 @@ func (fs *FeatureStore) evictExpiredLocked(seriesK string, def FeatureDef, now t
 
 	}
 	cutoff := now.Add(-time.Duration(def.TTLSeconds)
-* time.Second)
+		* time.Second)
 
 	// Points are sorted asc by ts.
 
 	idx := lowerBoundTS(pts, cutoff)
-if idx <= 0 {
+	if idx <= 0 {
 
 		return
 
@@ -731,13 +731,13 @@ func nowFromMeta(meta map[string]string) time.Time {
 
 	}
 	s := strings.TrimSpace(meta["now"])
-if s == "" {
+	if s == "" {
 
 		return time.Time{}
 
 	}
 	t, err := parseTS(s)
-if err != nil {
+	if err != nil {
 
 		return time.Time{}
 
@@ -755,7 +755,7 @@ func nowFromCursorOrMeta(cursorStr string, q Query) time.Time {
 
 	}
 	c, ok := decodeCursor(cursorStr)
-if !ok {
+	if !ok {
 
 		return time.Time{}
 
@@ -780,8 +780,8 @@ type cursor struct {
 func encodeCursor(c cursor) string {
 
 	// deterministic JSON (fields fixed)
-b, err := json.Marshal(c)
-if err != nil {
+	b, err := json.Marshal(c)
+	if err != nil {
 
 		return ""
 
@@ -791,13 +791,13 @@ if err != nil {
 func decodeCursor(s string) (cursor, bool) {
 
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 
 		return cursor{}, false
 
 	}
 	b, err := base64.RawURLEncoding.DecodeString(s)
-if err != nil {
+	if err != nil {
 
 		return cursor{}, false
 
@@ -868,8 +868,8 @@ func queryHash(q Query) string {
 		IncludeMeta: q.IncludeMeta,
 	}
 	b, _ := json.Marshal(p)
-sum := sha256.Sum256(b)
-return hex24(sum[:])
+	sum := sha256.Sum256(b)
+	return hex24(sum[:])
 }
 func hex24(b []byte) string {
 
@@ -883,12 +883,12 @@ func hex24(b []byte) string {
 func normalizeKey(k FeatureKey) FeatureKey {
 
 	k.TenantID = strings.TrimSpace(k.TenantID)
-k.Namespace = strings.TrimSpace(k.Namespace)
-k.Name = strings.TrimSpace(k.Name)
-k.EntityType = strings.TrimSpace(k.EntityType)
-k.EntityID = strings.TrimSpace(k.EntityID)
-k.Granularity = Granularity(strings.TrimSpace(string(k.Granularity)))
-// return k
+	k.Namespace = strings.TrimSpace(k.Namespace)
+	k.Name = strings.TrimSpace(k.Name)
+	k.EntityType = strings.TrimSpace(k.EntityType)
+	k.EntityID = strings.TrimSpace(k.EntityID)
+	k.Granularity = Granularity(strings.TrimSpace(string(k.Granularity)))
+	return k
 }
 func normalizeDef(d FeatureDef) FeatureDef {
 
@@ -907,21 +907,21 @@ if d.TTLSeconds < 0 {
 func normalizePoint(p FeaturePoint) FeaturePoint {
 
 	p.Key = normalizeKey(p.Key)
-p.TS = strings.TrimSpace(p.TS)
-p.Meta = normalizeMeta(p.Meta)
-// return p
+	p.TS = strings.TrimSpace(p.TS)
+	p.Meta = normalizeMeta(p.Meta)
+	return p
 }
 func normalizeQuery(q Query) Query {
 
 	q.TenantID = strings.TrimSpace(q.TenantID)
-q.Namespace = strings.TrimSpace(q.Namespace)
-q.Name = strings.TrimSpace(q.Name)
-q.EntityType = strings.TrimSpace(q.EntityType)
-q.EntityID = strings.TrimSpace(q.EntityID)
-q.Granularity = Granularity(strings.TrimSpace(string(q.Granularity)))
-q.Start = strings.TrimSpace(q.Start)
-q.End = strings.TrimSpace(q.End)
-if q.Limit == 0 {
+	q.Namespace = strings.TrimSpace(q.Namespace)
+	q.Name = strings.TrimSpace(q.Name)
+	q.EntityType = strings.TrimSpace(q.EntityType)
+	q.EntityID = strings.TrimSpace(q.EntityID)
+	q.Granularity = Granularity(strings.TrimSpace(string(q.Granularity)))
+	q.Start = strings.TrimSpace(q.Start)
+	q.End = strings.TrimSpace(q.End)
+	if q.Limit == 0 {
 
 		q.Limit = 1000
 
@@ -1035,8 +1035,8 @@ func validateQuery(q Query) error {
 	if q.Start != "" && q.End != "" {
 
 		s, _ := parseTS(q.Start)
-e, _ := parseTS(q.End)
-if !e.After(s) {
+		e, _ := parseTS(q.End)
+		if !e.After(s) {
 
 			return fmt.Errorf("%w: end must be after start", ErrInvalidQuery)
 
@@ -1097,7 +1097,7 @@ func validateValueAgainstType(t FeatureType, v any) error {
 		// Accept any JSON-marshalable value; do a marshal test for determinism
 
 		_, err := json.Marshal(v)
-if err != nil {
+		if err != nil {
 
 			return fmt.Errorf("%w: value must be json-marshalable", ErrInvalidWrite)
 
@@ -1118,10 +1118,10 @@ func normalizeMeta(m map[string]string) map[string]string {
 
 	}
 	keys := make([]string, 0, len(m))
-for k := range m {
+	for k := range m {
 
 		k2 := strings.TrimSpace(k)
-if k2 == "" {
+		if k2 == "" {
 
 			continue
 
@@ -1130,8 +1130,8 @@ if k2 == "" {
 
 	}
 	sort.Strings(keys)
-out := make(map[string]string, len(keys))
-for _, k := range keys {
+	out := make(map[string]string, len(keys))
+	for _, k := range keys {
 
 		out[k] = strings.TrimSpace(m[k])
 
@@ -1176,7 +1176,7 @@ func seriesKeyString(k FeatureKey) string {
 func parseSeriesKey(s string) FeatureKey {
 
 	parts := strings.Split(s, "|")
-k := FeatureKey{}
+	k := FeatureKey{}
 	if len(parts) >= 6 {
 
 		k.TenantID = parts[0]
@@ -1197,12 +1197,12 @@ k := FeatureKey{}
 func insertPointSorted(points []storedPoint, p storedPoint) []storedPoint {
 
 	// Dedupe by exact timestamp: replace existing value deterministically (keep newer? we choose replace)
-i := sort.Search(len(points), func(i int) bool {
+	i := sort.Search(len(points), func(i int) bool {
 
 		return !points[i].ts.Before(p.ts)
 
 	})
-if i < len(points) && points[i].ts.Equal(p.ts) {
+	if i < len(points) && points[i].ts.Equal(p.ts) {
 
 		points[i] = p
 
@@ -1218,12 +1218,12 @@ points[i] = p
 func insertPointSortedDedupe(points []storedPoint, p storedPoint) []storedPoint {
 
 	// Dedupe by exact timestamp: keep existing deterministically (ignore incoming)
-i := sort.Search(len(points), func(i int) bool {
+	i := sort.Search(len(points), func(i int) bool {
 
 		return !points[i].ts.Before(p.ts)
 
 	})
-if i < len(points) && points[i].ts.Equal(p.ts) {
+	if i < len(points) && points[i].ts.Equal(p.ts) {
 
 		return points
 
@@ -1290,7 +1290,7 @@ for k, v := range m {
 func parseTS(s string) (time.Time, error) {
 
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 
 		return time.Time{}, fmt.Errorf("%w: ts required", ErrInvalidWrite)
 
@@ -1301,7 +1301,7 @@ if s == "" {
 
 	}
 	t, err := time.Parse(time.RFC3339, s)
-if err != nil {
+	if err != nil {
 
 		return time.Time{}, fmt.Errorf("%w: invalid ts", ErrInvalidWrite)
 
@@ -1311,13 +1311,13 @@ if err != nil {
 func parseTSIfProvided(s string) (time.Time, bool) {
 
 	s = strings.TrimSpace(s)
-if s == "" {
+	if s == "" {
 
 		return time.Time{}, false
 
 	}
 	t, err := parseTS(s)
-if err != nil {
+	if err != nil {
 
 		return time.Time{}, false
 
@@ -1332,8 +1332,8 @@ if err != nil {
 func defsEqual(a, b FeatureDef) bool {
 
 	na := normalizeDef(a)
-nb := normalizeDef(b)
-if defKeyString(na.Key) != defKeyString(nb.Key) {
+	nb := normalizeDef(b)
+	if defKeyString(na.Key) != defKeyString(nb.Key) {
 
 		return false
 

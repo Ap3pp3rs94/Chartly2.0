@@ -19,7 +19,9 @@ import (
 )
 type Spec = map[string]any
 
-type LoggerFn func(level, msg string, fields map[string]any) type AxisOptions struct {
+type LoggerFn func(level, msg string, fields map[string]any)
+
+type AxisOptions struct {
 	Label string `json:"label,omitempty"`
 
 	Type string `json:"type,omitempty"` // time|number|category|log
@@ -113,9 +115,9 @@ b.spec["axes"] = map[string]any{
 
 		"y": map[string]any{"type": "number"},
 	}
-	b.spec["series"] = make([]any, 0)
+b.spec["series"] = make([]any, 0)
 b.spec["annotations"] = make([]any, 0)
-// return b
+return b
 }
 func (b *Builder) WithLogger(fn LoggerFn) *Builder {
 
@@ -206,8 +208,8 @@ if meta == nil {
 b.spec["meta"] = meta
 
 	}
-	meta[k] = strings.TrimSpace(v)
-// return b
+meta[k] = strings.TrimSpace(v)
+return b
 }
 func (b *Builder) WithAxis(axis string, opts AxisOptions) *Builder {
 
@@ -269,7 +271,7 @@ name = strings.TrimSpace(name)
 if name == "" {
 
 		b.logger("warn", "chart_add_series_skipped", map[string]any{"reason": "empty_name"})
-// return b
+		return b
 
 	}
 	kind := strings.ToLower(strings.TrimSpace(opts.Kind))
@@ -635,11 +637,11 @@ func ToJSON(spec Spec, indent bool) ([]byte, error) {
 
 func downsample(pts []XYPoint, maxN int) []XYPoint {
 
-	if maxN <= 0 || len(pts) <= maxN {
+if maxN <= 0 || len(pts) <= maxN {
 
 		cp := make([]XYPoint, len(pts))
 copy(cp, pts)
-// return cp
+		return cp
 
 	}
 	if maxN < 3 {
@@ -698,8 +700,8 @@ if idx <= 0 {
 		out = append(out, pts[idx])
 
 	}
-	out = append(out, pts[len(pts)-1])
-// return out
+out = append(out, pts[len(pts)-1])
+return out
 }
 
 // Largest-Triangle-Three-Buckets downsampling.
@@ -711,7 +713,7 @@ if threshold >= n || threshold == 0 {
 
 		cp := make([]XYPoint, n)
 copy(cp, pts)
-// return cp
+		return cp
 
 	}
 	if threshold < 3 {
@@ -840,8 +842,8 @@ if area == maxArea && j < maxIdx {
 a = maxIdx
 
 	}
-	sampled = append(sampled, pts[n-1])
-// return sampled
+sampled = append(sampled, pts[n-1])
+return sampled
 }
 
 ////////////////////////////////////////////////////////////////////////////////

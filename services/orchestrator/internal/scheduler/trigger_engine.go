@@ -28,8 +28,7 @@ type Enqueuer interface {
 
 // Clock enables deterministic testing.
 type Clock interface {
-	Now()
-	// time.Time
+	Now() time.Time
 }
 type realClock struct{}
 
@@ -42,7 +41,9 @@ type JobRequest struct {
 }
 
 // LoggerFn is a structured logger signature.
-type LoggerFn func(level, msg string, fields map[string]any) type jobKey struct {
+type LoggerFn func(level, msg string, fields map[string]any)
+
+type jobKey struct {
 	Tenant string
 	Name   string
 }
@@ -171,11 +172,11 @@ func (e *TriggerEngine) loop(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			e.logger("info", "trigger_engine_ctx_done", map[string]any{"event": "engine_stop"})
-			// return
-		// case <-e.stopCh:
+			return
+		case <-e.stopCh:
 			e.logger("info", "trigger_engine_stop", map[string]any{"event": "engine_stop"})
-			// return
-		// default:
+			return
+		default:
 		}
 		e.tick(ctx)
 		sleep := jitterDuration(e, e.pollInterval, e.jitterPct)
@@ -191,7 +192,7 @@ func (e *TriggerEngine) loop(ctx context.Context) {
 func (e *TriggerEngine) tick(ctx context.Context) {
 	if e.provider == nil || e.enqueuer == nil {
 		e.logger("warn", "trigger_engine_unwired", map[string]any{"event": "engine_unwired"})
-		// return
+		return
 	}
 	now := e.clock.Now()
 	jobs, err := e.provider.List(ctx)
@@ -200,7 +201,7 @@ func (e *TriggerEngine) tick(ctx context.Context) {
 			"event": "jobs_provider_error",
 			"error": err.Error(),
 		})
-		// return
+		return
 	}
 	e.maybePrune()
 	for _, j := range jobs {
@@ -305,7 +306,7 @@ func (e *TriggerEngine) setCachedNextRun(k jobKey, t time.Time) {
 	defer e.mu.Unlock()
 	if t.IsZero() {
 		delete(e.nextRun, k)
-		// return
+		return
 	}
 	e.nextRun[k] = t
 }
@@ -335,10 +336,8 @@ func jitterDuration(e *TriggerEngine, base time.Duration, pct float64) time.Dura
 	if pct <= 0 {
 		return base
 	}
-	min := float64(base)
-	*(1.0 - pct)
-	max := float64(base)
-	*(1.0 + pct)
+	min := float64(base) * (1.0 - pct)
+	max := float64(base) * (1.0 + pct)
 	if min < 0 {
 		min = 0
 	}

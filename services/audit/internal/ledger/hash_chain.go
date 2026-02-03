@@ -268,20 +268,22 @@ func canonicalizeAny(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-		// case bool:
-		// return t
-		// case float64:
+	case bool:
+		return t
+	case float64:
 		// json.Unmarshal uses float64 for numbers; keep as-is.
-		// return t
-		// case float32:
+		return t
+	case float32:
 		return float64(t)
-		// case int:
+	case int:
 		return float64(t)
-		// case int64:
+	case int64:
 		return float64(t)
-		// case uint64:
+	case uint:
 		return float64(t)
-		// case json.Number:
+	case uint64:
+		return float64(t)
+	case json.Number:
 		// Convert to float64 deterministically if possible, otherwise string.
 		if f, err := t.Float64(); err == nil {
 			return f
