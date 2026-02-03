@@ -23,14 +23,16 @@ import (
 
 	"time"
 )
+
 var (
-	ErrFeatureExists = errors.New("feature exists")
+	ErrFeatureExists  = errors.New("feature exists")
 	ErrFeatureMissing = errors.New("feature missing")
 	ErrInvalidFeature = errors.New("invalid feature")
 	ErrInvalidWrite   = errors.New("invalid write")
 	ErrInvalidQuery   = errors.New("invalid query")
 	ErrStoreClosed    = errors.New("feature store closed")
 )
+
 type FeatureType string
 
 const (
@@ -42,6 +44,7 @@ const (
 
 	FeatureJSON FeatureType = "json"
 )
+
 type Granularity string
 
 const (
@@ -53,6 +56,7 @@ const (
 
 	GranularityDay Granularity = "day"
 )
+
 type FeatureKey struct {
 	TenantID string `json:"tenant_id"`
 
@@ -276,8 +280,8 @@ func (fs *FeatureStore) PutBatch(points []FeaturePoint) (ok int, failed int, err
 
 			failed++
 
-			err = e // return last error (deterministic; no aggregation)
-// continue
+			err = e // keep last error (deterministic; no aggregation)
+			// continue
 
 		}
 		ok++
@@ -707,8 +711,7 @@ func (fs *FeatureStore) evictExpiredLocked(seriesK string, def FeatureDef, now t
 		return
 
 	}
-	cutoff := now.Add(-time.Duration(def.TTLSeconds)
-		* time.Second)
+	cutoff := now.Add(-time.Duration(def.TTLSeconds) * time.Second)
 
 	// Points are sorted asc by ts.
 
@@ -893,11 +896,11 @@ func normalizeKey(k FeatureKey) FeatureKey {
 func normalizeDef(d FeatureDef) FeatureDef {
 
 	d.Key = normalizeKey(d.Key)
-d.Type = FeatureType(strings.TrimSpace(string(d.Type)))
-d.Description = strings.TrimSpace(d.Description)
-d.Tags = normalizeTags(d.Tags)
-d.Meta = normalizeMeta(d.Meta)
-if d.TTLSeconds < 0 {
+	d.Type = FeatureType(strings.TrimSpace(string(d.Type)))
+	d.Description = strings.TrimSpace(d.Description)
+	d.Tags = normalizeTags(d.Tags)
+	d.Meta = normalizeMeta(d.Meta)
+	if d.TTLSeconds < 0 {
 
 		d.TTLSeconds = 0
 
@@ -1210,8 +1213,8 @@ func insertPointSorted(points []storedPoint, p storedPoint) []storedPoint {
 
 	}
 	points = append(points, storedPoint{})
-copy(points[i+1:], points[i:])
-points[i] = p
+	copy(points[i+1:], points[i:])
+	points[i] = p
 
 	return points
 }
@@ -1229,8 +1232,8 @@ func insertPointSortedDedupe(points []storedPoint, p storedPoint) []storedPoint 
 
 	}
 	points = append(points, storedPoint{})
-copy(points[i+1:], points[i:])
-points[i] = p
+	copy(points[i+1:], points[i:])
+	points[i] = p
 
 	return points
 }
@@ -1275,7 +1278,7 @@ func cloneMeta(m map[string]string) map[string]string {
 
 	}
 	out := make(map[string]string, len(m))
-for k, v := range m {
+	for k, v := range m {
 
 		out[k] = v
 
@@ -1440,22 +1443,22 @@ func anyToString(v any) string {
 	case float64:
 
 		return strconv.FormatFloat(t, 'g', -1, 64)
-// case float32:
+		// case float32:
 
 		return strconv.FormatFloat(float64(t), 'g', -1, 64)
-// case int:
+		// case int:
 
 		return strconv.Itoa(t)
-// case int64:
+		// case int64:
 
 		return strconv.FormatInt(t, 10)
-// case uint64:
+		// case uint64:
 
 		return strconv.FormatUint(t, 10)
-default:
+	default:
 
 		b, err := json.Marshal(t)
-if err != nil {
+		if err != nil {
 
 			return ""
 

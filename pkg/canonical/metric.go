@@ -24,15 +24,15 @@ import (
 //
 // Hashing:
 // - CanonicalBytes()
-// returns deterministic JSON bytes.
+// produces deterministic JSON bytes.
 // - ComputeHash()
 // sets Hash as SHA-256 over canonical bytes.
 //
 // Partitioning:
 // - PartitionKey: "<tenant>/<name>/<yyyy-mm-dd>"
 
-// type MetricName string
-// type MetricType string
+type MetricName string
+type MetricType string
 
 const (
 	MetricGauge     MetricType = "gauge"
@@ -372,7 +372,7 @@ func (m *Metric) ComputeHash() error {
 	}
 	sum := sha256.Sum256(b)
 	m.Hash = hex.EncodeToString(sum[:])
-	// return nil
+	return nil
 }
 
 // VerifyHash recomputes hash and compares.

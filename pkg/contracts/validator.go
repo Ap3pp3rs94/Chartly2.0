@@ -125,7 +125,7 @@ func (v *Validator) Validate(ctx context.Context, schema *CompiledSchema, instan
 // ---- report helpers ----
 
 func (r *Report) add(opts VOptions, it Violation) bool {
-	// returns true if validation should stop (failfast or cap reached)
+	// indicates whether validation should stop (failfast or cap reached)
 	if len(r.Violations) >= opts.MaxIssues {
 		if len(r.Violations) == opts.MaxIssues {
 			r.Violations = append(r.Violations, Violation{

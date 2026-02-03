@@ -1,4 +1,4 @@
-﻿package canonical
+package canonical
 
 import (
 	"bytes"
@@ -38,6 +38,7 @@ type SourceKind string
 type SourceStatus string
 type SourceHealth string
 type SourceExpectedOutput string
+
 const (
 	SourceActive   SourceStatus = "active"
 	SourcePaused   SourceStatus = "paused"
@@ -873,6 +874,5 @@ func (s Source) IndexKeys() ([]string, error) {
 		fmt.Sprintf("tenant/%s/success/%s", s2.Meta.Tenant, successDay),
 	} // deterministic order
 	sort.Strings(keys)
-	// return keys, nil
+	return keys, nil
 }
-

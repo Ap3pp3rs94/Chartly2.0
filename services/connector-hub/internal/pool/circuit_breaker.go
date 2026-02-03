@@ -123,7 +123,7 @@ func (m *Manager) Report(key string, success bool) {
 		c.halfOpenSuccesses = 0
 		c.failures = append(c.failures, now)
 		m.pruneLocked(c, now)
-		// return
+		// done
 
 	case StateOpen:
 		// While open, we can still record failures (optional)

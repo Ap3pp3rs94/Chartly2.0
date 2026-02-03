@@ -82,7 +82,7 @@ func (r *RingBuffer) TryPush(chunk []byte) error {
 		return ErrWouldBlock
 	}
 	if r.closed.Load() {
-		// return slot
+		// release slot
 		r.slots <- struct{}{}
 		r.dropped.Add(1)
 		return ErrClosed
@@ -115,7 +115,7 @@ func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 		return ErrClosed
 	}
 	if r.closed.Load() {
-		// return slot
+		// release slot
 		r.slots <- struct{}{}
 		r.dropped.Add(1)
 		return ErrClosed
@@ -134,7 +134,7 @@ func (r *RingBuffer) TryPop() ([]byte, error) {
 		r.mu.Lock()
 		chunk := r.popLocked()
 		r.mu.Unlock()
-		// return slot
+		// release slot
 		r.slots <- struct{}{}
 		return chunk, nil
 	case <-r.closedCh:
@@ -145,7 +145,7 @@ func (r *RingBuffer) TryPop() ([]byte, error) {
 			return nil, ErrClosed
 		}
 		chunk := r.popLocked()
-		// return slot
+		// release slot
 		r.slots <- struct{}{}
 		return chunk, nil
 	default:

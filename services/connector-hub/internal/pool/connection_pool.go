@@ -306,7 +306,7 @@ func (p *Pool) makeRelease(it *pooled) ReleaseFunc {
 				return
 			}
 
-			// return to idle if possible; otherwise close
+			// move to idle if possible; otherwise close
 			select {
 			case p.ch <- it:
 				p.idle.Add(1)
