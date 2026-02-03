@@ -21,12 +21,12 @@ import (
 )
 var (
 	ErrModelExists = errors.New("model exists")
-ErrModelMissing = errors.New("model missing")
-ErrInvalidSpec = errors.New("invalid model spec")
-ErrInvalidConfig = errors.New("invalid model config")
-ErrRegistryClosed = errors.New("registry closed")
+	ErrModelMissing  = errors.New("model missing")
+	ErrInvalidSpec   = errors.New("invalid model spec")
+	ErrInvalidConfig = errors.New("invalid model config")
+	ErrRegistryClosed = errors.New("registry closed")
 )
-// type Task string
+type Task string
 
 const (
 	TaskAnomaly Task = "anomaly"
@@ -55,9 +55,8 @@ type ModelSpec struct {
 	Tags []string `json:"tags,omitempty"`
 
 	Defaults map[string]any `json:"defaults,omitempty"` // default config (merged under overrides)
-InputSchema map[string]any `json:"input_schema,omitempty"` // JSON-schema-like (subset)
-for cfg validation (optional)
-OutputSchema map[string]any `json:"output_schema,omitempty"`
+	InputSchema map[string]any `json:"input_schema,omitempty"` // JSON-schema-like (subset) for cfg validation (optional)
+	OutputSchema map[string]any `json:"output_schema,omitempty"`
 
 	Meta map[string]string `json:"meta,omitempty"`
 }
@@ -75,12 +74,13 @@ type Requirements struct {
 	RequireDeterministic *bool `json:"require_deterministic,omitempty"`
 }
 type Model interface {
-	Spec()
-ModelSpec
+	Spec() ModelSpec
 
 	Run(input any) (any, error)
 }
-type FactoryFn func(cfg map[string]any) (Model, error) type Registry struct {
+type FactoryFn func(cfg map[string]any) (Model, error)
+
+type Registry struct {
 	mu syncRW
 
 	closed bool
@@ -107,13 +107,13 @@ func NewRegistry() *Registry {
 func (r *Registry) Close() {
 
 	r.mu.Lock()
-defer r.mu.Unlock()
-r.closed = true
+	defer r.mu.Unlock()
+	r.closed = true
 }
 func (r *Registry) Register(spec ModelSpec, factory FactoryFn) error {
 
 	spec = normalizeSpec(spec)
-if err := validateSpec(spec); err != nil {
+	if err := validateSpec(spec); err != nil {
 
 		return err
 
@@ -124,8 +124,8 @@ if err := validateSpec(spec); err != nil {
 
 	}
 	r.mu.Lock()
-defer r.mu.Unlock()
-if r.closed {
+	defer r.mu.Unlock()
+	if r.closed {
 
 		return ErrRegistryClosed
 
@@ -136,7 +136,7 @@ if r.closed {
 
 	}
 	k := modelKey(spec.ID, spec.Version)
-if _, exists := r.entries[spec.Task][k]; exists {
+	if _, exists := r.entries[spec.Task][k]; exists {
 
 		return ErrModelExists
 
@@ -147,17 +147,17 @@ if _, exists := r.entries[spec.Task][k]; exists {
 func (r *Registry) Alias(task Task, alias string, id string, version string) error {
 
 	task = Task(strings.TrimSpace(string(task)))
-alias = strings.TrimSpace(alias)
-id = strings.TrimSpace(id)
-version = normalizeVersion(version)
-if task == "" || alias == "" || id == "" {
+	alias = strings.TrimSpace(alias)
+	id = strings.TrimSpace(id)
+	version = normalizeVersion(version)
+	if task == "" || alias == "" || id == "" {
 
 		return fmt.Errorf("%w: empty task/alias/id", ErrInvalidSpec)
 
 	}
 	r.mu.Lock()
-defer r.mu.Unlock()
-if r.closed {
+	defer r.mu.Unlock()
+	if r.closed {
 
 		return ErrRegistryClosed
 
@@ -166,7 +166,7 @@ if r.closed {
 	// Must point to an existing model
 
 	k := modelKey(id, version)
-if _, ok := r.entries[task]; !ok {
+	if _, ok := r.entries[task]; !ok {
 
 		return ErrModelMissing
 
@@ -188,17 +188,17 @@ if _, ok := r.entries[task]; !ok {
 func (r *Registry) Get(task Task, id string, version string) (ModelSpec, FactoryFn, bool) {
 
 	task = Task(strings.TrimSpace(string(task)))
-id = strings.TrimSpace(id)
-version = normalizeVersion(version)
-if task == "" || id == "" {
+	id = strings.TrimSpace(id)
+	version = normalizeVersion(version)
+	if task == "" || id == "" {
 
 		return ModelSpec{}, nil, false
 
 	}
 	r.mu.RLock()
-defer r.mu.RUnlock()
-k := modelKey(id, version)
-m, ok := r.entries[task]
+	defer r.mu.RUnlock()
+	k := modelKey(id, version)
+	m, ok := r.entries[task]
 
 	if !ok {
 
@@ -217,14 +217,14 @@ m, ok := r.entries[task]
 func (r *Registry) Resolve(task Task, ref string) (ModelSpec, FactoryFn, bool) {
 
 	task = Task(strings.TrimSpace(string(task)))
-ref = strings.TrimSpace(ref)
-if task == "" || ref == "" {
+	ref = strings.TrimSpace(ref)
+	if task == "" || ref == "" {
 
 		return ModelSpec{}, nil, false
 
 	}
 	r.mu.RLock()
-defer r.mu.RUnlock()
+	defer r.mu.RUnlock()
 
 	// 1)
 // alias
@@ -251,9 +251,9 @@ defer r.mu.RUnlock()
 // id@version
 
 	id, ver, hasAt := strings.Cut(ref, "@")
-id = strings.TrimSpace(id)
-ver = normalizeVersion(ver)
-if id == "" {
+	id = strings.TrimSpace(id)
+	ver = normalizeVersion(ver)
+	if id == "" {
 
 		return ModelSpec{}, nil, false
 
@@ -263,7 +263,7 @@ if id == "" {
 		if hasAt {
 
 			k := modelKey(id, ver)
-if e, ok := em[k]; ok {
+			if e, ok := em[k]; ok {
 
 				return e.spec, e.factory, true
 
@@ -272,9 +272,8 @@ if e, ok := em[k]; ok {
 
 		}
 
-		// 3)
-if only id provided, pick highest-precedence version (Priority desc, Version desc)
-bestKey := ""
+		// 3) if only id provided, pick highest-precedence version (Priority desc, Version desc)
+		bestKey := ""
 
 		var best entry
 
@@ -323,14 +322,14 @@ bestKey := ""
 func (r *Registry) List(task Task) []ModelSpec {
 
 	task = Task(strings.TrimSpace(string(task)))
-if task == "" {
+	if task == "" {
 
 		return nil
 
 	}
 	r.mu.RLock()
-defer r.mu.RUnlock()
-em, ok := r.entries[task]
+	defer r.mu.RUnlock()
+	em, ok := r.entries[task]
 
 	if !ok || len(em) == 0 {
 
@@ -338,7 +337,7 @@ em, ok := r.entries[task]
 
 	}
 	out := make([]ModelSpec, 0, len(em))
-for _, e := range em {
+	for _, e := range em {
 
 		out = append(out, e.spec)
 
@@ -363,11 +362,11 @@ for _, e := range em {
 		// version desc
 
 		vi, oki := ParseSemVer(ai.Version)
-vj, okj := ParseSemVer(aj.Version)
-if oki && okj {
+		vj, okj := ParseSemVer(aj.Version)
+		if oki && okj {
 
 			c := CompareSemVer(vi, vj)
-if c != 0 {
+			if c != 0 {
 
 				return c > 0
 
@@ -387,19 +386,19 @@ if c != 0 {
 		return false
 
 	})
-// return out
+	return out
 }
 func (r *Registry) Select(req Requirements) (ModelSpec, FactoryFn, error) {
 
 	req = normalizeReq(req)
-if req.Task == "" {
+	if req.Task == "" {
 
 		return ModelSpec{}, nil, fmt.Errorf("%w: task required", ErrInvalidConfig)
 
 	}
 	r.mu.RLock()
-defer r.mu.RUnlock()
-em, ok := r.entries[req.Task]
+	defer r.mu.RUnlock()
+	em, ok := r.entries[req.Task]
 
 	if !ok || len(em) == 0 {
 
@@ -453,7 +452,7 @@ em, ok := r.entries[req.Task]
 		detOK bool
 	}
 	cands := make([]candidate, 0, len(em))
-for k, e := range em {
+	for k, e := range em {
 
 		if !tagsContainAll(e.spec.Tags, req.MustTags) {
 
@@ -467,10 +466,10 @@ for k, e := range em {
 		}
 
 		// Version constraints (only if spec version parseable and constraints present)
-if hasMin || hasMax {
+		if hasMin || hasMax {
 
 			v, ok := ParseSemVer(e.spec.Version)
-if !ok {
+			if !ok {
 
 				continue
 
@@ -490,7 +489,7 @@ if !ok {
 		score := e.spec.Priority
 
 		// PreferTags: +10 per match (deterministic)
-for _, t := range req.PreferTags {
+		for _, t := range req.PreferTags {
 
 			if hasTag(e.spec.Tags, t) {
 
@@ -520,7 +519,7 @@ for _, t := range req.PreferTags {
 		}
 
 		// Stable tie-break by spec precedence (priority already in score; use version desc, then id, then key)
-si := ai.entry.spec
+		si := ai.entry.spec
 
 		sj := aj.entry.spec
 
@@ -530,11 +529,11 @@ si := ai.entry.spec
 
 		}
 		vi, oki := ParseSemVer(si.Version)
-vj, okj := ParseSemVer(sj.Version)
-if oki && okj {
+		vj, okj := ParseSemVer(sj.Version)
+		if oki && okj {
 
 			c := CompareSemVer(vi, vj)
-if c != 0 {
+			if c != 0 {
 
 				return c > 0
 
@@ -552,7 +551,7 @@ if c != 0 {
 		return ai.key < aj.key
 
 	})
-best := cands[0].entry
+	best := cands[0].entry
 
 	return best.spec, best.factory, nil
 }
@@ -562,14 +561,14 @@ best := cands[0].entry
 func (r *Registry) New(task Task, ref string, cfg map[string]any) (Model, error) {
 
 	task = Task(strings.TrimSpace(string(task)))
-ref = strings.TrimSpace(ref)
-if task == "" || ref == "" {
+	ref = strings.TrimSpace(ref)
+	if task == "" || ref == "" {
 
 		return nil, fmt.Errorf("%w: task/ref required", ErrInvalidConfig)
 
 	}
 	spec, factory, ok := r.Resolve(task, ref)
-if !ok {
+	if !ok {
 
 		return nil, ErrModelMissing
 
@@ -580,7 +579,7 @@ if !ok {
 
 	}
 	merged := DeepMerge(cloneMap(spec.Defaults), cfg)
-if spec.InputSchema != nil && len(spec.InputSchema) > 0 {
+	if spec.InputSchema != nil && len(spec.InputSchema) > 0 {
 
 		if err := ValidateConfigAgainstSchema(spec.InputSchema, merged); err != nil {
 
@@ -590,7 +589,7 @@ if spec.InputSchema != nil && len(spec.InputSchema) > 0 {
 
 	}
 	m, err := factory(merged)
-if err != nil {
+	if err != nil {
 
 		return nil, fmt.Errorf("%w: %v", ErrInvalidConfig, err)
 
@@ -610,21 +609,21 @@ if err != nil {
 func normalizeSpec(s ModelSpec) ModelSpec {
 
 	s.ID = strings.TrimSpace(s.ID)
-s.Version = normalizeVersion(s.Version)
-s.Task = Task(strings.TrimSpace(string(s.Task)))
-s.Title = strings.TrimSpace(s.Title)
-s.Description = strings.TrimSpace(s.Description)
+	s.Version = normalizeVersion(s.Version)
+	s.Task = Task(strings.TrimSpace(string(s.Task)))
+	s.Title = strings.TrimSpace(s.Title)
+	s.Description = strings.TrimSpace(s.Description)
 
 	// Tags: trim, lowercase, unique, stable sort
 
 	if len(s.Tags) > 0 {
 
 		set := make(map[string]struct{}, len(s.Tags))
-tags := make([]string, 0, len(s.Tags))
-for _, t := range s.Tags {
+		tags := make([]string, 0, len(s.Tags))
+		for _, t := range s.Tags {
 
 			t = strings.ToLower(strings.TrimSpace(t))
-if t == "" {
+			if t == "" {
 
 				continue
 
@@ -639,7 +638,7 @@ if t == "" {
 
 		}
 		sort.Strings(tags)
-s.Tags = tags
+		s.Tags = tags
 
 	}
 
@@ -648,11 +647,11 @@ s.Tags = tags
 	if s.Meta != nil {
 
 		out := make(map[string]string, len(s.Meta))
-keys := make([]string, 0, len(s.Meta))
-for k := range s.Meta {
+		keys := make([]string, 0, len(s.Meta))
+		for k := range s.Meta {
 
 			k2 := strings.TrimSpace(k)
-if k2 == "" {
+			if k2 == "" {
 
 				continue
 
@@ -661,10 +660,10 @@ if k2 == "" {
 
 		}
 		sort.Strings(keys)
-for _, k := range keys {
+		for _, k := range keys {
 
 			v := strings.TrimSpace(s.Meta[k])
-out[k] = v
+			out[k] = v
 
 		}
 		if len(out) == 0 {
@@ -684,7 +683,7 @@ out[k] = v
 	if s.Defaults != nil {
 
 		s.Defaults = normalizeMapKeys(s.Defaults)
-if len(s.Defaults) == 0 {
+		if len(s.Defaults) == 0 {
 
 			s.Defaults = nil
 
@@ -697,7 +696,7 @@ if len(s.Defaults) == 0 {
 	if s.InputSchema != nil {
 
 		s.InputSchema = normalizeMapKeys(s.InputSchema)
-if len(s.InputSchema) == 0 {
+		if len(s.InputSchema) == 0 {
 
 			s.InputSchema = nil
 
@@ -707,7 +706,7 @@ if len(s.InputSchema) == 0 {
 	if s.OutputSchema != nil {
 
 		s.OutputSchema = normalizeMapKeys(s.OutputSchema)
-if len(s.OutputSchema) == 0 {
+		if len(s.OutputSchema) == 0 {
 
 			s.OutputSchema = nil
 
@@ -750,11 +749,11 @@ func validateSpec(s ModelSpec) error {
 func normalizeReq(r Requirements) Requirements {
 
 	r.Task = Task(strings.TrimSpace(string(r.Task)))
-r.MinVersion = normalizeVersion(r.MinVersion)
-r.MaxVersion = normalizeVersion(r.MaxVersion)
-r.MustTags = normalizeTags(r.MustTags)
-r.PreferTags = normalizeTags(r.PreferTags)
-// return r
+	r.MinVersion = normalizeVersion(r.MinVersion)
+	r.MaxVersion = normalizeVersion(r.MaxVersion)
+	r.MustTags = normalizeTags(r.MustTags)
+	r.PreferTags = normalizeTags(r.PreferTags)
+	return r
 }
 func normalizeTags(tags []string) []string {
 
@@ -764,11 +763,11 @@ func normalizeTags(tags []string) []string {
 
 	}
 	set := make(map[string]struct{}, len(tags))
-out := make([]string, 0, len(tags))
-for _, t := range tags {
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
 
 		t = strings.ToLower(strings.TrimSpace(t))
-if t == "" {
+		if t == "" {
 
 			continue
 
@@ -783,7 +782,7 @@ if t == "" {
 
 	}
 	sort.Strings(out)
-if len(out) == 0 {
+	if len(out) == 0 {
 
 		return nil
 
@@ -793,7 +792,7 @@ if len(out) == 0 {
 func normalizeVersion(v string) string {
 
 	v = strings.TrimSpace(v)
-if v == "" {
+	if v == "" {
 
 		return ""
 
@@ -811,8 +810,8 @@ if v == "" {
 func modelKey(id, version string) string {
 
 	id = strings.TrimSpace(id)
-version = normalizeVersion(version)
-if version == "" {
+	version = normalizeVersion(version)
+	if version == "" {
 
 		version = "0"
 
@@ -822,7 +821,7 @@ if version == "" {
 func hasTag(tags []string, t string) bool {
 
 	t = strings.ToLower(strings.TrimSpace(t))
-if t == "" {
+	if t == "" {
 
 		return false
 
@@ -850,7 +849,7 @@ func tagsContainAll(have []string, must []string) bool {
 	}
 	for _, t := range must {
 
-		if !hasTag(have, t) {
+	if !hasTag(have, t) {
 
 			return false
 
@@ -862,17 +861,17 @@ func tagsContainAll(have []string, must []string) bool {
 func betterEntry(a, b entry) bool {
 
 	// true if a has higher precedence than b (Priority desc, Version desc)
-if a.spec.Priority != b.spec.Priority {
+	if a.spec.Priority != b.spec.Priority {
 
 		return a.spec.Priority > b.spec.Priority
 
 	}
 	av, aok := ParseSemVer(a.spec.Version)
-bv, bok := ParseSemVer(b.spec.Version)
-if aok && bok {
+	bv, bok := ParseSemVer(b.spec.Version)
+	if aok && bok {
 
 		c := CompareSemVer(av, bv)
-if c != 0 {
+		if c != 0 {
 
 			return c > 0
 
@@ -904,7 +903,7 @@ func equalEntry(a, b entry) bool {
 func DeterministicInstanceID(spec ModelSpec, cfg map[string]any) (string, error) {
 
 	spec = normalizeSpec(spec)
-payload := map[string]any{
+	payload := map[string]any{
 
 		"id": spec.ID,
 
@@ -915,13 +914,13 @@ payload := map[string]any{
 		"cfg": normalizeMapKeys(cfg),
 	}
 	b, err := json.Marshal(payload)
-if err != nil {
+	if err != nil {
 
 		return "", fmt.Errorf("%w: cfg not json-marshalable", ErrInvalidConfig)
 
 	}
 	sum := sha256.Sum256(b)
-return "mdl_" + hex.EncodeToString(sum[:12]), nil
+	return "mdl_" + hex.EncodeToString(sum[:12]), nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -938,10 +937,10 @@ func DeepMerge(base map[string]any, overrides map[string]any) map[string]any {
 
 	}
 	out := cloneMap(base)
-for k, v := range overrides {
+	for k, v := range overrides {
 
 		k2 := strings.TrimSpace(k)
-if k2 == "" {
+		if k2 == "" {
 
 			continue
 
@@ -949,11 +948,11 @@ if k2 == "" {
 		if bv, ok := out[k2]; ok {
 
 			mb, okb := bv.(map[string]any)
-mv, okv := v.(map[string]any)
-if okb && okv {
+			mv, okv := v.(map[string]any)
+			if okb && okv {
 
 				out[k2] = DeepMerge(mb, mv)
-// continue
+				continue
 
 			}
 
@@ -976,10 +975,10 @@ func cloneMap(m map[string]any) map[string]any {
 
 	}
 	out := make(map[string]any, len(m))
-for k, v := range m {
+	for k, v := range m {
 
 		k2 := strings.TrimSpace(k)
-if k2 == "" {
+		if k2 == "" {
 
 			continue
 
@@ -1002,10 +1001,10 @@ func normalizeMapKeys(m map[string]any) map[string]any {
 
 	}
 	out := make(map[string]any, len(m))
-for k, v := range m {
+	for k, v := range m {
 
 		k2 := strings.TrimSpace(k)
-if k2 == "" {
+		if k2 == "" {
 
 			continue
 
@@ -1013,13 +1012,10 @@ if k2 == "" {
 		switch vv := v.(type) {
 
 		case map[string]any:
-
 			out[k2] = normalizeMapKeys(vv)
-case []any:
-
+		case []any:
 			out[k2] = normalizeSlice(vv)
-default:
-
+		default:
 			out[k2] = v
 
 		}
@@ -1040,18 +1036,15 @@ func normalizeSlice(s []any) []any {
 
 	}
 	out := make([]any, len(s))
-for i := range s {
+	for i := range s {
 
 		switch vv := s[i].(type) {
 
 		case map[string]any:
-
 			out[i] = normalizeMapKeys(vv)
-case []any:
-
+		case []any:
 			out[i] = normalizeSlice(vv)
-default:
-
+		default:
 			out[i] = s[i]
 
 		}
@@ -1078,7 +1071,7 @@ Valid bool
 func ParseSemVer(s string) (SemVer, bool) {
 
 	s = normalizeVersion(s)
-if strings.TrimSpace(s) == "" {
+	if strings.TrimSpace(s) == "" {
 
 		return SemVer{}, false
 
@@ -1101,7 +1094,7 @@ if strings.TrimSpace(s) == "" {
 
 	}
 	parts := strings.Split(s, ".")
-parsePart := func(i int) (int, bool) {
+	parsePart := func(i int) (int, bool) {
 
 		if i >= len(parts) {
 
@@ -1109,13 +1102,13 @@ parsePart := func(i int) (int, bool) {
 
 		}
 		p := strings.TrimSpace(parts[i])
-if p == "" {
+		if p == "" {
 
 			return 0, false
 
 		}
 		n, err := strconv.Atoi(p)
-if err != nil || n < 0 {
+		if err != nil || n < 0 {
 
 			return 0, false
 
@@ -1124,19 +1117,19 @@ if err != nil || n < 0 {
 
 	}
 	maj, ok := parsePart(0)
-if !ok {
+	if !ok {
 
 		return SemVer{}, false
 
 	}
 	min, ok := parsePart(1)
-if !ok {
+	if !ok {
 
 		return SemVer{}, false
 
 	}
 	pat, ok := parsePart(2)
-if !ok {
+	if !ok {
 
 		return SemVer{}, false
 
@@ -1248,8 +1241,8 @@ func ValidateConfigAgainstSchema(schema map[string]any, cfg map[string]any) erro
 	}
 
 	// Top-level type must be object (if specified)
-typ, _ := schema["type"].(string)
-if typ != "" && typ != "object" {
+	typ, _ := schema["type"].(string)
+	if typ != "" && typ != "object" {
 
 		// For config validation we expect object schema
 
@@ -1271,13 +1264,13 @@ if typ != "" && typ != "object" {
 			for _, it := range reqList {
 
 				k, ok := it.(string)
-if !ok {
+				if !ok {
 
 					continue
 
 				}
 				k = strings.TrimSpace(k)
-if k == "" {
+				if k == "" {
 
 					continue
 
@@ -1295,7 +1288,7 @@ if k == "" {
 			for _, k := range reqList {
 
 				k = strings.TrimSpace(k)
-if k == "" {
+				if k == "" {
 
 					continue
 
@@ -1341,7 +1334,7 @@ addl := true
 	for k, ps := range props {
 
 		pm, ok := ps.(map[string]any)
-if !ok {
+		if !ok {
 
 			continue
 
@@ -1362,7 +1355,7 @@ if !ok {
 	}
 
 	// Ensure cfg is JSON-marshalable (deterministic check)
-if _, err := json.Marshal(cfg); err != nil {
+	if _, err := json.Marshal(cfg); err != nil {
 
 		return fmt.Errorf("%w: cfg not json-marshalable", ErrInvalidConfig)
 
@@ -1372,7 +1365,7 @@ if _, err := json.Marshal(cfg); err != nil {
 func validateValueAgainstSchema(schema map[string]any, v any, path string) error {
 
 	typ, _ := schema["type"].(string)
-typ = strings.TrimSpace(typ)
+	typ = strings.TrimSpace(typ)
 
 	// enum
 
@@ -1413,7 +1406,7 @@ typ = strings.TrimSpace(typ)
 	case "string":
 
 		s, ok := v.(string)
-if !ok {
+		if !ok {
 
 			return fmt.Errorf("%w: %s must be string", ErrInvalidConfig, path)
 
@@ -1463,24 +1456,24 @@ if !ok {
 	case "object":
 
 		m, ok := v.(map[string]any)
-if !ok {
+		if !ok {
 
 			return fmt.Errorf("%w: %s must be object", ErrInvalidConfig, path)
 
 		}
 
 		// recurse (subset)
-return ValidateConfigAgainstSchema(schema, m)
-case "array":
+		return ValidateConfigAgainstSchema(schema, m)
+	case "array":
 
 		arr, ok := v.([]any)
-if !ok {
+		if !ok {
 
 			return fmt.Errorf("%w: %s must be array", ErrInvalidConfig, path)
 
 		}
 		itm, _ := schema["items"].(map[string]any)
-if itm != nil {
+		if itm != nil {
 
 			for i := range arr {
 
@@ -1531,12 +1524,12 @@ func equalsJSONScalar(a, b any) bool {
 	case string:
 
 		y, ok := b.(string)
-return ok && x == y
+		return ok && x == y
 
 	case bool:
 
 		y, ok := b.(bool)
-return ok && x == y
+		return ok && x == y
 
 	case float64:
 
@@ -1551,13 +1544,13 @@ return ok && x == y
 		case int:
 
 			return x == float64(y)
-// case int64:
+		case int64:
 
 			return x == float64(y)
-// case uint64:
+		case uint64:
 
 			return x == float64(y)
-default:
+		default:
 
 			return false
 
@@ -1651,13 +1644,13 @@ func (s *syncRW) init() {
 	if s.mu == nil {
 
 		s.mu = make(chan struct{}, 1)
-s.mu <- struct{}{}
+		s.mu <- struct{}{}
 
 	}
 	if s.rmu == nil {
 
 		s.rmu = make(chan struct{}, 1)
-s.rmu <- struct{}{}
+		s.rmu <- struct{}{}
 
 	}
 }
@@ -1670,7 +1663,7 @@ func (s *syncRW) Lock() {
 func (s *syncRW) Unlock() {
 
 	s.init()
-s.mu <- struct{}{}
+	s.mu <- struct{}{}
 }
 func (s *syncRW) RLock() {
 

@@ -31,11 +31,13 @@ import (
 	"sort"
 	"strings"
 )
+
 var (
 	ErrInvalidPayload = errors.New("invalid payload")
-ErrDecode = errors.New("decode failed")
-ErrIngest = errors.New("ingest failed")
+	ErrDecode         = errors.New("decode failed")
+	ErrIngest         = errors.New("ingest failed")
 )
+
 type IngestPayload struct {
 	Meta ChunkMeta `json:"meta"`
 
@@ -73,7 +75,7 @@ type Ingestor struct {
 func NewIngestor(opts IngestOptions) *Ingestor {
 
 	o := normalizeIngestOptions(opts)
-return &Ingestor{
+	return &Ingestor{
 
 		opts: o,
 
@@ -105,7 +107,7 @@ func (i *Ingestor) Ingest(ctx context.Context, r io.Reader, sink Sink, objectKey
 
 	}
 	payload, warns, err := decodePayload(r, i.opts)
-if err != nil {
+	if err != nil {
 
 		return ChunkRef{}, warns, err
 
@@ -125,14 +127,14 @@ func (i *Ingestor) IngestPayload(ctx context.Context, payload IngestPayload, sin
 	// Normalize meta and series deterministically
 
 	payload.Meta = normalizeChunkMeta(payload.Meta)
-payload.Series = normalizeSeriesSets(payload.Series)
+	payload.Series = normalizeSeriesSets(payload.Series)
 
 	// Validate that series tenant/namespace match meta early (deterministic).
 
 	for _, s := range payload.Series {
 
 		k := normalizeSeriesKey(s.Key)
-if k.TenantID != payload.Meta.TenantID {
+		if k.TenantID != payload.Meta.TenantID {
 
 			return ChunkRef{}, warnings, fmt.Errorf("%w: series tenant mismatch", ErrInvalidPayload)
 
@@ -150,7 +152,7 @@ if k.TenantID != payload.Meta.TenantID {
 	// Writer is concurrency-safe, but we reset to avoid mixing chunks.
 
 	i.writer.Reset()
-for _, s := range payload.Series {
+	for _, s := range payload.Series {
 
 		if err := i.writer.AddSeriesPoints(s.Key, s.Points); err != nil {
 
@@ -163,7 +165,7 @@ for _, s := range payload.Series {
 	// Flush chunk
 
 	ref, err := i.writer.Flush(ctx, sink, payload.Meta, objectKeyPrefix)
-if err != nil {
+	if err != nil {
 
 		return ChunkRef{}, warnings, err
 
@@ -172,7 +174,7 @@ if err != nil {
 	// Ensure warnings are deterministic order
 
 	sort.Strings(warnings)
-// return ref, warnings, nil
+	return ref, warnings, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -193,7 +195,7 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 
 	// Detect gzip by magic header without consuming stream.
 	hdr, _ := br.Peek(2)
-useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
+	useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
 
 	var reader io.Reader = br
 	var gz *gzip.Reader
@@ -201,20 +203,20 @@ useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
 
 	if useGzip {
 		gz, err = gzip.NewReader(br)
-if err != nil {
+		if err != nil {
 			return IngestPayload{}, warnings, fmt.Errorf("%w: gzip decode failed", ErrDecode)
 		}
 		defer gz.Close()
-reader = gz
+		reader = gz
 		warnings = append(warnings, "payload_gzip_decoded")
 	}
 
 	// Limit decompressed bytes too.
 	dlr := &io.LimitedReader{R: reader, N: max + 1}
 	hasher := sha256.New()
-tee := io.TeeReader(dlr, hasher)
-dec := json.NewDecoder(tee)
-if opts.DisallowUnknownFields {
+	tee := io.TeeReader(dlr, hasher)
+	dec := json.NewDecoder(tee)
+	if opts.DisallowUnknownFields {
 		dec.DisallowUnknownFields()
 	}
 	var payload IngestPayload
@@ -226,7 +228,7 @@ if opts.DisallowUnknownFields {
 	}
 
 	// Ensure there is no trailing junk
-	// var extra any
+	var extra any
 	if err := dec.Decode(&extra); err == nil {
 		return IngestPayload{}, warnings, fmt.Errorf("%w: trailing data", ErrDecode)
 	} else if err != io.EOF {
@@ -240,7 +242,7 @@ if opts.DisallowUnknownFields {
 
 	// Attach payload checksum to meta for traceability (deterministic).
 	sum := hex.EncodeToString(hasher.Sum(nil))
-if payload.Meta.Meta == nil {
+	if payload.Meta.Meta == nil {
 		payload.Meta.Meta = make(map[string]string)
 	}
 	payload.Meta.Meta["ingest.payload_sha256"] = sum
@@ -304,23 +306,22 @@ func normalizeIngestOptions(o IngestOptions) IngestOptions {
 func normalizeSeriesSets(ss []SeriesSet) []SeriesSet {
 
 	out := make([]SeriesSet, 0, len(ss))
-for _, s := range ss {
+	for _, s := range ss {
 
 		s.Key = normalizeSeriesKey(s.Key)
 
-		// Normalize points (TS/Meta trims)
-but do not sort here; Writer sorts
+		// Normalize points (TS/Meta trims), but do not sort here; Writer sorts.
 
 		if s.Points != nil {
 
 			pts := make([]Point, len(s.Points))
-for i := range s.Points {
+			for i := range s.Points {
 
 				p := s.Points[i]
 
 				p.TS = normalizeString(p.TS)
-p.Meta = normalizeStringMap(p.Meta)
-pts[i] = p
+				p.Meta = normalizeStringMap(p.Meta)
+				pts[i] = p
 
 			}
 			s.Points = pts
@@ -337,5 +338,5 @@ pts[i] = p
 		return seriesKeyString(out[i].Key) < seriesKeyString(out[j].Key)
 
 	})
-// return out
+	return out
 }
