@@ -189,7 +189,7 @@ templates:
     constraints:
       expects_x: "numeric"
       expects_y: "numeric"
-      notes: "Useful for pairwise metric comparison; trendline is FUTURE (not implemented)."
+      notes: "Useful for pairwise metric comparison; trendline is FUTURE (feature unavailable)."
     example_input:
       series:
         - name: "events"
@@ -219,7 +219,7 @@ templates:
         series_overlay_name: "anomalies"
     constraints:
       expects_x: "numeric values (raw) OR pre-bucketed points, depending on consumer"
-      notes: "Bucket strategy is FUTURE (not implemented in analytics service yet)."
+      notes: "Bucket strategy is FUTURE (feature unavailable in analytics service yet)."
     example_input:
       series:
         - name: "latency_ms"

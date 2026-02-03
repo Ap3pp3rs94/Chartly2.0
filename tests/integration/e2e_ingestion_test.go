@@ -138,7 +138,7 @@ func TestE2E_Ingestion(t *testing.T) {
 		code, body := doReq(t, client, req)
 		if code < 200 || code > 299 {
 			t.Fatalf(
-				"POST %s expected 2xx, got %d. body:\n%s\n\nHint: set CHARTLY_INGEST_PATH to the correct endpoint if /v1/events is not implemented.",
+				"POST %s expected 2xx, got %d. body:\n%s\n\nHint: set CHARTLY_INGEST_PATH to the correct endpoint if /v1/events is unavailable in this build.",
 				url, code, body,
 			)
 		}

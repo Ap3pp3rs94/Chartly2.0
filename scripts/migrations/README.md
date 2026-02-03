@@ -31,7 +31,7 @@ A tiny Postgres migration system for Chartly 2.0.
 # show status
 .\scripts\migrations\status.ps1
 
-# create new migration stub
+# create new migration template
 .\scripts\migrations\new_migration.ps1 -Name "create_events_table"
 
 # rollback last migration (if possible)

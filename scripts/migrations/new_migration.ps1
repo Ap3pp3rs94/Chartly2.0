@@ -1,5 +1,5 @@
 <##>
-# Create a new migration stub
+# Create a new migration template
 # Usage: .\scripts\migrations\new_migration.ps1 -Name "create_table"
 <##>
 
