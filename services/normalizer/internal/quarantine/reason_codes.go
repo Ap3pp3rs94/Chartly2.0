@@ -2,11 +2,10 @@ package quarantine
 
 import (
 	"sort"
-
 	"strings"
 )
 
-// type Code string
+type Code string
 
 const (
 	PIIEmail Code = "PII_EMAIL"
@@ -150,5 +149,5 @@ func Classify(reason Reason, details map[string]string) []Code {
 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	// return out
+	return out
 }

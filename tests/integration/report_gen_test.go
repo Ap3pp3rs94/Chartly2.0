@@ -71,8 +71,7 @@ func extractJobID(body string) string {
 	if b == "" {
 		return ""
 
-	} // Try JSON first: {"job_id":"..."}
-	or{"jobId": "..."}
+	} // Try JSON first: {"job_id":"..."} or {"jobId":"..."}
 	var m map[string]any
 	if json.Unmarshal([]byte(b), &m) == nil {
 		if v, ok := m["job_id"]; ok {

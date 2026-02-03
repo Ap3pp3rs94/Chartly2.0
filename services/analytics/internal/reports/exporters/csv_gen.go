@@ -518,7 +518,7 @@ func normalizeNewlines(s string) string {
 	// remove NULs deterministically
 
 	s = strings.ReplaceAll(s, "\x00", "")
-	// return s
+	return s
 }
 func csvSortedKeys(m map[string]string) []string {
 
@@ -535,7 +535,7 @@ func csvSortedKeys(m map[string]string) []string {
 
 	}
 	sort.Strings(keys)
-	// return keys
+	return keys
 }
 func csvStringifyCell(v any) string {
 
@@ -562,26 +562,19 @@ func csvStringifyCell(v any) string {
 	case float64:
 
 		return strconv.FormatFloat(t, 'g', -1, 64)
-		// case float32:
-
+	case float32:
 		return strconv.FormatFloat(float64(t), 'g', -1, 64)
-		// case int:
-
+	case int:
 		return strconv.Itoa(t)
-		// case int64:
-
+	case int64:
 		return strconv.FormatInt(t, 10)
-		// case int32:
-
+	case int32:
 		return strconv.FormatInt(int64(t), 10)
-		// case uint:
-
+	case uint:
 		return strconv.FormatUint(uint64(t), 10)
-		// case uint64:
-
+	case uint64:
 		return strconv.FormatUint(t, 10)
-		// case uint32:
-
+	case uint32:
 		return strconv.FormatUint(uint64(t), 10)
 	default:
 

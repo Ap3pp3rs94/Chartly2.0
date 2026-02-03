@@ -8,7 +8,7 @@ import (
 
 // Code is a stable error code shared across all Chartly services.
 // Once published, codes should be treated as API-stable.
-// type Code string
+type Code string
 
 // CodeMeta provides metadata useful for HTTP mapping, retry decisions, and documentation.
 type CodeMeta struct {
@@ -163,7 +163,7 @@ func List() []Code {
 
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	// return out
+	return out
 }
 
 // ExportJSON returns stable JSON of all codes + meta.

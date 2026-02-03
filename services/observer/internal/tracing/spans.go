@@ -50,12 +50,12 @@ func NewSpanBuilder(traceID, spanID, op string) *SpanBuilder {
 }
 func (b *SpanBuilder) Parent(parentSpanID string) *SpanBuilder {
 	b.parentSpanID = normCollapse(parentSpanID)
-	// return b
+	return b
 }
 func (b *SpanBuilder) TimeWindow(start, end string) *SpanBuilder {
 	b.start = normCollapse(start)
 	b.end = normCollapse(end)
-	// return b
+	return b
 }
 func (b *SpanBuilder) Tag(k, v string) *SpanBuilder {
 	k = normCollapse(k)
@@ -66,7 +66,7 @@ func (b *SpanBuilder) Tag(k, v string) *SpanBuilder {
 		b.tags = make(map[string]string)
 	}
 	b.tags[k] = normCollapse(v)
-	// return b
+	return b
 }
 func (b *SpanBuilder) Log(ts string, fields map[string]string) *SpanBuilder {
 	lr := LogRecord{
@@ -74,7 +74,7 @@ func (b *SpanBuilder) Log(ts string, fields map[string]string) *SpanBuilder {
 		Fields: normalizeStringMap(fields),
 	}
 	b.logs = append(b.logs, lr)
-	// return b
+	return b
 }
 func (b *SpanBuilder) Build() (Span, error) {
 	if b == nil {
@@ -142,7 +142,7 @@ func NormalizeTrace(t Trace) (Trace, error) {
 		}
 		return out.Spans[i].SpanID < out.Spans[j].SpanID
 	})
-	// return out, nil
+	return out, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -182,7 +182,7 @@ func normalizeSpan(sp Span, traceID string) (Span, error) {
 	}
 	s.Start = st.UTC().Format(time.RFC3339Nano)
 	s.End = et.UTC().Format(time.RFC3339Nano)
-	// return s, nil
+	return s, nil
 }
 func normalizeLogs(in []LogRecord) []LogRecord {
 	if len(in) == 0 {
@@ -214,7 +214,7 @@ func normalizeLogs(in []LogRecord) []LogRecord {
 		}
 		return canonicalFields(out[i].Fields) < canonicalFields(out[j].Fields)
 	})
-	// return out
+	return out
 }
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
@@ -248,7 +248,7 @@ func canonicalFields(m map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	// var b strings.Builder
+	var b strings.Builder
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteString(";")

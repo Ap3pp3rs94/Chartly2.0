@@ -30,24 +30,12 @@ func main() {
 
 	} // Optional: show how to create a W3C trace context and propagate it.
 	// (If you already have an inbound traceparent, just forward it instead.)
-	tid, err := telemetry.NewTraceID()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "trace id error:", err)
-		os.Exit(2)
-
-	}
-	sid, err := telemetry.NewSpanID()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "span id error:", err)
-		os.Exit(2)
-
-	}
 	sc := telemetry.SpanContext{
-		TraceID: tid,
-		SpanID:  sid,
+		TraceID: "0123456789abcdef0123456789abcdef",
+		SpanID:  "0123456789abcdef",
 		Sampled: false,
 	}
-	ctx = telemetry.WithSpanContext(ctx, sc)
+	ctx = telemetry.ContextWithSpanContext(ctx, sc)
 	c := chartly.NewClient(*baseURL)
 	fmt.Println("== Chartly basic client ==")
 	fmt.Println("base:", c.BaseURL)

@@ -40,8 +40,8 @@ func (c S3Connector) ValidateConfig(cfg map[string]string) error {
 		// placeholder: assume ambient credentials
 	case "anonymous":
 		// ok
-		// default:
-		// return registry.ErrInvalidConfig
+	default:
+		return registry.ErrInvalidConfig
 	}
 	ep := strings.TrimSpace(cfg["endpoint"])
 	if ep != "" {

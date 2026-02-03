@@ -42,8 +42,8 @@ func (c HTTPRestConnector) ValidateConfig(cfg map[string]string) error {
 	switch m {
 	case "GET", "POST", "PUT", "PATCH", "DELETE":
 		// ok
-		// default:
-		// return registry.ErrInvalidConfig
+	default:
+		return registry.ErrInvalidConfig
 	}
 	return nil
 }

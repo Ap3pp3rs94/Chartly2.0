@@ -189,7 +189,7 @@ func main() {
 			return
 
 		}
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("chartly_analytics_up 1\n"))
 
@@ -361,7 +361,7 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				return
+				// return
 
 			}
 
@@ -382,7 +382,7 @@ func withLocalCORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 
 			w.WriteHeader(http.StatusNoContent)
-			return
+			// return
 
 		}
 		next.ServeHTTP(w, r)

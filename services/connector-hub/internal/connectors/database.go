@@ -33,12 +33,12 @@ func (c DatabaseConnector) ValidateConfig(cfg map[string]string) error {
 	switch engine {
 	case "postgres", "mysql", "sqlite", "mssql", "other":
 		// ok
-		// default:
-		// return registry.ErrInvalidConfig
+	default:
+		return registry.ErrInvalidConfig
 	}
 	if engine == "sqlite" {
 		// file path; no network guard needed
-		// return nil
+		return nil
 	}
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
 	if !allowPrivate {

@@ -89,7 +89,7 @@ func (DerivedEnricher) Enrich(ctx context.Context, doc map[string]any, meta map[
 	canon := canonicalize(doc)
 b, _ := json.Marshal(canon)
 sum := sha256.Sum256(b)
-out = append(out, Enrichment{
+	out = append(out, Enrichment{
 
 		Key: "doc.hash",
 
@@ -97,7 +97,7 @@ out = append(out, Enrichment{
 
 		Source: "derived",
 	})
-// return out, nil
+	return out, nil
 }
 func ApplyEnrichments(doc map[string]any, enrich []Enrichment) {
 
@@ -155,8 +155,7 @@ for k := range t {
 
 		}
 		sort.Strings(keys)
-out := make([]any, 0, len(keys)
-*2)
+		out := make([]any, 0, len(keys)*2)
 for _, k := range keys {
 
 			out = append(out, k)

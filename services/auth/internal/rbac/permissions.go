@@ -22,12 +22,14 @@ import (
 	"sort"
 	"strings"
 )
+
 var (
 	ErrPerm        = errors.New("permission failed")
-ErrPermInvalid = errors.New("permission invalid")
-ErrPermCycle   = errors.New("permission cycle")
+	ErrPermInvalid = errors.New("permission invalid")
+	ErrPermCycle   = errors.New("permission cycle")
 )
-// type Permission string
+
+type Permission string
 
 // Role is a minimal role model for permission expansion.
 // If a richer Role type exists elsewhere, adapt callers to build this shape.
@@ -66,14 +68,14 @@ func (p Permission) String() string { return string(p) }
 func (p Permission) segments() ([3]string, bool) {
 	var out [3]string
 	s := norm(string(p))
-parts := strings.Split(s, ":")
-if len(parts) != 3 {
+	parts := strings.Split(s, ":")
+	if len(parts) != 3 {
 		return out, false
 	}
 	out[0] = norm(parts[0])
-out[1] = norm(parts[1])
-out[2] = norm(parts[2])
-// return out, true
+	out[1] = norm(parts[1])
+	out[2] = norm(parts[2])
+	return out, true
 }
 
 // Match returns true if grant allows want.
@@ -158,11 +160,11 @@ func (s Set) List() []Permission {
 		return nil
 	}
 	out := make([]Permission, 0, len(s.m))
-for p := range s.m {
+	for p := range s.m {
 		out = append(out, p)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-// return out
+	return out
 }
 
 // ExpandRole expands a role and its inherited roles into a deduped, sorted permission list.
@@ -233,8 +235,8 @@ for _, x := range inh {
 
 func norm(s string) string {
 	s = strings.TrimSpace(s)
-s = strings.ReplaceAll(s, "\x00", "")
-// return s
+	s = strings.ReplaceAll(s, "\x00", "")
+	return s
 }
 func isAllowedSegment(seg string) bool {
 	for _, r := range seg {

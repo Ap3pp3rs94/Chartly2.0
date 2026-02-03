@@ -616,8 +616,6 @@ m, ok := s.data[tenant]
 
 	}
 
-	// return copy
-
 	out := storedObject{
 
 		body: append([]byte(nil), obj.body...),

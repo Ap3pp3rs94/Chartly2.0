@@ -212,7 +212,7 @@ func normalizeStringSlice(in []string) []string {
 	}
 	sort.Strings(tmp)
 	out := make([]string, 0, len(tmp))
-	// var last string
+	var last string
 	for _, s := range tmp {
 		if s != last {
 			out = append(out, s)
@@ -235,7 +235,7 @@ func normalizePermSlice(in []Permission) []Permission {
 	}
 	sort.Slice(tmp, func(i, j int) bool { return tmp[i] < tmp[j] })
 	out := make([]Permission, 0, len(tmp))
-	// var last Permission
+	var last Permission
 	for _, p := range tmp {
 		if p != last {
 			out = append(out, p)
@@ -261,5 +261,5 @@ func parseRFC3339(s string) (time.Time, error) {
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	// return s
+	return s
 }

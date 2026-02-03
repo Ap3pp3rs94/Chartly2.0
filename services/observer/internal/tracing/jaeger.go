@@ -114,17 +114,17 @@ func canonicalize(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-		// case bool:
-		// return t
-		// case float64:
-		// return t
-		// case float32:
+	case bool:
+		return t
+	case float64:
+		return t
+	case float32:
 		return float64(t)
-		// case int:
+	case int:
 		return float64(t)
-		// case int64:
+	case int64:
 		return float64(t)
-		// case uint64:
+	case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))
@@ -202,7 +202,7 @@ func normalizeTrace(tr Trace) (Trace, error) {
 		}
 		return t.Spans[i].SpanID < t.Spans[j].SpanID
 	})
-	// return t, nil
+	return t, nil
 }
 func normalizeSpan(sp Span, traceID string) (Span, error) {
 	s := Span{
@@ -260,7 +260,7 @@ func normalizeSpan(sp Span, traceID string) (Span, error) {
 		}
 		return canonicalFields(s.Logs[i].Fields) < canonicalFields(s.Logs[j].Fields)
 	})
-	// return s, nil
+	return s, nil
 }
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
@@ -294,7 +294,7 @@ func canonicalFields(m map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	// var b strings.Builder
+	var b strings.Builder
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteString(";")

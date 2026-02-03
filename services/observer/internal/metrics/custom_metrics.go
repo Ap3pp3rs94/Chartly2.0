@@ -143,7 +143,7 @@ func (r *Registry) Families() []Family {
 		out = append(out, g.family())
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	// return out
+	return out
 }
 func (c *Counter) family() Family {
 	c.mu.Lock()
@@ -165,7 +165,7 @@ func (c *Counter) family() Family {
 	sort.Slice(samples, func(i, j int) bool {
 		ai := samples[i].Name + canonicalLabelsString(normalizeLabelsLocal(samples[i].Labels))
 		aj := samples[j].Name + canonicalLabelsString(normalizeLabelsLocal(samples[j].Labels))
-		// return ai < aj
+		return ai < aj
 	})
 	return Family{
 		Name:    c.name,
@@ -194,7 +194,7 @@ func (g *Gauge) family() Family {
 	sort.Slice(samples, func(i, j int) bool {
 		ai := samples[i].Name + canonicalLabelsString(normalizeLabelsLocal(samples[i].Labels))
 		aj := samples[j].Name + canonicalLabelsString(normalizeLabelsLocal(samples[j].Labels))
-		// return ai < aj
+		return ai < aj
 	})
 	return Family{
 		Name:    g.name,
@@ -322,7 +322,7 @@ func isDigit(b byte) bool {
 }
 func norm(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	// return s
+	return s
 }
 func min(a, b int) int {
 	if a < b {

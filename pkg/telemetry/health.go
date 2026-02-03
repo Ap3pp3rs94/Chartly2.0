@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// type Status string
+type Status string
 
 const (
 	StatusOK       Status = "ok"
