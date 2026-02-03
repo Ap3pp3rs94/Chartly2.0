@@ -59,7 +59,7 @@ func IngestionEnqueue(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeader(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		// return
+		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	defer r.Body.Close()
@@ -68,20 +68,20 @@ func IngestionEnqueue(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		// return
+		return
 	}
 	req.SourceID = strings.TrimSpace(req.SourceID)
 	req.JobType = strings.TrimSpace(req.JobType)
 	if req.SourceID == "" {
 		writeErr(w, http.StatusBadRequest, "missing_source_id", "source_id is required")
-		// return
+		return
 	}
 	if req.JobType == "" {
 		req.JobType = "ingest"
 	}
 	if req.JobType != "ingest" {
 		writeErr(w, http.StatusBadRequest, "invalid_job_type", "job_type must be 'ingest' for v0")
-		// return
+		return
 	}
 
 	// Validate source exists and is enabled (tenant-scoped)
@@ -96,21 +96,21 @@ func IngestionEnqueue(w http.ResponseWriter, r *http.Request) {
 	}
 	if src == nil {
 		writeErr(w, http.StatusNotFound, "source_not_found", "source not found")
-		// return
+		return
 	}
 	if !src.Enabled {
 		writeErr(w, http.StatusConflict, "source_disabled", "source is disabled")
-		// return
+		return
 	}
 	jobID, err := genJobID()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "id_generation_failed", "failed to generate job id")
-		// return
+		return
 	}
 	requestedAt, ok := parseOrNow(req.RequestedAt)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "invalid_requested_at", "requested_at must be RFC3339")
-		// return
+		return
 	}
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	job := Job{
@@ -129,6 +129,6 @@ func IngestionEnqueue(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusAccepted, enqueueResp{Job: job})
 	default:
 		writeErr(w, http.StatusServiceUnavailable, "queue_full", "ingest queue is full")
-		// return
+		return
 	}
 }
