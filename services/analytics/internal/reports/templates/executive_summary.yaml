@@ -1,7 +1,7 @@
 # Chartly 2.0  Report Template (DATA-ONLY)
 #
 # IMPORTANT:
-# - This YAML file is a template catalog artifact for FUTURE loading.
+# - This YAML file is a template catalog artifact for ROADMAP loading.
 # - It does NOT by itself enable reports or endpoints.
 # - A loader/registry is required to parse YAML and register templates into the report engine.
 #
