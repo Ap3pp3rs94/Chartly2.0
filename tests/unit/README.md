@@ -5,8 +5,8 @@ This folder is a cross-language unit test scaffold.
 ## Organization
 
 - `go/`  Go unit tests (usually live next to packages, but this can host shared helpers)
-- `typescript/`  TypeScript unit tests (Jest/Vitest/etc; planned)
-- `python/`  Python unit tests (pytest; planned)
+- `typescript/`  TypeScript unit tests (Jest/Vitest/etc; roadmap)
+- `python/`  Python unit tests (pytest; roadmap)
 
 Chartly services should normally keep unit tests near the code they test.
 This folder exists for:
