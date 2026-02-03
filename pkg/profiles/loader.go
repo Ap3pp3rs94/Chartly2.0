@@ -1,4 +1,4 @@
-﻿package profiles
+package profiles
 
 import (
 	"context"
@@ -38,8 +38,7 @@ import (
 // - Bounded scanning and file size limits prevent IO bombs.
 
 type Clock interface {
-	Now()
-	// time.Time
+	Now() time.Time
 }
 type systemClock struct{}
 
@@ -50,17 +49,17 @@ type Options struct {
 	Tenant string // tenant id; empty means "no tenant overlay"
 
 	// Safety bounds
-	// MaxFiles     int   // default 2000
-	// MaxDepth     int   // default 12
-	// MaxFileBytes int64 // default 2 MiB per file
+	MaxFiles     int   // default 2000
+	MaxDepth     int   // default 12
+	MaxFileBytes int64 // default 2 MiB per file
 
 	// Optional clock override for deterministic tests.
-	// Clock Clock
+	Clock Clock
 }
 type Loader struct {
-	// rootAbs string
-	// opts    Options
-	// clock   Clock
+	rootAbs string
+	opts    Options
+	clock   Clock
 }
 
 // Document is a loaded profile document with metadata.
@@ -114,7 +113,7 @@ var tenantIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,62}$`)
 func NewLoader(root string, opts Options) (*Loader, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
-		// return nil, ErrInvalidRoot
+		return nil, ErrInvalidRoot
 
 	} // Fail fast on tenant format if provided (even though we still block traversal later).
 	if strings.TrimSpace(opts.Tenant) != "" {
@@ -163,7 +162,7 @@ func NewLoader(root string, opts Options) (*Loader, error) {
 		opts:    opts,
 		clock:   opts.Clock,
 	}
-	// return l, nil
+	return l, nil
 }
 
 // LoadOne loads a single document at a relative path from root.
@@ -175,17 +174,17 @@ func (l *Loader) LoadOne(ctx context.Context, relPath string) (*Document, error)
 	}
 	relPath = strings.TrimSpace(relPath)
 	if relPath == "" {
-		// return nil, ErrNotFound
+		return nil, ErrNotFound
 
 	} // Normalize rel path to clean form, then join against root.
 	relClean := filepath.Clean(relPath)
 	// Disallow absolute paths.
 	if filepath.IsAbs(relClean) {
-		// return nil, ErrPathEscape
+		return nil, ErrPathEscape
 
 	} // Ensure no upward traversal remains.
 	if relClean == ".." || strings.HasPrefix(relClean, ".."+string(os.PathSeparator)) {
-		// return nil, ErrPathEscape
+		return nil, ErrPathEscape
 
 	}
 	abs := filepath.Join(l.rootAbs, relClean)
@@ -194,13 +193,13 @@ func (l *Loader) LoadOne(ctx context.Context, relPath string) (*Document, error)
 	absEval, err := filepath.EvalSymlinks(abs)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			// return nil, ErrNotFound
+			return nil, ErrNotFound
 
 		}
 		return nil, err
 	}
 	if !isWithinRoot(l.rootAbs, absEval) {
-		// return nil, ErrPathEscape
+		return nil, ErrPathEscape
 
 	}
 	doc, err := l.readDoc(ctx, absEval, "single")
@@ -208,7 +207,7 @@ func (l *Loader) LoadOne(ctx context.Context, relPath string) (*Document, error)
 		return nil, err
 	}
 	doc.Path = toSlashRel(l.rootAbs, absEval)
-	// return &doc, nil
+	return &doc, nil
 }
 
 // LoadAll loads base/env/tenant overlays and returns the merged result.
@@ -218,9 +217,8 @@ func (l *Loader) LoadAll(ctx context.Context) (*Bundle, error) {
 
 	}
 	type tierSpec struct {
-		// tier string
-		// dir  string
-
+		tier string
+		dir  string
 	}
 	baseDir := filepath.Join(l.rootAbs, "core", "base")
 	envDir := filepath.Join(l.rootAbs, "env", l.opts.Env)
@@ -247,7 +245,7 @@ func (l *Loader) LoadAll(ctx context.Context) (*Bundle, error) {
 		if err != nil {
 			// Missing tier dir is allowed; treat as empty overlay.
 			if errors.Is(err, fs.ErrNotExist) {
-				// continue
+				continue
 
 			}
 			return nil, err
@@ -281,37 +279,36 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 	absDirEval, err := filepath.EvalSymlinks(absDir)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			// return nil, fs.ErrNotExist
+			return nil, fs.ErrNotExist
 
 		}
 		return nil, err
 	}
 	if !isWithinRoot(l.rootAbs, absDirEval) {
-		// return nil, ErrPathEscape
+		return nil, ErrPathEscape
 
 	}
 	info, err := os.Stat(absDirEval)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
-			// return nil, fs.ErrNotExist
+			return nil, fs.ErrNotExist
 
 		}
 		return nil, err
 	}
 	if !info.IsDir() {
-		// return nil, fs.ErrNotExist
+		return nil, fs.ErrNotExist
 
 	}
 	type hit struct {
-		// abs string
-		// rel string
-
+		abs string
+		rel string
 	}
 	var hits []hit
 	rootDepth := depth(absDirEval)
 	walkFn := func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			// return walkErr
+			return walkErr
 
 		}
 		select {
@@ -322,7 +319,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 		} // Depth cap
 		if d.IsDir() {
 			if depth(path)-rootDepth > l.opts.MaxDepth {
-				// return fs.SkipDir
+				return fs.SkipDir
 
 			}
 			return nil
@@ -332,7 +329,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			return nil
 		}
 		if len(hits) >= l.opts.MaxFiles {
-			// return ErrTooManyFiles
+			return ErrTooManyFiles
 
 		}
 		absEval, err := filepath.EvalSymlinks(path)
@@ -340,7 +337,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			return err
 		}
 		if !isWithinRoot(l.rootAbs, absEval) {
-			// return ErrPathEscape
+			return ErrPathEscape
 
 		}
 		hits = append(hits, hit{
@@ -357,7 +354,7 @@ func (l *Loader) scanTier(ctx context.Context, absDir string, tier string) ([]Do
 			return nil, err
 		}
 		if errors.Is(err, fs.ErrNotExist) {
-			// return nil, fs.ErrNotExist
+			return nil, fs.ErrNotExist
 
 		}
 		return nil, err
@@ -434,7 +431,7 @@ func (l *Loader) readDoc(ctx context.Context, absPath string, tier string) (Docu
 		}
 		if rerr != nil {
 			if rerr == io.EOF {
-				// break
+				break
 
 			}
 			return Document{}, rerr
@@ -488,9 +485,11 @@ func decodeStrictJSON(b []byte, out *map[string]any) error {
 		return fmt.Errorf("%w: %v", ErrInvalidJSON, err)
 
 	} // Ensure no trailing tokens
-	if dec.More() {
+	var extra any
+	if err := dec.Decode(&extra); err == nil {
 		return fmt.Errorf("%w: trailing tokens", ErrInvalidJSON)
-
+	} else if err != io.EOF {
+		return fmt.Errorf("%w: trailing tokens", ErrInvalidJSON)
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
@@ -527,7 +526,7 @@ func isWithinRoot(rootAbs, targetAbs string) bool {
 	rootL := strings.ToLower(root)
 	tgtL := strings.ToLower(tgt)
 	if tgtL == rootL {
-		// return true
+		return true
 
 	}
 	sep := strings.ToLower(string(os.PathSeparator))
@@ -546,13 +545,13 @@ func depth(path string) int {
 func tierRank(tier string) int {
 	switch tier {
 	case "base":
-	// return 1
+		return 1
 	case "env":
-	// return 2
+		return 2
 	case "tenant":
-		// return 3
-		// default:
-		// return 9
+		return 3
+	default:
+		return 9
 
 	}
 }
@@ -568,7 +567,7 @@ func deepMergeDeterministic(dst, src map[string]any) map[string]any {
 
 	}
 	if src == nil {
-		// return dst
+		return dst
 
 	}
 	out := make(map[string]any, len(dst))
@@ -589,7 +588,7 @@ func deepMergeDeterministic(dst, src map[string]any) map[string]any {
 			sm, sok := sv.(map[string]any)
 			if dok && sok {
 				out[k] = deepMergeDeterministic(dm, sm)
-				// continue
+				continue
 
 			}
 		}
@@ -613,9 +612,8 @@ func ValidateTenantIDFormat(tenant string) error {
 }
 func minInt64(a, b int64) int64 {
 	if a < b {
-		// return a
+		return a
 
 	}
 	return b
 }
-
