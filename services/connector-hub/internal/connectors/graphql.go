@@ -23,47 +23,37 @@ func NewGraphQLConnector(id string, caps []string) GraphQLConnector {
 	if len(caps) == 0 {
 		caps = []string{"ingest"}
 	}
-
 	return GraphQLConnector{
 		BaseConnector: NewBaseConnector(id, "api", caps),
 	}
 }
-
 func (c GraphQLConnector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "endpoint", "query"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	endpoint := strings.TrimSpace(cfg["endpoint"])
 	if !(strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://")) {
 		return registry.ErrInvalidConfig
 	}
-
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
-
 	u, err := url.Parse(endpoint)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return registry.ErrInvalidConfig
 	}
-
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return registry.ErrInvalidConfig
 	}
-
 	if !allowPrivate {
 		if isPrivateHost(u.Hostname()) {
 			return errors.New("private networks denied")
 		}
 	}
-
 	return nil
 }
-
 func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	if err := c.ValidateConfig(cfg); err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "invalid config"}, err
 	}
-
 	endpoint := strings.TrimSpace(cfg["endpoint"])
 	query := cfg["query"]
 	opName := strings.TrimSpace(cfg["operation_name"])
@@ -75,13 +65,11 @@ func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req
 			timeout = ms
 		}
 	}
-
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-
 	bodyObj := map[string]any{
 		"query":     query,
 		"variables": req.Payload,
@@ -89,9 +77,7 @@ func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req
 	if opName != "" {
 		bodyObj["operationName"] = opName
 	}
-
 	b, _ := json.Marshal(bodyObj)
-
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(b))
 	if err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "request build failed"}, err
@@ -106,7 +92,6 @@ func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req
 			}
 		}
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
 	if strings.TrimSpace(req.TenantID) != "" {
 		httpReq.Header.Set("X-Tenant-Id", req.TenantID)
@@ -114,7 +99,6 @@ func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req
 	if rid := strings.TrimSpace(req.Payload["request_id"]); rid != "" {
 		httpReq.Header.Set("X-Request-Id", rid)
 	}
-
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -128,22 +112,18 @@ func (c GraphQLConnector) Ingest(ctx context.Context, cfg map[string]string, req
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-
 	client := &http.Client{Transport: transport}
 	res, err := client.Do(httpReq)
 	if err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "request failed"}, err
 	}
 	defer res.Body.Close()
-
 	buf, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-
 	accepted := res.StatusCode >= 200 && res.StatusCode < 300
 	notes := "status=" + res.Status
 	if len(buf) > 0 {
 		notes += " body=" + sanitizeNote(string(buf))
 	}
-
 	return registry.IngestResult{
 		Accepted:    accepted,
 		ConnectorID: c.ID(),

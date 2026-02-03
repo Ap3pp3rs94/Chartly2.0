@@ -28,21 +28,18 @@ type RingBuffer struct {
 	tail     int
 	size     int
 
-	slots chan struct{}
-	items chan struct{}
-
+	slots    chan struct{}
+	items    chan struct{}
 	closed   atomic.Bool
 	dropped  atomic.Uint64
 	closedCh chan struct{}
-
-	mu sync.Mutex
+	mu       sync.Mutex
 }
 
 func NewRingBuffer(capacity int) *RingBuffer {
 	if capacity < 1 {
 		capacity = 1
 	}
-
 	r := &RingBuffer{
 		capacity: capacity,
 		buf:      make([][]byte, capacity),
@@ -50,24 +47,19 @@ func NewRingBuffer(capacity int) *RingBuffer {
 		items:    make(chan struct{}, capacity),
 		closedCh: make(chan struct{}),
 	}
-
 	for i := 0; i < capacity; i++ {
 		r.slots <- struct{}{}
 	}
-
 	return r
 }
-
 func (r *RingBuffer) Close() {
 	if r.closed.CompareAndSwap(false, true) {
 		close(r.closedCh)
 	}
 }
-
 func (r *RingBuffer) Stats() Stats {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	return Stats{
 		Capacity: r.capacity,
 		Len:      r.size,
@@ -75,40 +67,34 @@ func (r *RingBuffer) Stats() Stats {
 		Closed:   r.closed.Load(),
 	}
 }
-
 func (r *RingBuffer) TryPush(chunk []byte) error {
 	if r.closed.Load() {
 		r.dropped.Add(1)
 		return ErrClosed
 	}
-
 	select {
 	case <-r.slots:
 		// proceed
-	case <-r.closedCh:
+		// case <-r.closedCh:
 		r.dropped.Add(1)
 		return ErrClosed
 	default:
 		return ErrWouldBlock
 	}
-
 	if r.closed.Load() {
 		// return slot
 		r.slots <- struct{}{}
 		r.dropped.Add(1)
 		return ErrClosed
 	}
-
 	r.mu.Lock()
 	r.buf[r.tail] = chunk
 	r.tail = (r.tail + 1) % r.capacity
 	r.size++
 	r.mu.Unlock()
-
 	r.items <- struct{}{}
 	return nil
 }
-
 func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 	if ctx.Err() != nil {
 		r.dropped.Add(1)
@@ -118,7 +104,6 @@ func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 		r.dropped.Add(1)
 		return ErrClosed
 	}
-
 	select {
 	case <-r.slots:
 		// acquired slot
@@ -129,29 +114,25 @@ func (r *RingBuffer) Push(ctx context.Context, chunk []byte) error {
 		r.dropped.Add(1)
 		return ErrClosed
 	}
-
 	if r.closed.Load() {
 		// return slot
 		r.slots <- struct{}{}
 		r.dropped.Add(1)
 		return ErrClosed
 	}
-
 	r.mu.Lock()
 	r.buf[r.tail] = chunk
 	r.tail = (r.tail + 1) % r.capacity
 	r.size++
 	r.mu.Unlock()
-
 	r.items <- struct{}{}
 	return nil
 }
-
 func (r *RingBuffer) TryPop() ([]byte, error) {
 	select {
 	case <-r.items:
 		// proceed
-	case <-r.closedCh:
+		// case <-r.closedCh:
 		// if closed and empty, return closed
 		r.mu.Lock()
 		defer r.mu.Unlock()
@@ -170,7 +151,6 @@ func (r *RingBuffer) TryPop() ([]byte, error) {
 		}
 		return nil, ErrWouldBlock
 	}
-
 	r.mu.Lock()
 	chunk := r.popLocked()
 	r.mu.Unlock()
@@ -179,12 +159,10 @@ func (r *RingBuffer) TryPop() ([]byte, error) {
 	r.slots <- struct{}{}
 	return chunk, nil
 }
-
 func (r *RingBuffer) Pop(ctx context.Context) ([]byte, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
-
 	for {
 		select {
 		case <-r.items:
@@ -207,7 +185,6 @@ func (r *RingBuffer) Pop(ctx context.Context) ([]byte, error) {
 		}
 	}
 }
-
 func (r *RingBuffer) popLocked() []byte {
 	chunk := r.buf[r.head]
 	r.buf[r.head] = nil

@@ -12,7 +12,7 @@ var (
 	ErrCircuitOpen = errors.New("circuit open")
 )
 
-type State string
+// type State string
 
 const (
 	StateClosed   State = "closed"
@@ -42,7 +42,6 @@ type Circuit struct {
 	halfOpenSuccesses int
 	openedAt          time.Time
 }
-
 type Manager struct {
 	mu       sync.Mutex
 	perKey   map[string]*Circuit
@@ -62,25 +61,20 @@ func NewManager(defaults CircuitConfig) *Manager {
 	if defaults.Window <= 0 {
 		defaults.Window = 60 * time.Second
 	}
-
 	return &Manager{
 		perKey:   make(map[string]*Circuit),
 		defaults: defaults,
 	}
 }
-
 func (m *Manager) Allow(key string) (ok bool, state string, reason string) {
 	key = normKey(key)
 	if key == "" {
 		return true, string(StateClosed), "empty_key"
 	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	c := m.getOrCreate(key)
 	now := time.Now()
-
 	switch c.state {
 	case StateOpen:
 		if now.Sub(c.openedAt) >= m.defaults.OpenTimeout {
@@ -100,19 +94,15 @@ func (m *Manager) Allow(key string) (ok bool, state string, reason string) {
 		return true, string(StateClosed), "closed"
 	}
 }
-
 func (m *Manager) Report(key string, success bool) {
 	key = normKey(key)
 	if key == "" {
 		return
 	}
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	c := m.getOrCreate(key)
 	now := time.Now()
-
 	switch c.state {
 	case StateHalfOpen:
 		if success {
@@ -133,10 +123,11 @@ func (m *Manager) Report(key string, success bool) {
 		c.halfOpenSuccesses = 0
 		c.failures = append(c.failures, now)
 		m.pruneLocked(c, now)
-		return
+		// return
 
 	case StateOpen:
-		// While open, we can still record failures (optional) to reflect continued issues.
+		// While open, we can still record failures (optional)
+		// to reflect continued issues.
 		if !success {
 			c.failures = append(c.failures, now)
 			m.pruneLocked(c, now)
@@ -148,9 +139,8 @@ func (m *Manager) Report(key string, success bool) {
 		if success {
 			// optional: prune old failures on success
 			m.pruneLocked(c, now)
-			return
+			// return
 		}
-
 		c.failures = append(c.failures, now)
 		m.pruneLocked(c, now)
 		if len(c.failures) >= m.defaults.FailureThreshold {
@@ -160,53 +150,42 @@ func (m *Manager) Report(key string, success bool) {
 		}
 	}
 }
-
 func (m *Manager) Snapshot(key string) map[string]any {
 	key = normKey(key)
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
 	c := m.getOrCreate(key)
 	now := time.Now()
 	m.pruneLocked(c, now)
-
 	out := map[string]any{
 		"key":      key,
 		"state":    string(c.state),
 		"failures": len(c.failures),
 	}
-
 	if !c.openedAt.IsZero() {
 		out["opened_at"] = c.openedAt.UTC().Format(time.RFC3339Nano)
 		out["open_timeout_s"] = m.defaults.OpenTimeout.Seconds()
 	}
-
 	if c.state == StateHalfOpen {
 		out["half_open_successes"] = c.halfOpenSuccesses
 		out["success_threshold"] = m.defaults.SuccessThreshold
 	}
-
 	return out
 }
-
 func (m *Manager) Do(ctx context.Context, key string, fn func() error) error {
 	ok, _, _ := m.Allow(key)
 	if !ok {
 		return ErrCircuitOpen
 	}
-
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
-
 	err := fn()
 	m.Report(key, err == nil)
 	return err
 }
-
 func (m *Manager) getOrCreate(key string) *Circuit {
 	c, ok := m.perKey[key]
 	if !ok {
@@ -215,12 +194,10 @@ func (m *Manager) getOrCreate(key string) *Circuit {
 	}
 	return c
 }
-
 func (m *Manager) pruneLocked(c *Circuit, now time.Time) {
 	if c == nil || m.defaults.Window <= 0 {
 		return
 	}
-
 	cut := now.Add(-m.defaults.Window)
 
 	// failures are appended in time order; prune from front
@@ -232,7 +209,6 @@ func (m *Manager) pruneLocked(c *Circuit, now time.Time) {
 		c.failures = c.failures[i:]
 	}
 }
-
 func normKey(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }

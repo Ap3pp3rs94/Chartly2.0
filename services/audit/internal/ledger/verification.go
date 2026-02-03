@@ -33,15 +33,12 @@ type VerifyOptions struct {
 
 func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 	o := normalizeVerifyOptions(opts)
-
 	if len(events) == 0 {
 		return fmt.Errorf("%w: %w: no events", ErrVerify, ErrVerifyInvalid)
 	}
-
 	if o.MaxEvents > 0 && len(events) > o.MaxEvents {
 		return fmt.Errorf("%w: too many events (%d>%d)", ErrVerifyInvalid, len(events), o.MaxEvents)
 	}
-
 	tid := normCollapse(tenantID)
 	if tid == "" {
 		tid = normCollapse(events[0].TenantID)
@@ -52,7 +49,6 @@ func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 
 	// Validate and build a deterministic duplicate set.
 	seen := make(map[string]struct{}, len(events))
-
 	for i := range events {
 		ev := events[i]
 		evT := normCollapse(ev.TenantID)
@@ -60,7 +56,6 @@ func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 		evTS := normCollapse(ev.TS)
 		evAct := normCollapse(ev.Action)
 		evOut := normCollapse(ev.Outcome)
-
 		if o.EnforceTenantID {
 			if evT == "" {
 				return fmt.Errorf("%w: %w: missing tenant_id at index %d", ErrVerify, ErrVerifyInvalid, i)
@@ -69,11 +64,9 @@ func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 				return fmt.Errorf("%w: %w: tenant_id mismatch at index %d", ErrVerify, ErrVerifyInvalid, i)
 			}
 		}
-
 		if evID == "" || evTS == "" || evAct == "" || evOut == "" {
 			return fmt.Errorf("%w: %w: missing required fields at index %d", ErrVerify, ErrVerifyInvalid, i)
 		}
-
 		if _, err := parseRFC3339Strict(evTS); err != nil {
 			return fmt.Errorf("%w: %w: invalid ts at index %d", ErrVerify, ErrVerifyInvalid, i)
 		}
@@ -85,7 +78,6 @@ func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 		}
 		seen[key] = struct{}{}
 	}
-
 	if o.RequireMonotonicTS {
 		// Sort a view deterministically and ensure TS is non-decreasing.
 		type item struct {
@@ -112,33 +104,26 @@ func VerifyEvents(tenantID string, events []Event, opts VerifyOptions) error {
 			}
 		}
 	}
-
 	return nil
 }
-
 func VerifyLedgerSnapshot(tenantID string, events []Event, opts VerifyOptions) (Chain, error) {
 	if err := VerifyEvents(tenantID, events, opts); err != nil {
 		return Chain{}, err
 	}
-
 	tid := normCollapse(tenantID)
 	if tid == "" {
 		tid = normCollapse(events[0].TenantID)
 	}
-
 	ch, err := BuildChain(tid, events)
 	if err != nil {
 		return Chain{}, err
 	}
-
 	return ch, nil
 }
-
 func VerifyChainMatches(tenantID string, chain Chain, events []Event, opts VerifyOptions) error {
 	if err := VerifyEvents(tenantID, events, opts); err != nil {
 		return err
 	}
-
 	tid := normCollapse(tenantID)
 	if tid == "" {
 		tid = normCollapse(chain.TenantID)
@@ -149,7 +134,6 @@ func VerifyChainMatches(tenantID string, chain Chain, events []Event, opts Verif
 	if tid == "" {
 		return fmt.Errorf("%w: %w: tenant_id required", ErrVerify, ErrVerifyInvalid)
 	}
-
 	if err := VerifyChain(chain, events); err != nil {
 		// Normalize to verification sentinel.
 		return fmt.Errorf("%w: %w: %v", ErrVerify, ErrVerifyMismatch, err)
@@ -161,10 +145,8 @@ func VerifyChainMatches(tenantID string, chain Chain, events []Event, opts Verif
 			return fmt.Errorf("%w: %w: chain tenant_id mismatch", ErrVerify, ErrVerifyMismatch)
 		}
 	}
-
 	return nil
 }
-
 func normalizeVerifyOptions(opts VerifyOptions) VerifyOptions {
 	o := opts
 	// Default enforce tenant id true

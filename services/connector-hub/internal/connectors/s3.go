@@ -18,22 +18,18 @@ func NewS3Connector(id string, caps []string) S3Connector {
 	if len(caps) == 0 {
 		caps = []string{"ingest", "sync"}
 	}
-
 	return S3Connector{
 		BaseConnector: NewBaseConnector(id, "file", caps),
 	}
 }
-
 func (c S3Connector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "bucket", "auth"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	bucket := strings.TrimSpace(cfg["bucket"])
 	if bucket == "" {
 		return registry.ErrInvalidConfig
 	}
-
 	auth := strings.ToLower(strings.TrimSpace(cfg["auth"]))
 	switch auth {
 	case "access_key":
@@ -44,34 +40,28 @@ func (c S3Connector) ValidateConfig(cfg map[string]string) error {
 		// placeholder: assume ambient credentials
 	case "anonymous":
 		// ok
-	default:
-		return registry.ErrInvalidConfig
+		// default:
+		// return registry.ErrInvalidConfig
 	}
-
 	ep := strings.TrimSpace(cfg["endpoint"])
 	if ep != "" {
 		if !(strings.HasPrefix(ep, "http://") || strings.HasPrefix(ep, "https://")) {
 			return registry.ErrInvalidConfig
 		}
-
 		u, err := url.Parse(ep)
 		if err != nil || u.Scheme == "" || u.Host == "" {
 			return registry.ErrInvalidConfig
 		}
-
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return registry.ErrInvalidConfig
 		}
-
 		allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
 		if !allowPrivate && isPrivateHost(u.Hostname()) {
 			return errors.New("private networks denied")
 		}
 	}
-
 	return nil
 }
-
 func (c S3Connector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	_ = ctx
 	_ = req
@@ -86,7 +76,6 @@ func (c S3Connector) Ingest(ctx context.Context, cfg map[string]string, req regi
 			_ = ms
 		}
 	}
-
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),

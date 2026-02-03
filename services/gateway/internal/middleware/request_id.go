@@ -23,7 +23,6 @@ func validRequestID(s string) bool {
 	}
 	return true
 }
-
 func newRequestID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -32,7 +31,6 @@ func newRequestID() string {
 	}
 	return "req_" + hex.EncodeToString(b[:])
 }
-
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get(requestIDHeader)
@@ -44,7 +42,6 @@ func RequestID(next http.Handler) http.Handler {
 		r.Header.Set(requestIDHeader, id)
 		// Set on response for client correlation
 		w.Header().Set(requestIDHeader, id)
-
 		next.ServeHTTP(w, r)
 	})
 }

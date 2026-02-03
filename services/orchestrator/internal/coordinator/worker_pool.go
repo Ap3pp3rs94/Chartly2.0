@@ -8,21 +8,10 @@ import (
 	"time"
 )
 
-type Task func(ctx context.Context) error
-
-type LoggerFn func(level, msg string, fields map[string]any)
-
-var (
-	ErrPoolStarted = errors.New("pool already started")
-	ErrPoolStopped = errors.New("pool stopped")
-	ErrQueueFull   = errors.New("queue full")
-)
-
-type taskItem struct {
+type Task func(ctx context.Context) // error type LoggerFn func(level, msg string, fields map[string]any) var ( ErrPoolStarted = errors.New("pool already started") ErrPoolStopped = errors.New("pool stopped") ErrQueueFull   = errors.New("queue full") ) type taskItem struct {
 	name string
 	fn   Task
 }
-
 type Stats struct {
 	Running   int    `json:"running"`
 	Queued    int    `json:"queued"`
@@ -30,7 +19,6 @@ type Stats struct {
 	Failed    uint64 `json:"failed"`
 	Rejected  uint64 `json:"rejected"`
 }
-
 type Pool struct {
 	concurrency int
 	queueSize   int
@@ -44,18 +32,18 @@ type Pool struct {
 	wg sync.WaitGroup
 
 	// cancel workers
-	cancelOnce sync.Once
-	cancelFn   context.CancelFunc
+	// cancelOnce sync.Once
+	// cancelFn   context.CancelFunc
 
 	// metrics
-	running   atomic.Int32
-	queued    atomic.Int32
-	completed atomic.Uint64
-	failed    atomic.Uint64
-	rejected  atomic.Uint64
+	// running   atomic.Int32
+	// queued    atomic.Int32
+	// completed atomic.Uint64
+	// failed    atomic.Uint64
+	// rejected  atomic.Uint64
 
 	// protect stop sequencing
-	stopMu sync.Mutex
+	// stopMu sync.Mutex
 }
 
 func NewPool(concurrency int, queueSize int, logger LoggerFn) *Pool {
@@ -75,7 +63,6 @@ func NewPool(concurrency int, queueSize int, logger LoggerFn) *Pool {
 		qch:         make(chan taskItem, queueSize),
 	}
 }
-
 func (p *Pool) Start(ctx context.Context) error {
 	if !p.started.CompareAndSwap(false, true) {
 		return ErrPoolStarted
@@ -83,7 +70,6 @@ func (p *Pool) Start(ctx context.Context) error {
 	if p.stopped.Load() {
 		return ErrPoolStopped
 	}
-
 	workerCtx, cancel := context.WithCancel(context.Background())
 	p.cancelFn = cancel
 
@@ -92,12 +78,10 @@ func (p *Pool) Start(ctx context.Context) error {
 		"concurrency": p.concurrency,
 		"queue_size":  p.queueSize,
 	})
-
 	for i := 0; i < p.concurrency; i++ {
 		p.wg.Add(1)
 		go p.worker(workerCtx, i)
 	}
-
 	_ = ctx
 	return nil
 }
@@ -116,7 +100,6 @@ func (p *Pool) Submit(ctx context.Context, name string, t Task) error {
 		p.rejected.Add(1)
 		return ErrPoolStopped
 	}
-
 	item := taskItem{name: name, fn: t}
 
 	// Blocking enqueue with ctx cancel, but also avoid panic on close race:
@@ -127,7 +110,6 @@ func (p *Pool) Submit(ctx context.Context, name string, t Task) error {
 		return ctx.Err()
 	default:
 	}
-
 	select {
 	case p.qch <- item:
 		p.queued.Add(1)
@@ -163,19 +145,16 @@ func (p *Pool) Submit(ctx context.Context, name string, t Task) error {
 func (p *Pool) Stop(ctx context.Context, drain bool) error {
 	p.stopMu.Lock()
 	defer p.stopMu.Unlock()
-
 	if !p.started.Load() {
 		return ErrPoolStopped
 	}
 	if !p.stopped.CompareAndSwap(false, true) {
 		return ErrPoolStopped
 	}
-
 	p.logger("info", "pool_stop", map[string]any{
 		"event": "pool_stop",
 		"drain": drain,
 	})
-
 	if !drain {
 		// discard queued tasks quickly
 		for {
@@ -187,20 +166,17 @@ func (p *Pool) Stop(ctx context.Context, drain bool) error {
 			}
 		}
 	}
-
 cancelWorkers:
 	p.cancelOnce.Do(func() {
 		if p.cancelFn != nil {
 			p.cancelFn()
 		}
 	})
-
 	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
 		close(done)
 	}()
-
 	select {
 	case <-done:
 		return nil
@@ -208,7 +184,6 @@ cancelWorkers:
 		return ctx.Err()
 	}
 }
-
 func (p *Pool) Stats() Stats {
 	return Stats{
 		Running:   int(p.running.Load()),
@@ -218,10 +193,8 @@ func (p *Pool) Stats() Stats {
 		Rejected:  p.rejected.Load(),
 	}
 }
-
 func (p *Pool) worker(ctx context.Context, workerID int) {
 	defer p.wg.Done()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -231,7 +204,6 @@ func (p *Pool) worker(ctx context.Context, workerID int) {
 			// If stop requested with drain=false, queue should have been drained and ctx canceled.
 			p.queued.Add(-1)
 			p.running.Add(1)
-
 			start := time.Now()
 			p.logger("info", "task_start", map[string]any{
 				"event":     "task_start",
@@ -239,10 +211,8 @@ func (p *Pool) worker(ctx context.Context, workerID int) {
 				"name":      item.name,
 				"running":   p.running.Load(),
 			})
-
 			err := item.fn(ctx)
 			dur := time.Since(start).Milliseconds()
-
 			if err != nil {
 				p.failed.Add(1)
 				p.logger("error", "task_error", map[string]any{
@@ -261,7 +231,6 @@ func (p *Pool) worker(ctx context.Context, workerID int) {
 					"duration_ms": dur,
 				})
 			}
-
 			p.running.Add(-1)
 		}
 	}

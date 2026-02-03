@@ -12,14 +12,13 @@ type Field struct {
 	Type     string `json:"type"`
 	Optional bool   `json:"optional"`
 }
-
 type Schema struct {
 	Version     string  `json:"version"`
 	GeneratedAt string  `json:"generated_at"` // RFC3339Nano
 	Fields      []Field `json:"fields"`
 }
 
-type DriftType string
+// type DriftType string
 
 const (
 	DriftAdded           DriftType = "added"
@@ -42,7 +41,6 @@ type DriftEvent struct {
 func Diff(oldS, newS Schema) []DriftEvent {
 	oldM := make(map[string]Field, len(oldS.Fields))
 	newM := make(map[string]Field, len(newS.Fields))
-
 	for _, f := range oldS.Fields {
 		p := strings.TrimSpace(f.Path)
 		if p == "" {
@@ -52,7 +50,6 @@ func Diff(oldS, newS Schema) []DriftEvent {
 		f.Type = strings.ToLower(strings.TrimSpace(f.Type))
 		oldM[p] = f
 	}
-
 	for _, f := range newS.Fields {
 		p := strings.TrimSpace(f.Path)
 		if p == "" {
@@ -62,7 +59,6 @@ func Diff(oldS, newS Schema) []DriftEvent {
 		f.Type = strings.ToLower(strings.TrimSpace(f.Type))
 		newM[p] = f
 	}
-
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	out := make([]DriftEvent, 0)
 
@@ -77,9 +73,8 @@ func Diff(oldS, newS Schema) []DriftEvent {
 				From:      of.Type,
 				To:        "",
 			})
-			continue
+			// continue
 		}
-
 		if of.Type != nf.Type {
 			out = append(out, DriftEvent{
 				Ts:        now,
@@ -89,7 +84,6 @@ func Diff(oldS, newS Schema) []DriftEvent {
 				To:        nf.Type,
 			})
 		}
-
 		if of.Optional != nf.Optional {
 			out = append(out, DriftEvent{
 				Ts:        now,
@@ -113,17 +107,14 @@ func Diff(oldS, newS Schema) []DriftEvent {
 			})
 		}
 	}
-
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].FieldPath == out[j].FieldPath {
 			return out[i].DriftType < out[j].DriftType
 		}
 		return out[i].FieldPath < out[j].FieldPath
 	})
-
-	return out
+	// return out
 }
-
 func boolStr(b bool) string {
 	if b {
 		return "true"
@@ -143,22 +134,17 @@ func NewDriftStore() *DriftStore {
 		events:  make(map[string][]DriftEvent),
 	}
 }
-
 func (s *DriftStore) Put(connectorID, sourceID string, schema Schema) {
 	key := storeKey(connectorID, sourceID)
-
 	if strings.TrimSpace(schema.GeneratedAt) == "" {
 		schema.GeneratedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	}
-
 	if strings.TrimSpace(schema.Version) == "" {
 		schema.Version = "v1"
 	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	var prev Schema
+	// var prev Schema
 	hist := s.schemas[key]
 	if len(hist) > 0 {
 		prev = hist[len(hist)-1]
@@ -191,45 +177,34 @@ func (s *DriftStore) Put(connectorID, sourceID string, schema Schema) {
 		}
 	}
 }
-
 func (s *DriftStore) Latest(connectorID, sourceID string) (Schema, bool) {
 	key := storeKey(connectorID, sourceID)
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	h := s.schemas[key]
 	if len(h) == 0 {
 		return Schema{}, false
 	}
-
 	return h[len(h)-1], true
 }
-
 func (s *DriftStore) History(connectorID, sourceID string) []Schema {
 	key := storeKey(connectorID, sourceID)
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	h := s.schemas[key]
 	out := make([]Schema, len(h))
 	copy(out, h)
-	return out
+	// return out
 }
-
 func (s *DriftStore) Events(connectorID, sourceID string) []DriftEvent {
 	key := storeKey(connectorID, sourceID)
-
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-
 	ev := s.events[key]
 	out := make([]DriftEvent, len(ev))
 	copy(out, ev)
-	return out
+	// return out
 }
-
 func storeKey(connectorID, sourceID string) string {
 	return strings.ToLower(strings.TrimSpace(connectorID)) + "|" + strings.ToLower(strings.TrimSpace(sourceID))
 }

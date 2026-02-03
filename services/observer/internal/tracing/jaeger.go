@@ -35,7 +35,6 @@ type Trace struct {
 	TraceID string `json:"trace_id"`
 	Spans   []Span `json:"spans"`
 }
-
 type Span struct {
 	TraceID      string            `json:"trace_id"`
 	SpanID       string            `json:"span_id"`
@@ -46,12 +45,10 @@ type Span struct {
 	Tags         map[string]string `json:"tags,omitempty"`
 	Logs         []LogRecord       `json:"logs,omitempty"`
 }
-
 type LogRecord struct {
 	TS     string            `json:"ts"`
 	Fields map[string]string `json:"fields,omitempty"`
 }
-
 type Exporter struct {
 	Endpoint    string
 	HTTPTimeout time.Duration
@@ -69,39 +66,32 @@ func NewExporter(endpoint string, timeout time.Duration) (*Exporter, error) {
 		hc:          &http.Client{Timeout: timeout},
 	}, nil
 }
-
 func (e *Exporter) Export(ctx context.Context, trace Trace) error {
 	if strings.TrimSpace(e.Endpoint) == "" {
 		return ErrNoEndpoint
 	}
-
 	t, err := normalizeTrace(trace)
 	if err != nil {
 		return err
 	}
-
 	body, err := CanonicalJSON(t)
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrExportEncode, err)
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, e.Endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("%w: new request: %v", ErrExportHTTP, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-
 	resp, err := e.hc.Do(req)
 	if err != nil {
 		return fmt.Errorf("%w: do: %v", ErrExportHTTP, err)
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 32*1024))
 		return fmt.Errorf("%w: status=%d body=%s", ErrExportHTTP, resp.StatusCode, strings.TrimSpace(string(b)))
 	}
-
 	return nil
 }
 
@@ -118,24 +108,23 @@ func CanonicalJSON(v any) ([]byte, error) {
 	c := canonicalize(v)
 	return json.Marshal(c)
 }
-
 func canonicalize(v any) any {
 	switch t := v.(type) {
 	case nil:
 		return nil
 	case string:
 		return normCollapse(t)
-	case bool:
-		return t
-	case float64:
-		return t
-	case float32:
+		// case bool:
+		// return t
+		// case float64:
+		// return t
+		// case float32:
 		return float64(t)
-	case int:
+		// case int:
 		return float64(t)
-	case int64:
+		// case int64:
 		return float64(t)
-	case uint64:
+		// case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))
@@ -193,7 +182,6 @@ func normalizeTrace(tr Trace) (Trace, error) {
 	if t.TraceID == "" {
 		return Trace{}, fmt.Errorf("%w: %w: trace_id required", ErrTracing, ErrTracingInvalid)
 	}
-
 	for _, sp := range tr.Spans {
 		sn, err := normalizeSpan(sp, t.TraceID)
 		if err != nil {
@@ -214,10 +202,8 @@ func normalizeTrace(tr Trace) (Trace, error) {
 		}
 		return t.Spans[i].SpanID < t.Spans[j].SpanID
 	})
-
-	return t, nil
+	// return t, nil
 }
-
 func normalizeSpan(sp Span, traceID string) (Span, error) {
 	s := Span{
 		TraceID:      normCollapse(sp.TraceID),
@@ -249,7 +235,6 @@ func normalizeSpan(sp Span, traceID string) (Span, error) {
 	if et.Before(st) {
 		return Span{}, fmt.Errorf("%w: %w: end before start", ErrTracing, ErrTracingInvalid)
 	}
-
 	for _, lr := range sp.Logs {
 		ln := LogRecord{
 			TS:     normCollapse(lr.TS),
@@ -275,10 +260,8 @@ func normalizeSpan(sp Span, traceID string) (Span, error) {
 		}
 		return canonicalFields(s.Logs[i].Fields) < canonicalFields(s.Logs[j].Fields)
 	})
-
-	return s, nil
+	// return s, nil
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
@@ -291,20 +274,17 @@ func normalizeStringMap(m map[string]string) map[string]string {
 		}
 		tmp[kk] = normCollapse(v)
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
 	return out
 }
-
 func canonicalFields(m map[string]string) string {
 	if m == nil || len(m) == 0 {
 		return ""
@@ -314,8 +294,7 @@ func canonicalFields(m map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	var b strings.Builder
+	// var b strings.Builder
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteString(";")
@@ -326,7 +305,6 @@ func canonicalFields(m map[string]string) string {
 	}
 	return b.String()
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = normCollapse(s)
 	if s == "" {
@@ -341,14 +319,12 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func parseRFC3339DefaultEpoch(s string) (time.Time, error) {
 	if normCollapse(s) == "" {
 		return time.Unix(0, 0).UTC(), nil
 	}
 	return parseRFC3339(s)
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {

@@ -28,9 +28,9 @@ type Enqueuer interface {
 
 // Clock enables deterministic testing.
 type Clock interface {
-	Now() time.Time
+	Now()
+	// time.Time
 }
-
 type realClock struct{}
 
 func (realClock) Now() time.Time { return time.Now() }
@@ -42,13 +42,10 @@ type JobRequest struct {
 }
 
 // LoggerFn is a structured logger signature.
-type LoggerFn func(level, msg string, fields map[string]any)
-
-type jobKey struct {
+type LoggerFn func(level, msg string, fields map[string]any) type jobKey struct {
 	Tenant string
 	Name   string
 }
-
 type firedKey struct {
 	Tenant string
 	Name   string
@@ -156,13 +153,11 @@ func (e *TriggerEngine) Stop(ctx context.Context) error {
 	default:
 		close(e.stopCh)
 	}
-
 	done := make(chan struct{})
 	go func() {
 		e.wg.Wait()
 		close(done)
 	}()
-
 	select {
 	case <-done:
 		return nil
@@ -170,21 +165,18 @@ func (e *TriggerEngine) Stop(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-
 func (e *TriggerEngine) loop(ctx context.Context) {
 	defer e.wg.Done()
-
 	for {
 		select {
 		case <-ctx.Done():
 			e.logger("info", "trigger_engine_ctx_done", map[string]any{"event": "engine_stop"})
-			return
-		case <-e.stopCh:
+			// return
+		// case <-e.stopCh:
 			e.logger("info", "trigger_engine_stop", map[string]any{"event": "engine_stop"})
-			return
-		default:
+			// return
+		// default:
 		}
-
 		e.tick(ctx)
 		sleep := jitterDuration(e, e.pollInterval, e.jitterPct)
 		select {
@@ -196,36 +188,29 @@ func (e *TriggerEngine) loop(ctx context.Context) {
 		}
 	}
 }
-
 func (e *TriggerEngine) tick(ctx context.Context) {
 	if e.provider == nil || e.enqueuer == nil {
 		e.logger("warn", "trigger_engine_unwired", map[string]any{"event": "engine_unwired"})
-		return
+		// return
 	}
-
 	now := e.clock.Now()
-
 	jobs, err := e.provider.List(ctx)
 	if err != nil {
 		e.logger("warn", "jobs_provider_error", map[string]any{
 			"event": "jobs_provider_error",
 			"error": err.Error(),
 		})
-		return
+		// return
 	}
-
 	e.maybePrune()
-
 	for _, j := range jobs {
 		if !j.Enabled {
 			continue
 		}
-
 		jobType := j.JobType
 		if strings.TrimSpace(jobType) == "" {
 			jobType = "ingest"
 		}
-
 		if err := j.Validate(); err != nil {
 			e.logger("warn", "cron_job_invalid", map[string]any{
 				"event":     "job_invalid",
@@ -235,10 +220,8 @@ func (e *TriggerEngine) tick(ctx context.Context) {
 			})
 			continue
 		}
-
 		loc := e.loadLocation(j.Timezone)
 		key := jobKey{Tenant: j.TenantID, Name: j.Name}
-
 		nr := e.getCachedNextRun(key)
 
 		// If cache missing or stale, recompute from "now".
@@ -261,12 +244,10 @@ func (e *TriggerEngine) tick(ctx context.Context) {
 		if nr.After(now.Add(e.maxLookahead)) {
 			continue
 		}
-
 		minuteKey := firedKey{Tenant: j.TenantID, Name: j.Name, Minute: unixMinute(nr.In(loc))}
 		if e.alreadyFired(minuteKey) {
 			continue
 		}
-
 		jobID, err := e.enqueuer.Enqueue(ctx, j.TenantID, JobRequest{
 			SourceID: j.SourceID,
 			JobType:  jobType,
@@ -283,9 +264,7 @@ func (e *TriggerEngine) tick(ctx context.Context) {
 			})
 			continue
 		}
-
 		e.markFired(minuteKey)
-
 		e.logger("info", "trigger_fired", map[string]any{
 			"event":        "trigger_fired",
 			"tenant_id":    j.TenantID,
@@ -305,7 +284,6 @@ func (e *TriggerEngine) tick(ctx context.Context) {
 		}
 	}
 }
-
 func (e *TriggerEngine) loadLocation(tz string) *time.Location {
 	tz = strings.TrimSpace(tz)
 	if tz == "" {
@@ -317,36 +295,31 @@ func (e *TriggerEngine) loadLocation(tz string) *time.Location {
 	}
 	return loc
 }
-
 func (e *TriggerEngine) getCachedNextRun(k jobKey) time.Time {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.nextRun[k]
 }
-
 func (e *TriggerEngine) setCachedNextRun(k jobKey, t time.Time) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if t.IsZero() {
 		delete(e.nextRun, k)
-		return
+		// return
 	}
 	e.nextRun[k] = t
 }
-
 func (e *TriggerEngine) alreadyFired(k firedKey) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	_, ok := e.lastFire[k]
 	return ok
 }
-
 func (e *TriggerEngine) markFired(k firedKey) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.lastFire[k] = struct{}{}
 }
-
 func (e *TriggerEngine) maybePrune() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -357,15 +330,15 @@ func (e *TriggerEngine) maybePrune() {
 		e.nextRun = make(map[jobKey]time.Time)
 	}
 }
-
 func unixMinute(t time.Time) int64 { return t.Unix() / 60 }
-
 func jitterDuration(e *TriggerEngine, base time.Duration, pct float64) time.Duration {
 	if pct <= 0 {
 		return base
 	}
-	min := float64(base) * (1.0 - pct)
-	max := float64(base) * (1.0 + pct)
+	min := float64(base)
+	*(1.0 - pct)
+	max := float64(base)
+	*(1.0 + pct)
 	if min < 0 {
 		min = 0
 	}

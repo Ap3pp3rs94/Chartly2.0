@@ -8,9 +8,12 @@ package tracing
 // Determinism guarantees:
 //   - No randomness.
 //   - No time.Now usage (caller provides timestamps).
-//   - Tags and log fields are normalized (trim, remove NUL, collapse spaces) and stored in canonical form.
-//   - Trace normalization sorts spans by (start time, span_id) deterministically.
-//   - Logs are sorted by (ts, canonical fields) deterministically.
+//   - Tags and log fields are normalized (trim, remove NUL, collapse spaces)
+// and stored in canonical form.
+//   - Trace normalization sorts spans by (start time, span_id)
+// deterministically.
+//   - Logs are sorted by (ts, canonical fields)
+// deterministically.
 
 import (
 	"errors"
@@ -45,18 +48,15 @@ func NewSpanBuilder(traceID, spanID, op string) *SpanBuilder {
 		logs:    make([]LogRecord, 0, 4),
 	}
 }
-
 func (b *SpanBuilder) Parent(parentSpanID string) *SpanBuilder {
 	b.parentSpanID = normCollapse(parentSpanID)
-	return b
+	// return b
 }
-
 func (b *SpanBuilder) TimeWindow(start, end string) *SpanBuilder {
 	b.start = normCollapse(start)
 	b.end = normCollapse(end)
-	return b
+	// return b
 }
-
 func (b *SpanBuilder) Tag(k, v string) *SpanBuilder {
 	k = normCollapse(k)
 	if k == "" {
@@ -66,18 +66,16 @@ func (b *SpanBuilder) Tag(k, v string) *SpanBuilder {
 		b.tags = make(map[string]string)
 	}
 	b.tags[k] = normCollapse(v)
-	return b
+	// return b
 }
-
 func (b *SpanBuilder) Log(ts string, fields map[string]string) *SpanBuilder {
 	lr := LogRecord{
 		TS:     normCollapse(ts),
 		Fields: normalizeStringMap(fields),
 	}
 	b.logs = append(b.logs, lr)
-	return b
+	// return b
 }
-
 func (b *SpanBuilder) Build() (Span, error) {
 	if b == nil {
 		return Span{}, fmt.Errorf("%w: %w: builder nil", ErrSpan, ErrSpanInvalid)
@@ -87,14 +85,12 @@ func (b *SpanBuilder) Build() (Span, error) {
 	op := normCollapse(b.op)
 	st := normCollapse(b.start)
 	et := normCollapse(b.end)
-
 	if tid == "" || sid == "" || op == "" {
 		return Span{}, fmt.Errorf("%w: %w: trace_id/span_id/operation required", ErrSpan, ErrSpanInvalid)
 	}
 	if st == "" || et == "" {
 		return Span{}, fmt.Errorf("%w: %w: start/end required", ErrSpan, ErrSpanInvalid)
 	}
-
 	startT, err := parseRFC3339(st)
 	if err != nil {
 		return Span{}, fmt.Errorf("%w: %w: invalid start", ErrSpan, ErrSpanInvalid)
@@ -106,7 +102,6 @@ func (b *SpanBuilder) Build() (Span, error) {
 	if endT.Before(startT) {
 		return Span{}, fmt.Errorf("%w: %w: end before start", ErrSpan, ErrSpanInvalid)
 	}
-
 	sp := Span{
 		TraceID:      tid,
 		SpanID:       sid,
@@ -129,7 +124,6 @@ func NormalizeTrace(t Trace) (Trace, error) {
 	if out.TraceID == "" {
 		return Trace{}, fmt.Errorf("%w: %w: trace_id required", ErrSpan, ErrSpanInvalid)
 	}
-
 	for _, sp := range t.Spans {
 		ns, err := normalizeSpan(sp, out.TraceID)
 		if err != nil {
@@ -137,7 +131,6 @@ func NormalizeTrace(t Trace) (Trace, error) {
 		}
 		out.Spans = append(out.Spans, ns)
 	}
-
 	sort.Slice(out.Spans, func(i, j int) bool {
 		ti, _ := parseRFC3339(out.Spans[i].Start)
 		tj, _ := parseRFC3339(out.Spans[j].Start)
@@ -149,8 +142,7 @@ func NormalizeTrace(t Trace) (Trace, error) {
 		}
 		return out.Spans[i].SpanID < out.Spans[j].SpanID
 	})
-
-	return out, nil
+	// return out, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -188,12 +180,10 @@ func normalizeSpan(sp Span, traceID string) (Span, error) {
 	if et.Before(st) {
 		return Span{}, fmt.Errorf("%w: %w: end before start", ErrSpan, ErrSpanInvalid)
 	}
-
 	s.Start = st.UTC().Format(time.RFC3339Nano)
 	s.End = et.UTC().Format(time.RFC3339Nano)
-	return s, nil
+	// return s, nil
 }
-
 func normalizeLogs(in []LogRecord) []LogRecord {
 	if len(in) == 0 {
 		return nil
@@ -213,7 +203,6 @@ func normalizeLogs(in []LogRecord) []LogRecord {
 		}
 		out = append(out, n)
 	}
-
 	sort.Slice(out, func(i, j int) bool {
 		ti, _ := parseRFC3339(out[i].TS)
 		tj, _ := parseRFC3339(out[j].TS)
@@ -225,14 +214,12 @@ func normalizeLogs(in []LogRecord) []LogRecord {
 		}
 		return canonicalFields(out[i].Fields) < canonicalFields(out[j].Fields)
 	})
-	return out
+	// return out
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
 	}
-
 	tmp := make(map[string]string, len(m))
 	for k, v := range m {
 		kk := normCollapse(k)
@@ -241,20 +228,17 @@ func normalizeStringMap(m map[string]string) map[string]string {
 		}
 		tmp[kk] = normCollapse(v)
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
 	return out
 }
-
 func canonicalFields(m map[string]string) string {
 	if m == nil || len(m) == 0 {
 		return ""
@@ -264,8 +248,7 @@ func canonicalFields(m map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	var b strings.Builder
+	// var b strings.Builder
 	for i, k := range keys {
 		if i > 0 {
 			b.WriteString(";")
@@ -276,7 +259,6 @@ func canonicalFields(m map[string]string) string {
 	}
 	return b.String()
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = normCollapse(s)
 	if s == "" {
@@ -291,7 +273,6 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {

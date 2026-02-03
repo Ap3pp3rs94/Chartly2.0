@@ -3,7 +3,8 @@ package metrics
 // Prometheus exposition format renderer (deterministic, stdlib-only).
 //
 // This package renders metric families into Prometheus text exposition format.
-// It is a formatter only (DATA ONLY) and does not implement HTTP handlers.
+// It is a formatter only (DATA ONLY)
+// and does not implement HTTP handlers.
 //
 // Determinism guarantees:
 //   - Families are sorted by Name.
@@ -31,14 +32,12 @@ type Label struct {
 	Name  string
 	Value string
 }
-
 type Sample struct {
 	Name        string
 	Labels      []Label
 	Value       float64
 	TimestampMS int64 // 0 means omit
 }
-
 type Family struct {
 	Name    string
 	Help    string
@@ -62,8 +61,7 @@ func Render(families []Family) (string, error) {
 
 	// Sort families by Name
 	sort.Slice(fs, func(i, j int) bool { return fs[i].Name < fs[j].Name })
-
-	var b strings.Builder
+	// var b strings.Builder
 	for _, f := range fs {
 		if f.Help != "" {
 			b.WriteString("# HELP ")
@@ -86,9 +84,8 @@ func Render(families []Family) (string, error) {
 		sort.Slice(samples, func(i, j int) bool {
 			ai := samples[i].Name + canonicalLabels(samples[i].Labels)
 			aj := samples[j].Name + canonicalLabels(samples[j].Labels)
-			return ai < aj
+			// return ai < aj
 		})
-
 		for _, s := range samples {
 			ns, err := normalizeSample(s)
 			if err != nil {
@@ -108,7 +105,6 @@ func Render(families []Family) (string, error) {
 			b.WriteString("\n")
 		}
 	}
-
 	return b.String(), nil
 }
 
@@ -133,13 +129,12 @@ func normalizeFamily(f Family) (Family, error) {
 		switch n.Type {
 		case "counter", "gauge", "histogram", "summary":
 			// ok
-		default:
+			// default:
 			return Family{}, fmt.Errorf("%w: %w: invalid family type", ErrProm, ErrPromInvalid)
 		}
 	}
 	return n, nil
 }
-
 func normalizeSample(s Sample) (Sample, error) {
 	n := Sample{
 		Name:        norm(s.Name),
@@ -158,7 +153,6 @@ func normalizeSample(s Sample) (Sample, error) {
 	}
 	return n, nil
 }
-
 func normalizeLabels(labels []Label) []Label {
 	if len(labels) == 0 {
 		return nil
@@ -212,7 +206,6 @@ func renderLabels(labels []Label) string {
 	b.WriteString("}")
 	return b.String()
 }
-
 func canonicalLabels(labels []Label) string {
 	n := normalizeLabels(labels)
 	if len(n) == 0 {
@@ -229,18 +222,16 @@ func canonicalLabels(labels []Label) string {
 	}
 	return b.String()
 }
-
 func escapeLabelValue(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\"", "\\\"")
 	s = strings.ReplaceAll(s, "\n", "\\n")
-	return s
+	// return s
 }
-
 func escapeHelp(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\n", "\\n")
-	return s
+	// return s
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -264,7 +255,6 @@ func isMetricName(s string) bool {
 	}
 	return true
 }
-
 func isLabelName(s string) bool {
 	// Label name: [a-zA-Z_][a-zA-Z0-9_]*
 	if s == "" {
@@ -282,11 +272,9 @@ func isLabelName(s string) bool {
 	}
 	return true
 }
-
 func isAlpha(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
-
 func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
 }
@@ -297,9 +285,8 @@ func isDigit(b byte) bool {
 
 func norm(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	return s
+	// return s
 }
-
 func normKeepSpace(s string) string {
 	s = strings.ReplaceAll(s, "\x00", "")
 	return strings.TrimSpace(s)

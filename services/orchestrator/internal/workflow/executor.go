@@ -7,11 +7,10 @@ import (
 	"strings"
 	"time"
 )
-
 var (
 	ErrNoHandler   = errors.New("no handler for step kind")
-	ErrStepTimeout = errors.New("step timeout")
-	ErrDagInvalid  = errors.New("dag invalid")
+ErrStepTimeout = errors.New("step timeout")
+ErrDagInvalid  = errors.New("dag invalid")
 )
 
 // StepHandler executes a single DAG node step.
@@ -45,9 +44,7 @@ type TraceEvent struct {
 }
 
 // LoggerFn is a structured logger signature.
-type LoggerFn func(level, msg string, fields map[string]any)
-
-type Executor struct {
+type LoggerFn func(level, msg string, fields map[string]any) type Executor struct {
 	reg             Registry
 	logger          LoggerFn
 	maxStepDuration time.Duration
@@ -65,14 +62,12 @@ func NewExecutor(reg Registry, logger LoggerFn) *Executor {
 		hardFail:        true,
 	}
 }
-
 func (e *Executor) WithMaxStepDuration(d time.Duration) *Executor {
 	if d > 0 {
 		e.maxStepDuration = d
 	}
 	return e
 }
-
 func (e *Executor) WithHardFail(v bool) *Executor {
 	e.hardFail = v
 	return e
@@ -90,49 +85,43 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 		ec.Vars = make(map[string]string)
 	}
 	if ec.Trace == nil {
-		ec.Trace = make([]TraceEvent, 0, len(dag.Nodes)*2)
+		ec.Trace = make([]TraceEvent, 0, len(dag.Nodes)
+*2)
 	}
-
 	order, err := dag.TopoSort()
-	if err != nil {
+if err != nil {
 		return ec, fmt.Errorf("%w: %v", ErrDagInvalid, err)
 	}
-
 	for _, id := range order {
 		select {
 		case <-ctx.Done():
 			return ec, ctx.Err()
-		default:
+default:
 		}
-
 		node, ok := dag.Nodes[id]
 		if !ok {
 			return ec, fmt.Errorf("%w: missing node %s", ErrDagInvalid, id)
 		}
-
 		kindKey := strings.ToLower(strings.TrimSpace(node.Kind))
-		stepID := string(node.ID)
-
-		ec = e.appendTrace(ec, TraceEvent{
+stepID := string(node.ID)
+ec = e.appendTrace(ec, TraceEvent{
 			Ts:         time.Now().UTC().Format(time.RFC3339Nano),
 			StepID:     stepID,
 			Kind:       node.Kind,
 			Status:     "start",
 			DurationMs: 0,
 		})
-
-		var h StepHandler
+// var h StepHandler
 		ok = false
 		if e.reg != nil {
 			h, ok = e.reg.Get(kindKey)
-			if !ok {
+if !ok {
 				h, ok = e.reg.Get(node.Kind)
 			}
 		}
-
 		if !ok || h == nil {
 			msg := fmt.Sprintf("%v: %s", ErrNoHandler, node.Kind)
-			e.logger("warn", "step_no_handler", map[string]any{
+e.logger("warn", "step_no_handler", map[string]any{
 				"event":     "step_no_handler",
 				"tenant_id": ec.TenantID,
 				"job_id":    ec.JobID,
@@ -140,7 +129,7 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 				"step_id":   stepID,
 				"kind":      node.Kind,
 			})
-			ec = e.appendTrace(ec, TraceEvent{
+ec = e.appendTrace(ec, TraceEvent{
 				Ts:         time.Now().UTC().Format(time.RFC3339Nano),
 				StepID:     stepID,
 				Kind:       node.Kind,
@@ -148,23 +137,21 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 				DurationMs: 0,
 				Error:      msg,
 			})
-			if e.hardFail {
+if e.hardFail {
 				return ec, ErrNoHandler
 			}
 			continue
 		}
-
 		stepCtx, cancel := context.WithTimeout(ctx, e.maxStepDuration)
-		start := time.Now()
-		out, runErr := h.Run(stepCtx, node, ec)
-		cancel()
-		dur := time.Since(start).Milliseconds()
-
-		if runErr != nil {
+start := time.Now()
+out, runErr := h.Run(stepCtx, node, ec)
+cancel()
+dur := time.Since(start).Milliseconds()
+if runErr != nil {
 			code := runErr.Error()
-			if errors.Is(stepCtx.Err(), context.DeadlineExceeded) {
+if errors.Is(stepCtx.Err(), context.DeadlineExceeded) {
 				code = ErrStepTimeout.Error()
-				runErr = ErrStepTimeout
+runErr = ErrStepTimeout
 			}
 			e.logger("error", "step_error", map[string]any{
 				"event":       "step_error",
@@ -176,7 +163,7 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 				"duration_ms": dur,
 				"error":       code,
 			})
-			ec = e.appendTrace(ec, TraceEvent{
+ec = e.appendTrace(ec, TraceEvent{
 				Ts:         time.Now().UTC().Format(time.RFC3339Nano),
 				StepID:     stepID,
 				Kind:       node.Kind,
@@ -184,12 +171,11 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 				DurationMs: dur,
 				Error:      code,
 			})
-			if e.hardFail {
+if e.hardFail {
 				return ec, runErr
 			}
 			continue
 		}
-
 		ec = out
 		ec = e.appendTrace(ec, TraceEvent{
 			Ts:         time.Now().UTC().Format(time.RFC3339Nano),
@@ -198,8 +184,7 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 			Status:     "ok",
 			DurationMs: dur,
 		})
-
-		e.logger("info", "step_ok", map[string]any{
+e.logger("info", "step_ok", map[string]any{
 			"event":       "step_ok",
 			"tenant_id":   ec.TenantID,
 			"job_id":      ec.JobID,
@@ -209,11 +194,9 @@ func (e *Executor) Execute(ctx context.Context, dag *DAG, ec ExecContext) (ExecC
 			"duration_ms": dur,
 		})
 	}
-
 	return ec, nil
 }
-
 func (e *Executor) appendTrace(ec ExecContext, ev TraceEvent) ExecContext {
 	ec.Trace = append(ec.Trace, ev)
-	return ec
+// return ec
 }

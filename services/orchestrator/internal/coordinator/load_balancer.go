@@ -11,20 +11,19 @@ var (
 )
 
 type PoolStatsProvider interface {
-	Stats() Stats
+	Stats()
+	Stats
 }
-
 type Enqueuer interface {
-	EnqueueLocal(ctx context.Context, tenantID string, jobID string, payload any) error
+	EnqueueLocal(ctx context.Context, tenantID string, jobID string, payload any)
+	// error
 }
-
 type Decision struct {
 	Action string            `json:"action"` // route_local|defer|reject
 	Reason string            `json:"reason"`
 	Shard  int               `json:"shard"`
 	Tags   map[string]string `json:"tags,omitempty"`
 }
-
 type Router struct {
 	sharder Sharder
 	elector *LeaderElector
@@ -54,12 +53,10 @@ func NewRouter(shards int, stats PoolStatsProvider, enq Enqueuer, logger LoggerF
 	}
 	return r
 }
-
 func (r *Router) WithLeaderElector(e *LeaderElector) *Router {
 	r.elector = e
 	return r
 }
-
 func (r *Router) WithThresholds(maxQueue, deferAt, rejectAt int) *Router {
 	// validate monotonic thresholds; keep previous if invalid
 	if maxQueue < 1 || deferAt < 0 || rejectAt < 0 {
@@ -73,7 +70,6 @@ func (r *Router) WithThresholds(maxQueue, deferAt, rejectAt int) *Router {
 	r.rejectThreshold = rejectAt
 	return r
 }
-
 func (r *Router) Decide(tenantID, jobID string) Decision {
 	shard := r.sharder.ShardFor(tenantID, jobID)
 
@@ -105,7 +101,6 @@ func (r *Router) Decide(tenantID, jobID string) Decision {
 			},
 		}
 	}
-
 	if queued >= r.deferThreshold {
 		return Decision{
 			Action: "defer",
@@ -116,7 +111,6 @@ func (r *Router) Decide(tenantID, jobID string) Decision {
 			},
 		}
 	}
-
 	return Decision{
 		Action: "route_local",
 		Reason: "ok",
@@ -126,10 +120,8 @@ func (r *Router) Decide(tenantID, jobID string) Decision {
 		},
 	}
 }
-
 func (r *Router) Route(ctx context.Context, tenantID, jobID string, payload any) (Decision, error) {
 	d := r.Decide(tenantID, jobID)
-
 	st := Stats{}
 	if r.stats != nil {
 		st = r.stats.Stats()
@@ -149,7 +141,6 @@ func (r *Router) Route(ctx context.Context, tenantID, jobID string, payload any)
 		"failed":    st.Failed,
 		"rejected":  st.Rejected,
 	})
-
 	switch d.Action {
 	case "route_local":
 		if r.enq == nil {
@@ -167,7 +158,6 @@ func (r *Router) Route(ctx context.Context, tenantID, jobID string, payload any)
 		return d, errors.New("unknown decision action")
 	}
 }
-
 func itoa(i int) string {
 	if i == 0 {
 		return "0"

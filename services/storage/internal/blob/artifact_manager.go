@@ -32,18 +32,18 @@ var (
 )
 
 type Store interface {
-	Put(ctx context.Context, tenantID, objectKey, contentType string, data []byte, meta map[string]string) error
+	Put(ctx context.Context, tenantID, objectKey, contentType string, data []byte, meta map[string]string)
+	// error
 	Get(ctx context.Context, tenantID, objectKey string) (contentType string, data []byte, meta map[string]string, err error)
 	Head(ctx context.Context, tenantID, objectKey string) (contentType string, bytes int64, meta map[string]string, err error)
-	Delete(ctx context.Context, tenantID, objectKey string) error
+	Delete(ctx context.Context, tenantID, objectKey string)
+	// error
 }
-
 type ManagerOptions struct {
 	Prefix         string
 	MaxBytes       int64
 	AllowOverwrite bool
 }
-
 type ArtifactRef struct {
 	ObjectKey   string
 	ContentType string
@@ -51,7 +51,6 @@ type ArtifactRef struct {
 	SHA256      string
 	Meta        map[string]string
 }
-
 type Manager struct {
 	store Store
 	opts  ManagerOptions
@@ -64,7 +63,6 @@ func NewManager(store Store, opts ManagerOptions) (*Manager, error) {
 	o := normalizeManagerOptions(opts)
 	return &Manager{store: store, opts: o}, nil
 }
-
 func (m *Manager) Put(ctx context.Context, tenantID string, contentType string, data []byte, meta map[string]string) (ArtifactRef, error) {
 	tenantID = artifactNorm(tenantID)
 	contentType = strings.TrimSpace(contentType)
@@ -77,14 +75,10 @@ func (m *Manager) Put(ctx context.Context, tenantID string, contentType string, 
 	if m.opts.MaxBytes > 0 && int64(len(data)) > m.opts.MaxBytes {
 		return ArtifactRef{}, fmt.Errorf("%w: max bytes exceeded", ErrArtifactTooLarge)
 	}
-
 	sum := sha256.Sum256(data)
 	shaHex := hex.EncodeToString(sum[:])
-
 	objKey := objectKeyFor(m.opts.Prefix, tenantID, shaHex)
-	
 	nmeta := normalizeMeta(meta)
-
 	if !m.opts.AllowOverwrite {
 		// Check existence deterministically using Head.
 		if _, _, _, err := m.store.Head(ctx, tenantID, objKey); err == nil {
@@ -92,11 +86,9 @@ func (m *Manager) Put(ctx context.Context, tenantID string, contentType string, 
 		}
 		// If Head errored, do not assume not found; proceed to Put.
 	}
-
 	if err := m.store.Put(ctx, tenantID, objKey, contentType, data, nmeta); err != nil {
 		return ArtifactRef{}, fmt.Errorf("%w: %w: %v", ErrArtifact, ErrArtifactStore, err)
 	}
-
 	return ArtifactRef{
 		ObjectKey:   objKey,
 		ContentType: contentType,
@@ -105,26 +97,21 @@ func (m *Manager) Put(ctx context.Context, tenantID string, contentType string, 
 		Meta:        copyMeta(nmeta),
 	}, nil
 }
-
 func (m *Manager) Get(ctx context.Context, tenantID, objectKey string) (ArtifactRef, []byte, error) {
 	tenantID = artifactNorm(tenantID)
 	objectKey = strings.TrimSpace(objectKey)
 	if tenantID == "" || objectKey == "" {
 		return ArtifactRef{}, nil, fmt.Errorf("%w: tenantID/objectKey required", ErrArtifactInvalid)
 	}
-
 	ct, data, meta, err := m.store.Get(ctx, tenantID, objectKey)
 	if err != nil {
 		return ArtifactRef{}, nil, fmt.Errorf("%w: %w: %v", ErrArtifact, ErrArtifactStore, err)
 	}
-
 	if data == nil {
 		data = []byte{}
 	}
-
 	sum := sha256.Sum256(data)
 	shaHex := hex.EncodeToString(sum[:])
-
 	return ArtifactRef{
 		ObjectKey:   objectKey,
 		ContentType: strings.TrimSpace(ct),
@@ -133,7 +120,6 @@ func (m *Manager) Get(ctx context.Context, tenantID, objectKey string) (Artifact
 		Meta:        copyMeta(normalizeMeta(meta)),
 	}, data, nil
 }
-
 func (m *Manager) Delete(ctx context.Context, tenantID, objectKey string) error {
 	tenantID = artifactNorm(tenantID)
 	objectKey = strings.TrimSpace(objectKey)
@@ -155,7 +141,6 @@ func objectKeyFor(prefix, tenantID, shaHex string) string {
 	if prefix == "" {
 		prefix = "artifacts"
 	}
-
 	tenantID = artifactNorm(tenantID)
 	shaHex = strings.ToLower(strings.TrimSpace(shaHex))
 
@@ -169,10 +154,8 @@ func objectKeyFor(prefix, tenantID, shaHex string) string {
 	if len(shaHex) >= 4 {
 		seg2 = shaHex[2:4]
 	}
-
 	return prefix + "/" + tenantID + "/sha256/" + seg1 + "/" + seg2 + "/" + shaHex + ".bin"
 }
-
 func normalizeManagerOptions(opts ManagerOptions) ManagerOptions {
 	o := opts
 	o.Prefix = strings.TrimSpace(o.Prefix)
@@ -187,10 +170,8 @@ func normalizeManagerOptions(opts ManagerOptions) ManagerOptions {
 	if opts == (ManagerOptions{}) {
 		o.AllowOverwrite = true
 	}
-
 	return o
 }
-
 func normalizeMeta(meta map[string]string) map[string]string {
 	if meta == nil || len(meta) == 0 {
 		return map[string]string{}
@@ -199,7 +180,6 @@ func normalizeMeta(meta map[string]string) map[string]string {
 	// Normalize keys/values deterministically.
 	keys := make([]string, 0, len(meta))
 	tmp := make(map[string]string, len(meta))
-
 	for k, v := range meta {
 		nk := artifactNormCollapse(k)
 		if nk == "" {
@@ -208,45 +188,36 @@ func normalizeMeta(meta map[string]string) map[string]string {
 		nv := artifactNormCollapse(v)
 		tmp[nk] = nv
 	}
-
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
-
 	return out
 }
-
 func copyMeta(meta map[string]string) map[string]string {
 	if meta == nil {
 		return map[string]string{}
 	}
-
 	keys := make([]string, 0, len(meta))
 	for k := range meta {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = meta[k]
 	}
-
 	return out
 }
-
 func artifactNorm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
 	return s
 }
-
 func artifactNormCollapse(s string) string {
 	s = artifactNorm(s)
 	if s == "" {

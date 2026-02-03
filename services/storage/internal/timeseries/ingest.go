@@ -31,196 +31,148 @@ import (
 	"sort"
 	"strings"
 )
-
 var (
-
-ErrInvalidPayload = errors.New("invalid payload")
-
-ErrDecode         = errors.New("decode failed")
-
-ErrIngest         = errors.New("ingest failed")
+	ErrInvalidPayload = errors.New("invalid payload")
+ErrDecode = errors.New("decode failed")
+ErrIngest = errors.New("ingest failed")
 )
-
 type IngestPayload struct {
+	Meta ChunkMeta `json:"meta"`
 
-Meta   ChunkMeta   `json:"meta"`
-
-Series []SeriesSet `json:"series"`
+	Series []SeriesSet `json:"series"`
 }
-
 type SeriesSet struct {
+	Key SeriesKey `json:"key"`
 
-Key    SeriesKey `json:"key"`
-
-Points []Point   `json:"points"`
+	Points []Point `json:"points"`
 }
-
 type IngestOptions struct {
 
-// MaxBytes caps raw input bytes read (compressed or uncompressed). Default 64 MiB.
+	// MaxBytes caps raw input bytes read (compressed or uncompressed). Default 64 MiB.
 
-MaxBytes int64
+	MaxBytes int64
 
+	// AllowGzip enables gzip payloads (detected by header). Default true.
 
-// AllowGzip enables gzip payloads (detected by header). Default true.
+	AllowGzip bool
 
-AllowGzip bool
+	// DisallowUnknownFields forces strict JSON decoding. Default true.
 
+	DisallowUnknownFields bool
 
-// DisallowUnknownFields forces strict JSON decoding. Default true.
+	// Writer options used for chunk encoding.
 
-DisallowUnknownFields bool
-
-
-// Writer options used for chunk encoding.
-
-Writer WriterOptions
+	Writer WriterOptions
 }
-
 type Ingestor struct {
+	opts IngestOptions
 
-opts   IngestOptions
-
-writer *Writer
+	writer *Writer
 }
 
 func NewIngestor(opts IngestOptions) *Ingestor {
 
-o := normalizeIngestOptions(opts)
-
+	o := normalizeIngestOptions(opts)
 return &Ingestor{
 
+		opts: o,
 
-opts:   o,
-
-
-writer: NewWriter(o.Writer),
-
+		writer: NewWriter(o.Writer),
+	}
 }
-}
-
 func (i *Ingestor) Reset() {
 
-if i.writer != nil {
-
+	if i.writer != nil {
 
 		i.writer.Reset()
 
-}
+	}
 }
 
-// Ingest reads a JSON (or gzip JSON) payload, encodes it into a CHTS1 chunk,
+// Ingest reads a JSON (or gzip JSON)
+// payload, encodes it into a CHTS1 chunk,
 // and writes it to the provided Sink exactly once.
 func (i *Ingestor) Ingest(ctx context.Context, r io.Reader, sink Sink, objectKeyPrefix string) (ChunkRef, []string, error) {
 
-if i == nil {
+	if i == nil {
 
+		return ChunkRef{}, nil, fmt.Errorf("%w: nil ingestor", ErrIngest)
 
-return ChunkRef{}, nil, fmt.Errorf("%w: nil ingestor", ErrIngest)
+	}
+	if r == nil {
 
-}
+		return ChunkRef{}, nil, fmt.Errorf("%w: nil reader", ErrInvalidPayload)
 
-if r == nil {
-
-
-return ChunkRef{}, nil, fmt.Errorf("%w: nil reader", ErrInvalidPayload)
-
-}
-
-payload, warns, err := decodePayload(r, i.opts)
-
+	}
+	payload, warns, err := decodePayload(r, i.opts)
 if err != nil {
 
+		return ChunkRef{}, warns, err
 
-return ChunkRef{}, warns, err
-
-}
-
-return i.IngestPayload(ctx, payload, sink, objectKeyPrefix, warns)
+	}
+	return i.IngestPayload(ctx, payload, sink, objectKeyPrefix, warns)
 }
 
 // IngestPayload ingests a pre-parsed payload.
 func (i *Ingestor) IngestPayload(ctx context.Context, payload IngestPayload, sink Sink, objectKeyPrefix string, warnings []string) (ChunkRef, []string, error) {
 
-if i == nil || i.writer == nil {
+	if i == nil || i.writer == nil {
 
+		return ChunkRef{}, warnings, fmt.Errorf("%w: writer not initialized", ErrIngest)
 
-return ChunkRef{}, warnings, fmt.Errorf("%w: writer not initialized", ErrIngest)
+	}
 
-}
+	// Normalize meta and series deterministically
 
-// Normalize meta and series deterministically
-
-payload.Meta = normalizeChunkMeta(payload.Meta)
-
+	payload.Meta = normalizeChunkMeta(payload.Meta)
 payload.Series = normalizeSeriesSets(payload.Series)
 
+	// Validate that series tenant/namespace match meta early (deterministic).
 
-// Validate that series tenant/namespace match meta early (deterministic).
+	for _, s := range payload.Series {
 
-for _, s := range payload.Series {
-
-
-k := normalizeSeriesKey(s.Key)
-
-
+		k := normalizeSeriesKey(s.Key)
 if k.TenantID != payload.Meta.TenantID {
 
+			return ChunkRef{}, warnings, fmt.Errorf("%w: series tenant mismatch", ErrInvalidPayload)
 
-		return ChunkRef{}, warnings, fmt.Errorf("%w: series tenant mismatch", ErrInvalidPayload)
+		}
+		if k.Namespace != payload.Meta.Namespace {
 
+			return ChunkRef{}, warnings, fmt.Errorf("%w: series namespace mismatch", ErrInvalidPayload)
 
-}
+		}
 
+	}
 
-if k.Namespace != payload.Meta.Namespace {
+	// Reset writer state and add all series/points.
 
+	// Writer is concurrency-safe, but we reset to avoid mixing chunks.
 
-		return ChunkRef{}, warnings, fmt.Errorf("%w: series namespace mismatch", ErrInvalidPayload)
-
-
-}
-
-}
-
-
-// Reset writer state and add all series/points.
-
-// Writer is concurrency-safe, but we reset to avoid mixing chunks.
-
-i.writer.Reset()
-
+	i.writer.Reset()
 for _, s := range payload.Series {
 
+		if err := i.writer.AddSeriesPoints(s.Key, s.Points); err != nil {
 
-if err := i.writer.AddSeriesPoints(s.Key, s.Points); err != nil {
+			return ChunkRef{}, warnings, fmt.Errorf("%w: %v", ErrIngest, err)
 
+		}
 
-		return ChunkRef{}, warnings, fmt.Errorf("%w: %v", ErrIngest, err)
+	}
 
+	// Flush chunk
 
-}
-
-}
-
-
-// Flush chunk
-
-ref, err := i.writer.Flush(ctx, sink, payload.Meta, objectKeyPrefix)
-
+	ref, err := i.writer.Flush(ctx, sink, payload.Meta, objectKeyPrefix)
 if err != nil {
 
+		return ChunkRef{}, warnings, err
 
-return ChunkRef{}, warnings, err
+	}
 
-}
+	// Ensure warnings are deterministic order
 
-
-// Ensure warnings are deterministic order
-
-sort.Strings(warnings)
-
-return ref, warnings, nil
+	sort.Strings(warnings)
+// return ref, warnings, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -233,7 +185,6 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 	if max <= 0 {
 		max = 64 * 1024 * 1024
 	}
-
 	warnings := make([]string, 0, 2)
 
 	// Limit raw bytes read (compressed or uncompressed).
@@ -242,7 +193,7 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 
 	// Detect gzip by magic header without consuming stream.
 	hdr, _ := br.Peek(2)
-	useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
+useGzip := opts.AllowGzip && len(hdr) >= 2 && hdr[0] == 0x1f && hdr[1] == 0x8b
 
 	var reader io.Reader = br
 	var gz *gzip.Reader
@@ -250,24 +201,22 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 
 	if useGzip {
 		gz, err = gzip.NewReader(br)
-		if err != nil {
+if err != nil {
 			return IngestPayload{}, warnings, fmt.Errorf("%w: gzip decode failed", ErrDecode)
 		}
 		defer gz.Close()
-		reader = gz
+reader = gz
 		warnings = append(warnings, "payload_gzip_decoded")
 	}
 
 	// Limit decompressed bytes too.
 	dlr := &io.LimitedReader{R: reader, N: max + 1}
 	hasher := sha256.New()
-	tee := io.TeeReader(dlr, hasher)
-
-	dec := json.NewDecoder(tee)
-	if opts.DisallowUnknownFields {
+tee := io.TeeReader(dlr, hasher)
+dec := json.NewDecoder(tee)
+if opts.DisallowUnknownFields {
 		dec.DisallowUnknownFields()
 	}
-
 	var payload IngestPayload
 	if err := dec.Decode(&payload); err != nil {
 		if lr.N <= 0 || dlr.N <= 0 {
@@ -277,7 +226,7 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 	}
 
 	// Ensure there is no trailing junk
-	var extra any
+	// var extra any
 	if err := dec.Decode(&extra); err == nil {
 		return IngestPayload{}, warnings, fmt.Errorf("%w: trailing data", ErrDecode)
 	} else if err != io.EOF {
@@ -291,37 +240,29 @@ func decodePayload(r io.Reader, opts IngestOptions) (IngestPayload, []string, er
 
 	// Attach payload checksum to meta for traceability (deterministic).
 	sum := hex.EncodeToString(hasher.Sum(nil))
-	if payload.Meta.Meta == nil {
+if payload.Meta.Meta == nil {
 		payload.Meta.Meta = make(map[string]string)
 	}
 	payload.Meta.Meta["ingest.payload_sha256"] = sum
 
+	// Basic shape validation (more validation happens in Writer/Flush).
 
-// Basic shape validation (more validation happens in Writer/Flush).
-
-if strings.TrimSpace(payload.Meta.TenantID) == "" || strings.TrimSpace(payload.Meta.Namespace) == "" {
-
+	if strings.TrimSpace(payload.Meta.TenantID) == "" || strings.TrimSpace(payload.Meta.Namespace) == "" {
 
 		return IngestPayload{}, warnings, fmt.Errorf("%w: meta tenant_id/namespace required", ErrInvalidPayload)
 
-}
-
-if strings.TrimSpace(payload.Meta.Start) == "" || strings.TrimSpace(payload.Meta.End) == "" {
-
+	}
+	if strings.TrimSpace(payload.Meta.Start) == "" || strings.TrimSpace(payload.Meta.End) == "" {
 
 		return IngestPayload{}, warnings, fmt.Errorf("%w: meta start/end required", ErrInvalidPayload)
 
-}
-
-if len(payload.Series) == 0 {
-
+	}
+	if len(payload.Series) == 0 {
 
 		return IngestPayload{}, warnings, fmt.Errorf("%w: no series", ErrInvalidPayload)
 
-}
-
-
-return payload, warnings, nil
+	}
+	return payload, warnings, nil
 }
 
 // (gzip helpers removed; streaming decode handles gzip directly)
@@ -332,99 +273,69 @@ return payload, warnings, nil
 
 func normalizeIngestOptions(o IngestOptions) IngestOptions {
 
-if o.MaxBytes <= 0 {
+	if o.MaxBytes <= 0 {
 
+		o.MaxBytes = 64 * 1024 * 1024
 
-	o.MaxBytes = 64 * 1024 * 1024
+	}
+	if o.AllowGzip == false {
 
+		// keep false
+
+	} else {
+
+		o.AllowGzip = true
+
+	}
+	if o.DisallowUnknownFields == false {
+
+		// keep false
+
+	} else {
+
+		o.DisallowUnknownFields = true
+
+	}
+
+	// Writer defaults handled by NewWriter via normalizeWriterOptions
+
+	return o
 }
-
-if o.AllowGzip == false {
-
-
-// keep false
-
-} else {
-
-
-	o.AllowGzip = true
-
-}
-
-if o.DisallowUnknownFields == false {
-
-
-// keep false
-
-} else {
-
-
-	o.DisallowUnknownFields = true
-
-}
-
-// Writer defaults handled by NewWriter via normalizeWriterOptions
-
-return o
-}
-
 func normalizeSeriesSets(ss []SeriesSet) []SeriesSet {
 
-out := make([]SeriesSet, 0, len(ss))
-
+	out := make([]SeriesSet, 0, len(ss))
 for _, s := range ss {
 
+		s.Key = normalizeSeriesKey(s.Key)
 
-s.Key = normalizeSeriesKey(s.Key)
+		// Normalize points (TS/Meta trims)
+but do not sort here; Writer sorts
 
+		if s.Points != nil {
 
-// Normalize points (TS/Meta trims) but do not sort here; Writer sorts
+			pts := make([]Point, len(s.Points))
+for i := range s.Points {
 
+				p := s.Points[i]
 
-if s.Points != nil {
+				p.TS = normalizeString(p.TS)
+p.Meta = normalizeStringMap(p.Meta)
+pts[i] = p
 
-
-		pts := make([]Point, len(s.Points))
-
-
-		for i := range s.Points {
-
-
-			p := s.Points[i]
-
-
-			p.TS = normalizeString(p.TS)
-
-
-			p.Meta = normalizeStringMap(p.Meta)
-
-
-			pts[i] = p
-
+			}
+			s.Points = pts
 
 		}
+		out = append(out, s)
 
+	}
 
-		s.Points = pts
+	// Sort by series key string deterministically
 
+	sort.Slice(out, func(i, j int) bool {
 
-}
+		return seriesKeyString(out[i].Key) < seriesKeyString(out[j].Key)
 
-
-out = append(out, s)
-
-}
-
-
-// Sort by series key string deterministically
-
-sort.Slice(out, func(i, j int) bool {
-
-
-return seriesKeyString(out[i].Key) < seriesKeyString(out[j].Key)
-
-})
-
-
-return out
+	})
+// return out
 }

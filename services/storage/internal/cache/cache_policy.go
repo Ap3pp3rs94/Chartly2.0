@@ -31,7 +31,7 @@ var (
 	ErrPolicyInvalid = errors.New("policy invalid")
 )
 
-type Kind string
+// type Kind string
 
 const (
 	KindObjectBody Kind = "object_body"
@@ -47,7 +47,6 @@ type Rule struct {
 	MaxBytes int64
 	Notes    string
 }
-
 type Policy struct {
 	Version    string
 	DefaultTTL time.Duration
@@ -78,14 +77,12 @@ func DefaultPolicy() Policy {
 //   - larger MaxBytes
 func (p Policy) RuleFor(kind Kind) Rule {
 	pn := normalizePolicy(p)
-
 	matches := make([]Rule, 0, 2)
 	for _, r := range pn.Rules {
 		if r.Kind == kind {
 			matches = append(matches, normalizeRule(r, pn.DefaultTTL))
 		}
 	}
-
 	if len(matches) == 0 {
 		return Rule{
 			Kind:     kind,
@@ -95,11 +92,9 @@ func (p Policy) RuleFor(kind Kind) Rule {
 			Notes:    "no rule",
 		}
 	}
-
 	if len(matches) == 1 {
 		return matches[0]
 	}
-
 	sort.Slice(matches, func(i, j int) bool {
 		a := matches[i]
 		b := matches[j]
@@ -118,7 +113,6 @@ func (p Policy) RuleFor(kind Kind) Rule {
 		}
 		return false
 	})
-
 	return matches[0]
 }
 
@@ -126,7 +120,6 @@ func (p Policy) RuleFor(kind Kind) Rule {
 // Returns (ttl, ok). ttl=0 and ok=false means do not cache.
 func (p Policy) Admit(kind Kind, objBytes int64) (time.Duration, bool) {
 	r := p.RuleFor(kind)
-
 	if !r.Enabled {
 		return 0, false
 	}
@@ -142,22 +135,20 @@ func (p Policy) Admit(kind Kind, objBytes int64) (time.Duration, bool) {
 // Key builds a stable, tenant-scoped cache key.
 //
 // Rules:
-// - tenantID is required.
-// - kind is required.
-// - parts are normalized (trim; remove NUL; collapse whitespace).
-// - parts may not contain ":" (to avoid ambiguous splitting). If present, an error is returned.
-//   (If you need to support arbitrary strings, implement a deterministic escaping scheme at a higher layer.)
+//   - tenantID is required.
+//   - kind is required.
+//   - parts are normalized (trim; remove NUL; collapse whitespace).
+//   - parts may not contain ":" (to avoid ambiguous splitting). If present, an error is returned.
+//     (If you need to support arbitrary strings, implement a deterministic escaping scheme at a higher layer.)
 func Key(tenantID string, kind Kind, parts ...string) (string, error) {
 	t := norm(tenantID)
 	if t == "" {
 		return "", fmt.Errorf("%w: %w: tenantID required", ErrPolicy, ErrPolicyInvalid)
 	}
-
 	k := norm(string(kind))
 	if k == "" {
 		return "", fmt.Errorf("%w: %w: kind required", ErrPolicy, ErrPolicyInvalid)
 	}
-
 	normalized := make([]string, 0, len(parts))
 	for _, p := range parts {
 		pn := normCollapse(p)
@@ -169,7 +160,6 @@ func Key(tenantID string, kind Kind, parts ...string) (string, error) {
 		}
 		normalized = append(normalized, pn)
 	}
-
 	var b strings.Builder
 	b.WriteString("chartly:")
 	b.WriteString(t)
@@ -197,7 +187,6 @@ func (p Policy) AsMap() map[string]any {
 		}
 		return rules[i].Notes < rules[j].Notes
 	})
-
 	outRules := make([]map[string]any, 0, len(rules))
 	for _, r := range rules {
 		rr := normalizeRule(r, pn.DefaultTTL)
@@ -209,7 +198,6 @@ func (p Policy) AsMap() map[string]any {
 			"notes":     rr.Notes,
 		})
 	}
-
 	return map[string]any{
 		"version":        pn.Version,
 		"default_ttl_ms": pn.DefaultTTL.Milliseconds(),
@@ -233,7 +221,6 @@ func normalizePolicy(p Policy) Policy {
 	if pp.Rules == nil {
 		pp.Rules = []Rule{}
 	}
-
 	nr := make([]Rule, 0, len(pp.Rules))
 	for _, r := range pp.Rules {
 		nr = append(nr, normalizeRule(r, pp.DefaultTTL))
@@ -241,7 +228,6 @@ func normalizePolicy(p Policy) Policy {
 	pp.Rules = nr
 	return pp
 }
-
 func normalizeRule(r Rule, defaultTTL time.Duration) Rule {
 	rr := r
 	rr.Kind = Kind(norm(string(rr.Kind)))
@@ -254,13 +240,11 @@ func normalizeRule(r Rule, defaultTTL time.Duration) Rule {
 	}
 	return rr
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	return s
+	// return s
 }
-
 func normCollapse(s string) string {
 	s = norm(s)
 	if s == "" {

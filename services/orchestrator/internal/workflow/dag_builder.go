@@ -14,19 +14,17 @@ var (
 	ErrCycleDetected = errors.New("cycle detected")
 )
 
-type NodeID string
+// type NodeID string
 
 type Node struct {
 	ID     NodeID            `json:"id"`
 	Kind   string            `json:"kind"`
 	Params map[string]string `json:"params,omitempty"`
 }
-
 type Edge struct {
 	From NodeID `json:"from"`
 	To   NodeID `json:"to"`
 }
-
 type DAG struct {
 	Nodes map[NodeID]Node `json:"nodes"`
 	Edges []Edge          `json:"edges"`
@@ -38,7 +36,6 @@ func NewDAG() *DAG {
 		Edges: make([]Edge, 0),
 	}
 }
-
 func (d *DAG) AddNode(n Node) error {
 	if d == nil {
 		return errors.New("dag is nil")
@@ -55,7 +52,6 @@ func (d *DAG) AddNode(n Node) error {
 	d.Nodes[n.ID] = n
 	return nil
 }
-
 func (d *DAG) AddEdge(from, to NodeID) error {
 	if d == nil {
 		return errors.New("dag is nil")
@@ -73,9 +69,8 @@ func (d *DAG) AddEdge(from, to NodeID) error {
 		return fmt.Errorf("%w: to=%s", ErrNodeMissing, to)
 	}
 	d.Edges = append(d.Edges, Edge{From: from, To: to})
-	return nil
+	// return nil
 }
-
 func (d *DAG) Validate() error {
 	if d == nil {
 		return errors.New("dag is nil")
@@ -92,7 +87,7 @@ func (d *DAG) Validate() error {
 		}
 	}
 	_, err := d.TopoSort()
-	return err
+	// return err
 }
 
 // TopoSort returns a deterministic stable topological ordering using Kahn's algorithm.
@@ -101,24 +96,19 @@ func (d *DAG) TopoSort() ([]NodeID, error) {
 	if d == nil {
 		return nil, errors.New("dag is nil")
 	}
-
 	adj := make(map[NodeID][]NodeID, len(d.Nodes))
 	indeg := make(map[NodeID]int, len(d.Nodes))
-
 	for id := range d.Nodes {
 		adj[id] = nil
 		indeg[id] = 0
 	}
-
 	for _, e := range d.Edges {
 		adj[e.From] = append(adj[e.From], e.To)
 		indeg[e.To]++
 	}
-
 	for k := range adj {
 		sort.Slice(adj[k], func(i, j int) bool { return adj[k][i] < adj[k][j] })
 	}
-
 	zeros := make([]NodeID, 0)
 	for id, n := range indeg {
 		if n == 0 {
@@ -126,14 +116,12 @@ func (d *DAG) TopoSort() ([]NodeID, error) {
 		}
 	}
 	sort.Slice(zeros, func(i, j int) bool { return zeros[i] < zeros[j] })
-
 	out := make([]NodeID, 0, len(d.Nodes))
 	for len(zeros) > 0 {
 		id := zeros[0]
 		zeros = zeros[1:]
 
 		out = append(out, id)
-
 		for _, to := range adj[id] {
 			indeg[to]--
 			if indeg[to] == 0 {
@@ -142,14 +130,11 @@ func (d *DAG) TopoSort() ([]NodeID, error) {
 		}
 		sort.Slice(zeros, func(i, j int) bool { return zeros[i] < zeros[j] })
 	}
-
 	if len(out) != len(d.Nodes) {
 		return nil, ErrCycleDetected
 	}
-
 	return out, nil
 }
-
 func (d *DAG) ReverseTopoSort() ([]NodeID, error) {
 	order, err := d.TopoSort()
 	if err != nil {
@@ -160,7 +145,6 @@ func (d *DAG) ReverseTopoSort() ([]NodeID, error) {
 	}
 	return order, nil
 }
-
 func (d *DAG) Dependents(id NodeID) []NodeID {
 	if d == nil {
 		return nil
@@ -173,7 +157,6 @@ func (d *DAG) Dependents(id NodeID) []NodeID {
 	}
 	return sortedKeys(set)
 }
-
 func (d *DAG) Dependencies(id NodeID) []NodeID {
 	if d == nil {
 		return nil
@@ -186,14 +169,13 @@ func (d *DAG) Dependencies(id NodeID) []NodeID {
 	}
 	return sortedKeys(set)
 }
-
 func sortedKeys(m map[NodeID]struct{}) []NodeID {
 	out := make([]NodeID, 0, len(m))
 	for k := range m {
 		out = append(out, k)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+	// return out
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -205,7 +187,6 @@ type JobPlan struct {
 	SourceID string     `json:"source_id"`
 	Steps    []PlanStep `json:"steps"`
 }
-
 type PlanStep struct {
 	ID     string            `json:"id"`
 	Kind   string            `json:"kind"`
@@ -217,7 +198,6 @@ type PlanStep struct {
 // This is a pure transform + validation; execution is handled elsewhere.
 func BuildFromPlan(p JobPlan) (*DAG, error) {
 	d := NewDAG()
-
 	for _, s := range p.Steps {
 		nid := NodeID(strings.TrimSpace(s.ID))
 		if nid == "" {
@@ -231,7 +211,6 @@ func BuildFromPlan(p JobPlan) (*DAG, error) {
 			return nil, err
 		}
 	}
-
 	for _, s := range p.Steps {
 		to := NodeID(strings.TrimSpace(s.ID))
 		for _, dep := range s.After {
@@ -244,10 +223,8 @@ func BuildFromPlan(p JobPlan) (*DAG, error) {
 			}
 		}
 	}
-
 	if err := d.Validate(); err != nil {
 		return nil, err
 	}
-
 	return d, nil
 }

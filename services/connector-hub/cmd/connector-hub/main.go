@@ -35,14 +35,12 @@ type cfg struct {
 	EnableLocalCORS    bool
 	LocalTenantDefault string
 }
-
 type errorEnvelope struct {
 	Error struct {
 		Code    string `json:"code"`
 		Message string `json:"message"`
 	} `json:"error"`
 }
-
 type ingestExecuteRequest struct {
 	JobID    string            `json:"job_id"`
 	SourceID string            `json:"source_id"`
@@ -52,12 +50,9 @@ type ingestExecuteRequest struct {
 
 func main() {
 	c := loadCfg()
-
 	logger := log.New(os.Stdout, "", 0)
 	errLogger := log.New(os.Stderr, "", 0)
-
 	mux := http.NewServeMux()
-
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		rid := requestIDFromCtx(r.Context())
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -67,7 +62,6 @@ func main() {
 			"request_id": rid,
 		}, rid)
 	})
-
 	mux.HandleFunc("/ready", func(w http.ResponseWriter, r *http.Request) {
 		rid := requestIDFromCtx(r.Context())
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -83,34 +77,28 @@ func main() {
 		if r.Method != http.MethodPost {
 			rid := requestIDFromCtx(r.Context())
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
-			return
+			// return
 		}
-
 		rid := requestIDFromCtx(r.Context())
 		tid := tenantIDFromCtx(r.Context())
-
-		var req ingestExecuteRequest
+		// var req ingestExecuteRequest
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body", rid, c.RequestIDHeader)
-			return
+			// return
 		}
-
 		if strings.TrimSpace(req.JobID) == "" {
 			writeError(w, http.StatusBadRequest, "validation_error", "job_id is required", rid, c.RequestIDHeader)
-			return
+			// return
 		}
-
 		if strings.TrimSpace(req.SourceID) == "" {
 			writeError(w, http.StatusBadRequest, "validation_error", "source_id is required", rid, c.RequestIDHeader)
-			return
+			// return
 		}
-
 		if strings.TrimSpace(req.JobType) == "" {
 			req.JobType = "ingest"
 		}
-
 		logJSON(logger, c, "info", "ingest_execute_stub", map[string]any{
 			"event":     "ingest_execute_stub",
 			"tenant_id": tid,
@@ -118,14 +106,12 @@ func main() {
 			"source_id": req.SourceID,
 			"job_type":  req.JobType,
 		})
-
 		writeJSON(w, http.StatusAccepted, map[string]any{
 			"accepted":   true,
 			"job_id":     req.JobID,
 			"request_id": rid,
 		}, rid)
 	})
-
 	var handler http.Handler = mux
 	handler = withRecovery(handler, logger, c)
 	handler = withRequestID(handler, c)
@@ -134,7 +120,6 @@ func main() {
 		handler = withLocalCORS(handler)
 	}
 	handler = withAccessLog(handler, logger, c)
-
 	srv := &http.Server{
 		Addr:           c.Addr,
 		Handler:        handler,
@@ -147,35 +132,29 @@ func main() {
 			return context.Background()
 		},
 	}
-
 	go func() {
 		logJSON(logger, c, "info", "server_start", map[string]any{
 			"addr": c.Addr,
 			"env":  c.Env,
 		})
-
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logJSON(logger, c, "error", "server_error", map[string]any{"error": err.Error()})
 			os.Exit(1)
 		}
 	}()
-
 	stop := make(chan os.Signal, 2)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 	<-stop
 
 	ctx, cancel := context.WithTimeout(context.Background(), c.ShutdownTimeout)
 	defer cancel()
-
 	logJSON(logger, c, "info", "shutdown_start", nil)
 	if err := srv.Shutdown(ctx); err != nil {
 		logJSON(logger, c, "error", "shutdown_error", map[string]any{"error": err.Error()})
 		_ = srv.Close()
 	}
-
 	logJSON(logger, c, "info", "shutdown_complete", nil)
 }
-
 func loadCfg() cfg {
 	env := getenv("HUB_ENV", "local")
 	return cfg{
@@ -193,7 +172,6 @@ func loadCfg() cfg {
 		LocalTenantDefault: "local",
 	}
 }
-
 func getenv(k, def string) string {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
@@ -201,26 +179,24 @@ func getenv(k, def string) string {
 	}
 	return v
 }
-
 func intFromEnv(k string, def int) int {
 	v := strings.TrimSpace(os.Getenv(k))
 	if v == "" {
 		return def
 	}
-	
 	n, err := strconv.Atoi(v)
 	if err != nil || n <= 0 {
 		return def
 	}
 	return n
 }
-
 func msDuration(k string, defMS int) time.Duration {
 	ms := intFromEnv(k, defMS)
-	return time.Duration(ms) * time.Millisecond
+	return time.Duration(ms)
+	*time.Millisecond
 }
 
-type ctxKey string
+// type ctxKey string
 
 var (
 	ctxRequestID ctxKey = "request_id"
@@ -238,7 +214,6 @@ func withRequestID(next http.Handler, c cfg) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 func withTenant(next http.Handler, c cfg) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tenant := strings.TrimSpace(r.Header.Get(c.TenantHeader))
@@ -248,14 +223,13 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 			} else {
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				return
+				// return
 			}
 		}
 		ctx := context.WithValue(r.Context(), ctxTenantID, tenant)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
-
 func withLocalCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -264,12 +238,11 @@ func withLocalCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
-			return
+			// return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
-
 func withRecovery(next http.Handler, logger *log.Logger, c cfg) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -286,7 +259,6 @@ func withRecovery(next http.Handler, logger *log.Logger, c cfg) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
-
 func withAccessLog(next http.Handler, logger *log.Logger, c cfg) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -311,7 +283,6 @@ func (w *wrapWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
-
 func writeError(w http.ResponseWriter, status int, code, message, requestID, reqHeader string) {
 	var env errorEnvelope
 	env.Error.Code = code
@@ -322,21 +293,17 @@ func writeError(w http.ResponseWriter, status int, code, message, requestID, req
 		w.Header().Set(reqHeader, requestID)
 	}
 	w.WriteHeader(status)
-
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(true)
 	_ = enc.Encode(env)
 }
-
 func writeJSON(w http.ResponseWriter, status int, v any, requestID string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(true)
 	_ = enc.Encode(v)
 }
-
 func requestIDFromCtx(ctx context.Context) string {
 	if v := ctx.Value(ctxRequestID); v != nil {
 		if s, ok := v.(string); ok {
@@ -345,7 +312,6 @@ func requestIDFromCtx(ctx context.Context) string {
 	}
 	return ""
 }
-
 func tenantIDFromCtx(ctx context.Context) string {
 	if v := ctx.Value(ctxTenantID); v != nil {
 		if s, ok := v.(string); ok {
@@ -354,7 +320,6 @@ func tenantIDFromCtx(ctx context.Context) string {
 	}
 	return ""
 }
-
 func mergeReqFields(ctx context.Context, fields map[string]any) map[string]any {
 	if fields == nil {
 		fields = map[string]any{}
@@ -367,12 +332,10 @@ func mergeReqFields(ctx context.Context, fields map[string]any) map[string]any {
 	}
 	return fields
 }
-
 func logJSON(l *log.Logger, c cfg, level string, msg string, fields map[string]any) {
 	if !levelAllowed(c.LogLevel, level) {
 		return
 	}
-
 	out := map[string]any{
 		"ts":    time.Now().UTC().Format(time.RFC3339Nano),
 		"level": level,
@@ -385,7 +348,6 @@ func logJSON(l *log.Logger, c cfg, level string, msg string, fields map[string]a
 	b, _ := json.Marshal(out)
 	l.Println(string(b))
 }
-
 func levelAllowed(configured, incoming string) bool {
 	rank := func(s string) int {
 		switch strings.ToLower(strings.TrimSpace(s)) {
@@ -401,18 +363,17 @@ func levelAllowed(configured, incoming string) bool {
 			return 20
 		}
 	}
-
 	return rank(incoming) >= rank(configured)
 }
 
-// UUIDv4 (RFC4122) using stdlib crypto/rand
+// UUIDv4 (RFC4122)
+// using stdlib crypto/rand
 func newUUIDv4() string {
 	var b [16]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
 		return hex.EncodeToString([]byte(fmt.Sprintf("%d", time.Now().UnixNano())))
 	}
-
 	b[6] = (b[6] & 0x0f) | 0x40 // version 4
 	b[8] = (b[8] & 0x3f) | 0x80 // variant
 
@@ -424,11 +385,9 @@ func newUUIDv4() string {
 		b[10:16],
 	)
 }
-
 func binary16(b []byte) uint16 {
 	return uint16(b[0])<<8 | uint16(b[1])
 }
-
 func binary32(b []byte) uint32 {
 	return uint32(b[0])<<24 | uint32(b[1])<<16 | uint32(b[2])<<8 | uint32(b[3])
 }

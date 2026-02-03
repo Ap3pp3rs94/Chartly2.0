@@ -7,12 +7,12 @@ import (
 )
 
 type memSink struct {
-	puts       int
-	tenantID   string
-	objectKey  string
+	puts        int
+	tenantID    string
+	objectKey   string
 	contentType string
-	data       []byte
-	meta       map[string]string
+	data        []byte
+	meta        map[string]string
 }
 
 func (m *memSink) Put(ctx context.Context, tenantID string, objectKey string, contentType string, data []byte, meta map[string]string) error {
@@ -30,15 +30,13 @@ func (m *memSink) Put(ctx context.Context, tenantID string, objectKey string, co
 	}
 	return nil
 }
-
 func TestCHTS1RoundTrip(t *testing.T) {
 	w := NewWriter(WriterOptions{
-		CompressBody:     false,
+		CompressBody:      false,
 		MaxPointsPerChunk: 1000,
 		MaxSeriesPerChunk: 100,
-		AllowNaN:         false,
+		AllowNaN:          false,
 	})
-
 	keyA := SeriesKey{
 		TenantID:   "t1",
 		Namespace:  "ns",
@@ -54,7 +52,6 @@ func TestCHTS1RoundTrip(t *testing.T) {
 		EntityType: "entity",
 		EntityID:   "id2",
 	}
-
 	pointsA := []Point{
 		{TS: "2026-01-01T00:00:02Z", Value: 2},
 		{TS: "2026-01-01T00:00:01Z", Value: 1},
@@ -63,14 +60,12 @@ func TestCHTS1RoundTrip(t *testing.T) {
 		{TS: "2026-01-01T00:00:03Z", Value: 30},
 		{TS: "2026-01-01T00:00:04Z", Value: 40},
 	}
-
 	if err := w.AddSeriesPoints(keyA, pointsA); err != nil {
 		t.Fatalf("add series A: %v", err)
 	}
 	if err := w.AddSeriesPoints(keyB, pointsB); err != nil {
 		t.Fatalf("add series B: %v", err)
 	}
-
 	meta := ChunkMeta{
 		TenantID:   "t1",
 		Namespace:  "ns",
@@ -78,7 +73,6 @@ func TestCHTS1RoundTrip(t *testing.T) {
 		Start:      "2026-01-01T00:00:00Z",
 		End:        "2026-01-01T00:01:00Z",
 	}
-
 	sink := &memSink{}
 	ref, err := w.Flush(context.Background(), sink, meta, "prefix")
 	if err != nil {
@@ -96,7 +90,6 @@ func TestCHTS1RoundTrip(t *testing.T) {
 	if ref.Points != 4 {
 		t.Fatalf("expected 4 points, got %d", ref.Points)
 	}
-
 	decoded, err := Decode(sink.data, ReaderOptions{})
 	if err != nil {
 		t.Fatalf("decode: %v", err)
@@ -130,23 +123,19 @@ func TestCHTS1RoundTrip(t *testing.T) {
 		}
 	}
 }
-
 func TestCHTS1RoundTripGzip(t *testing.T) {
 	w := NewWriter(WriterOptions{
 		CompressBody: true,
 	})
-
 	key := SeriesKey{
 		TenantID:   "t1",
 		Namespace:  "ns",
 		Metric:     "m1",
 		EntityType: "entity",
 	}
-
 	if err := w.AddPoint(key, Point{TS: "2026-01-01T00:00:00Z", Value: 1}); err != nil {
 		t.Fatalf("add point: %v", err)
 	}
-
 	meta := ChunkMeta{
 		TenantID:   "t1",
 		Namespace:  "ns",
@@ -154,7 +143,6 @@ func TestCHTS1RoundTripGzip(t *testing.T) {
 		Start:      "2026-01-01T00:00:00Z",
 		End:        "2026-01-01T00:01:00Z",
 	}
-
 	sink := &memSink{}
 	if _, err := w.Flush(context.Background(), sink, meta, "prefix"); err != nil {
 		t.Fatalf("flush: %v", err)
@@ -162,7 +150,6 @@ func TestCHTS1RoundTripGzip(t *testing.T) {
 	if len(sink.data) == 0 {
 		t.Fatalf("expected non-empty chunk data")
 	}
-
 	if _, err := Decode(sink.data, ReaderOptions{}); err != nil {
 		t.Fatalf("decode gzip: %v", err)
 	}

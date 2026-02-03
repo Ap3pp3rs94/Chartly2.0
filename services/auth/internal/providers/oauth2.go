@@ -45,7 +45,6 @@ type Client struct {
 	HTTPTimeout  time.Duration
 	MaxBodyBytes int64
 }
-
 type Token struct {
 	AccessToken  string
 	TokenType    string
@@ -65,7 +64,6 @@ func (c Client) FetchToken(ctx context.Context) (Token, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-
 	form := make(map[string]string)
 	form["grant_type"] = "client_credentials"
 	if cl.Audience != "" {
@@ -77,26 +75,22 @@ func (c Client) FetchToken(ctx context.Context) (Token, error) {
 	for k, v := range normalizeStringMap(cl.ExtraParams) {
 		form[k] = v
 	}
-
 	body := encodeForm(form)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cl.TokenURL, bytes.NewReader([]byte(body)))
 	if err != nil {
 		return Token{}, fmt.Errorf("%w: %w: new request", ErrOAuth2, ErrOAuth2Invalid)
 	}
-
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	if cl.ClientID != "" {
 		req.Header.Set("Authorization", basicAuth(cl.ClientID, cl.ClientSecret))
 	}
-
 	hc := &http.Client{Timeout: cl.HTTPTimeout}
 	resp, err := hc.Do(req)
 	if err != nil {
 		return Token{}, fmt.Errorf("%w: %w: %v", ErrOAuth2, ErrOAuth2HTTP, err)
 	}
 	defer resp.Body.Close()
-
 	var r io.Reader = resp.Body
 	if cl.MaxBodyBytes > 0 {
 		r = io.LimitReader(resp.Body, cl.MaxBodyBytes+1)
@@ -108,12 +102,10 @@ func (c Client) FetchToken(ctx context.Context) (Token, error) {
 	if cl.MaxBodyBytes > 0 && int64(len(b)) > cl.MaxBodyBytes {
 		return Token{}, fmt.Errorf("%w: %w: response too large", ErrOAuth2, ErrOAuth2HTTP)
 	}
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := strings.TrimSpace(string(b))
 		return Token{}, fmt.Errorf("%w: %w: status=%d body=%s", ErrOAuth2, ErrOAuth2HTTP, resp.StatusCode, msg)
 	}
-
 	tok, err := parseTokenResponse(b)
 	if err != nil {
 		return Token{}, err
@@ -135,7 +127,6 @@ func parseTokenResponse(b []byte) (Token, error) {
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return Token{}, fmt.Errorf("%w: %w: invalid json", ErrOAuth2, ErrOAuth2Token)
 	}
-
 	getS := func(k string) string {
 		if v, ok := raw[k]; ok {
 			if s, ok := v.(string); ok {
@@ -144,13 +135,12 @@ func parseTokenResponse(b []byte) (Token, error) {
 		}
 		return ""
 	}
-
 	getI := func(k string) int64 {
 		if v, ok := raw[k]; ok {
 			switch t := v.(type) {
 			case float64:
 				return int64(t)
-			case string:
+				// case string:
 				if n, err := strconv.ParseInt(strings.TrimSpace(t), 10, 64); err == nil {
 					return n
 				}
@@ -158,12 +148,10 @@ func parseTokenResponse(b []byte) (Token, error) {
 		}
 		return 0
 	}
-
 	access := getS("access_token")
 	if access == "" {
 		return Token{}, fmt.Errorf("%w: %w: access_token missing", ErrOAuth2, ErrOAuth2Token)
 	}
-
 	tok := Token{
 		AccessToken:  access,
 		TokenType:    strings.ToLower(getS("token_type")),
@@ -174,11 +162,9 @@ func parseTokenResponse(b []byte) (Token, error) {
 		ExpiresAt:    getS("expires_at"),
 		Raw:          raw,
 	}
-
 	if tok.TokenType == "" {
 		tok.TokenType = "bearer"
 	}
-
 	return tok, nil
 }
 
@@ -192,7 +178,6 @@ func normalizeClient(c Client) (Client, error) {
 	cc.ClientID = strings.TrimSpace(cc.ClientID)
 	cc.ClientSecret = strings.TrimSpace(cc.ClientSecret)
 	cc.Audience = strings.TrimSpace(cc.Audience)
-
 	if cc.TokenURL == "" {
 		return Client{}, fmt.Errorf("%w: %w: token_url required", ErrOAuth2, ErrOAuth2Invalid)
 	}
@@ -207,10 +192,8 @@ func normalizeClient(c Client) (Client, error) {
 	if u, err := url.Parse(cc.TokenURL); err != nil || u.Scheme == "" || u.Host == "" {
 		return Client{}, fmt.Errorf("%w: %w: invalid token_url", ErrOAuth2, ErrOAuth2Invalid)
 	}
-
 	return cc, nil
 }
-
 func normalizeScopes(scopes []string) []string {
 	if len(scopes) == 0 {
 		return nil
@@ -225,7 +208,7 @@ func normalizeScopes(scopes []string) []string {
 	}
 	sort.Strings(tmp)
 	out := make([]string, 0, len(tmp))
-	var last string
+	// var last string
 	for _, s := range tmp {
 		if s != last {
 			out = append(out, s)
@@ -234,7 +217,6 @@ func normalizeScopes(scopes []string) []string {
 	}
 	return out
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
@@ -256,7 +238,6 @@ func normalizeStringMap(m map[string]string) map[string]string {
 	}
 	return out
 }
-
 func encodeForm(m map[string]string) string {
 	if len(m) == 0 {
 		return ""
@@ -266,8 +247,7 @@ func encodeForm(m map[string]string) string {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
-	var b strings.Builder
+	// var b strings.Builder
 	first := true
 	for _, k := range keys {
 		v := m[k]
@@ -281,12 +261,10 @@ func encodeForm(m map[string]string) string {
 	}
 	return b.String()
 }
-
 func basicAuth(user, pass string) string {
 	cred := user + ":" + pass
 	return "Basic " + base64.StdEncoding.EncodeToString([]byte(cred))
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {

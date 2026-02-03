@@ -18,27 +18,22 @@ func NewSFTPConnector(id string, caps []string) SFTPConnector {
 	if len(caps) == 0 {
 		caps = []string{"ingest", "sync"}
 	}
-
 	return SFTPConnector{
 		BaseConnector: NewBaseConnector(id, "file", caps),
 	}
 }
-
 func (c SFTPConnector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "host", "username", "auth"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	host := strings.TrimSpace(cfg["host"])
 	if host == "" {
 		return registry.ErrInvalidConfig
 	}
-
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
 	if !allowPrivate && isPrivateHost(host) {
 		return errors.New("private networks denied")
 	}
-
 	auth := strings.ToLower(strings.TrimSpace(cfg["auth"]))
 	switch auth {
 	case "password":
@@ -60,10 +55,8 @@ func (c SFTPConnector) ValidateConfig(cfg map[string]string) error {
 			return registry.ErrInvalidConfig
 		}
 	}
-
 	return nil
 }
-
 func (c SFTPConnector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	_ = ctx
 	_ = req
@@ -78,7 +71,6 @@ func (c SFTPConnector) Ingest(ctx context.Context, cfg map[string]string, req re
 			_ = ms
 		}
 	}
-
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),

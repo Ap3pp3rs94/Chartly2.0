@@ -1,101 +1,74 @@
 package exporters
 
 import (
+	"encoding/json"
 
-"encoding/json"
+	"fmt"
 
-"fmt"
+	"strings"
 
-"strings"
-
-
-"github.com/Ap3pp3rs94/Chartly2.0/services/analytics/internal/reports"
+	"github.com/Ap3pp3rs94/Chartly2.0/services/analytics/internal/reports"
 )
 
 type JSONRenderer struct {
 
-// Indent controls json.MarshalIndent indentation.
+	// Indent controls json.MarshalIndent indentation.
 
-// If empty/whitespace, defaults to two spaces.
+	// If empty/whitespace, defaults to two spaces.
 
-Indent string
+	Indent string
 
+	// OmitCharts drops Section.Chart payloads from the output.
 
-// OmitCharts drops Section.Chart payloads from the output.
+	// Useful for smaller payloads or when chart specs are considered redundant.
 
-// Useful for smaller payloads or when chart specs are considered redundant.
-
-OmitCharts bool
+	OmitCharts bool
 }
 
 func (JSONRenderer) Name() string        { return "json" }
 func (JSONRenderer) ContentType() string { return "application/json" }
-
 func (jr JSONRenderer) Render(r reports.Report) ([]byte, error) {
 
-if strings.TrimSpace(r.ID) == "" {
+	if strings.TrimSpace(r.ID) == "" {
 
+		return nil, fmt.Errorf("%w: report id missing", reports.ErrRender)
 
-return nil, fmt.Errorf("%w: report id missing", reports.ErrRender)
+	}
+	if strings.TrimSpace(r.Title) == "" {
 
-}
+		return nil, fmt.Errorf("%w: report title missing", reports.ErrRender)
 
-if strings.TrimSpace(r.Title) == "" {
+	}
+	indent := jr.Indent
 
+	if strings.TrimSpace(indent) == "" {
 
-return nil, fmt.Errorf("%w: report title missing", reports.ErrRender)
+		indent = "  "
 
-}
+	}
+	out := r
 
+	if jr.OmitCharts && len(r.Sections) > 0 {
 
-indent := jr.Indent
+		out.Sections = make([]reports.Section, len(r.Sections))
+		for i := range r.Sections {
 
-if strings.TrimSpace(indent) == "" {
+			s := r.Sections[i] // copy by value
 
+			s.Chart = nil
 
-indent = "  "
+			out.Sections[i] = s
 
-}
+		}
 
+	}
+	b, err := json.MarshalIndent(out, "", indent)
+	if err != nil {
 
-out := r
+		return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
 
-if jr.OmitCharts && len(r.Sections) > 0 {
-
-
-out.Sections = make([]reports.Section, len(r.Sections))
-
-
-for i := range r.Sections {
-
-
-
-s := r.Sections[i] // copy by value
-
-
-
-s.Chart = nil
-
-
-
-out.Sections[i] = s
-
-
-}
-
-}
-
-
-b, err := json.MarshalIndent(out, "", indent)
-
-if err != nil {
-
-
-return nil, fmt.Errorf("%w: %v", reports.ErrRender, err)
-
-}
-
-return b, nil
+	}
+	return b, nil
 }
 
 var _ reports.Renderer = JSONRenderer{}

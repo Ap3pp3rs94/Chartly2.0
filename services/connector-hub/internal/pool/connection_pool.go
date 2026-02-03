@@ -15,12 +15,7 @@ var (
 	ErrCloseNil       = errors.New("close func is nil")
 )
 
-type Factory func(ctx context.Context) (any, error)
-type CloseFunc func(any) error
-type HealthFunc func(any) error
-type LoggerFn func(level, msg string, fields map[string]any)
-
-type Config struct {
+type Factory func(ctx context.Context) (any, error) type CloseFunc func(any) // error type HealthFunc func(any) // error type LoggerFn func(level, msg string, fields map[string]any) type Config struct {
 	MaxSize        int           `json:"max_size"`
 	MinSize        int           `json:"min_size"`
 	AcquireTimeout time.Duration `json:"acquire_timeout"`
@@ -48,16 +43,12 @@ type Stats struct {
 	Closed          uint64 `json:"closed"`
 	AcquireTimeouts uint64 `json:"acquire_timeouts"`
 }
-
 type pooled struct {
 	res      any
 	created  time.Time
 	lastUsed time.Time
 }
-
-type ReleaseFunc func(healthy bool)
-
-type Pool struct {
+type ReleaseFunc func(healthy bool) type Pool struct {
 	cfg     Config
 	factory Factory
 	closeFn CloseFunc
@@ -75,12 +66,12 @@ type Pool struct {
 	wg sync.WaitGroup
 
 	// metrics
-	total           atomic.Uint64
-	idle            atomic.Uint64
-	inUse           atomic.Uint64
-	created         atomic.Uint64
-	closedCount     atomic.Uint64
-	acquireTimeouts atomic.Uint64
+	// total           atomic.Uint64
+	// idle            atomic.Uint64
+	// inUse           atomic.Uint64
+	// created         atomic.Uint64
+	// closedCount     atomic.Uint64
+	// acquireTimeouts atomic.Uint64
 }
 
 func New(cfg Config, factory Factory, closeFn CloseFunc, health HealthFunc, logger LoggerFn) (*Pool, error) {
@@ -90,7 +81,6 @@ func New(cfg Config, factory Factory, closeFn CloseFunc, health HealthFunc, logg
 	if closeFn == nil {
 		return nil, ErrCloseNil
 	}
-
 	if cfg.MaxSize <= 0 {
 		cfg.MaxSize = 10
 	}
@@ -112,11 +102,9 @@ func New(cfg Config, factory Factory, closeFn CloseFunc, health HealthFunc, logg
 	if cfg.ReapInterval <= 0 {
 		cfg.ReapInterval = 30 * time.Second
 	}
-
 	if logger == nil {
 		logger = func(string, string, map[string]any) {}
 	}
-
 	p := &Pool{
 		cfg:     cfg,
 		factory: factory,
@@ -125,10 +113,8 @@ func New(cfg Config, factory Factory, closeFn CloseFunc, health HealthFunc, logg
 		logger:  logger,
 		ch:      make(chan *pooled, cfg.MaxSize),
 	}
-
 	return p, nil
 }
-
 func (p *Pool) Start(ctx context.Context) error {
 	var err error
 	p.startOnce.Do(func() {
@@ -145,17 +131,14 @@ func (p *Pool) Start(ctx context.Context) error {
 		// start reaper
 		p.wg.Add(1)
 		go p.reaper(ctx)
-
 		p.logger("info", "pool_start", map[string]any{
 			"event":    "pool_start",
 			"max_size": p.cfg.MaxSize,
 			"min_size": p.cfg.MinSize,
 		})
 	})
-
 	return err
 }
-
 func (p *Pool) Stop(ctx context.Context) error {
 	p.stopOnce.Do(func() {
 		p.mu.Lock()
@@ -182,18 +165,14 @@ func (p *Pool) Stop(ctx context.Context) error {
 			p.wg.Wait()
 			close(done)
 		}()
-
 		select {
 		case <-done:
 		case <-ctx.Done():
 		}
-
 		p.logger("info", "pool_stop", map[string]any{"event": "pool_stop"})
 	})
-
 	return ctx.Err()
 }
-
 func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 	if p.isClosed() {
 		return nil, nil, ErrPoolClosed
@@ -207,7 +186,6 @@ func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 			timeout = d
 		}
 	}
-
 	acqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -246,7 +224,6 @@ func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 		if p.isClosed() {
 			return nil, nil, ErrPoolClosed
 		}
-
 		curTotal := p.total.Load()
 		if int(curTotal) < p.cfg.MaxSize {
 			// optimistic reserve
@@ -274,10 +251,8 @@ func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 			if it == nil {
 				continue
 			}
-
 			p.idle.Add(^uint64(0))
 			p.inUse.Add(1)
-
 			now := time.Now()
 			if p.isExpired(now, it) {
 				_ = p.closeResource(it.res)
@@ -285,7 +260,6 @@ func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 				p.inUse.Add(^uint64(0))
 				continue
 			}
-
 			if p.health != nil {
 				if err := p.health(it.res); err != nil {
 					_ = p.closeResource(it.res)
@@ -294,12 +268,10 @@ func (p *Pool) Acquire(ctx context.Context) (any, ReleaseFunc, error) {
 					continue
 				}
 			}
-
 			return it.res, p.makeRelease(it), nil
 		}
 	}
 }
-
 func (p *Pool) Stats() Stats {
 	return Stats{
 		Total:           p.total.Load(),
@@ -310,24 +282,21 @@ func (p *Pool) Stats() Stats {
 		AcquireTimeouts: p.acquireTimeouts.Load(),
 	}
 }
-
 func (p *Pool) makeRelease(it *pooled) ReleaseFunc {
 	var once sync.Once
 	return func(healthy bool) {
 		once.Do(func() {
 			p.inUse.Add(^uint64(0))
 			it.lastUsed = time.Now()
-
 			if p.isClosed() {
 				_ = p.closeResource(it.res)
 				p.total.Add(^uint64(0))
-				return
+				// return
 			}
-
 			if !healthy {
 				_ = p.closeResource(it.res)
 				p.total.Add(^uint64(0))
-				return
+				// return
 			}
 
 			// return to idle if possible; otherwise close
@@ -341,23 +310,19 @@ func (p *Pool) makeRelease(it *pooled) ReleaseFunc {
 		})
 	}
 }
-
 func (p *Pool) newResource(ctx context.Context) (*pooled, error) {
 	res, err := p.factory(ctx)
 	if err != nil {
 		return nil, err
 	}
-
 	p.total.Add(1)
 	p.created.Add(1)
 	return &pooled{res: res, created: time.Now(), lastUsed: time.Now()}, nil
 }
-
 func (p *Pool) putIdle(it *pooled) {
 	if it == nil {
 		return
 	}
-
 	select {
 	case p.ch <- it:
 		p.idle.Add(1)
@@ -366,40 +331,31 @@ func (p *Pool) putIdle(it *pooled) {
 		p.total.Add(^uint64(0))
 	}
 }
-
 func (p *Pool) closeResource(res any) error {
 	p.closedCount.Add(1)
 	return p.closeFn(res)
 }
-
 func (p *Pool) isClosed() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.closed
 }
-
 func (p *Pool) isExpired(now time.Time, it *pooled) bool {
 	if it == nil {
 		return true
 	}
-
 	if p.cfg.MaxLifetime > 0 && now.Sub(it.created) > p.cfg.MaxLifetime {
 		return true
 	}
-
 	if p.cfg.IdleTimeout > 0 && now.Sub(it.lastUsed) > p.cfg.IdleTimeout {
 		return true
 	}
-
 	return false
 }
-
 func (p *Pool) reaper(ctx context.Context) {
 	defer p.wg.Done()
-
 	t := time.NewTicker(p.cfg.ReapInterval)
 	defer t.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
@@ -409,12 +365,10 @@ func (p *Pool) reaper(ctx context.Context) {
 		}
 	}
 }
-
 func (p *Pool) reapOnce() {
 	if p.isClosed() {
 		return
 	}
-
 	now := time.Now()
 
 	// best-effort: scan up to current idle length
@@ -425,9 +379,7 @@ func (p *Pool) reapOnce() {
 			if it == nil {
 				continue
 			}
-
 			p.idle.Add(^uint64(0))
-
 			if p.isExpired(now, it) {
 				_ = p.closeResource(it.res)
 				p.total.Add(^uint64(0))

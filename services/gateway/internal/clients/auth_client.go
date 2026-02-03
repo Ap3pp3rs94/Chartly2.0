@@ -26,26 +26,21 @@ func NewAuthClientFromEnv() AuthClient {
 		},
 	}
 }
-
 func (c AuthClient) Health(ctx context.Context) error {
 	if c.HTTP == nil {
 		return errors.New("auth client http is nil")
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/health", nil)
 	if err != nil {
 		return err
 	}
-
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return errors.New("auth healthcheck failed")
 	}
-
 	return nil
 }

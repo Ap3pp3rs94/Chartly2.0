@@ -32,12 +32,12 @@ import (
 // - CaseType normalized lower-case, safe charset.
 // - Tenant REQUIRED.
 
-type CaseID string
-type CaseType string
+// type CaseID string
+// type CaseType string
 
-type CaseSeverity string
-type CasePriority string
-type CaseStatus string
+// type CaseSeverity string
+// type CasePriority string
+// type CaseStatus string
 
 const (
 	SeverityLow      CaseSeverity = "low"
@@ -58,7 +58,7 @@ const (
 	StatusRejected    CaseStatus = "rejected"
 )
 
-type EvidenceKind string
+// type EvidenceKind string
 
 const (
 	EvidenceEvent  EvidenceKind = "event"
@@ -89,10 +89,10 @@ type CaseAssignment struct {
 // CaseMeta is the envelope metadata.
 // Keep stable; add new fields carefully.
 type CaseMeta struct {
-	ID       CaseID   `json:"id"`
-	Tenant   TenantID `json:"tenant"`
-	Type     CaseType `json:"type"`
-	Title    string   `json:"title"`
+	ID       CaseID       `json:"id"`
+	Tenant   TenantID     `json:"tenant"`
+	Type     CaseType     `json:"type"`
+	Title    string       `json:"title"`
 	Status   CaseStatus   `json:"status"`
 	Severity CaseSeverity `json:"severity"`
 	Priority CasePriority `json:"priority"`
@@ -142,16 +142,14 @@ func NormalizeCaseType(s string) CaseType {
 }
 
 var (
-	ErrEmptyCaseID   = errors.New("canonical: case id is required")
-	ErrEmptyCaseType = errors.New("canonical: case type is required")
-	ErrEmptyCaseTitl = errors.New("canonical: case title is required")
-	ErrInvalidCaseID = errors.New("canonical: invalid case id")
-	ErrInvalidCaseTy = errors.New("canonical: invalid case type")
-
+	ErrEmptyCaseID     = errors.New("canonical: case id is required")
+	ErrEmptyCaseType   = errors.New("canonical: case type is required")
+	ErrEmptyCaseTitl   = errors.New("canonical: case title is required")
+	ErrInvalidCaseID   = errors.New("canonical: invalid case id")
+	ErrInvalidCaseTy   = errors.New("canonical: invalid case type")
 	ErrInvalidSeverity = errors.New("canonical: invalid case severity")
 	ErrInvalidPriority = errors.New("canonical: invalid case priority")
 	ErrInvalidStatus   = errors.New("canonical: invalid case status")
-
 	ErrInvalidCaseHash = errors.New("canonical: invalid case hash (expected hex sha256)")
 	ErrInvalidEvidence = errors.New("canonical: invalid case evidence")
 )
@@ -161,7 +159,6 @@ func NewRandomCaseID() string {
 	_, _ = rand.Read(b[:])
 	return hex.EncodeToString(b[:])
 }
-
 func validateCaseID(id CaseID) error {
 	s := strings.TrimSpace(string(id))
 	if s == "" {
@@ -182,7 +179,6 @@ func validateCaseID(id CaseID) error {
 	}
 	return nil
 }
-
 func validateCaseType(t CaseType) error {
 	s := strings.TrimSpace(string(t))
 	if s == "" {
@@ -201,7 +197,6 @@ func validateCaseType(t CaseType) error {
 	}
 	return nil
 }
-
 func validateSeverity(s CaseSeverity) error {
 	switch strings.TrimSpace(string(s)) {
 	case string(SeverityLow), string(SeverityMedium), string(SeverityHigh), string(SeverityCritical):
@@ -210,7 +205,6 @@ func validateSeverity(s CaseSeverity) error {
 		return fmt.Errorf("%w: %q", ErrInvalidSeverity, s)
 	}
 }
-
 func validatePriority(p CasePriority) error {
 	switch strings.TrimSpace(string(p)) {
 	case string(PriorityP3), string(PriorityP2), string(PriorityP1), string(PriorityP0):
@@ -219,7 +213,6 @@ func validatePriority(p CasePriority) error {
 		return fmt.Errorf("%w: %q", ErrInvalidPriority, p)
 	}
 }
-
 func validateStatus(st CaseStatus) error {
 	switch strings.TrimSpace(string(st)) {
 	case string(StatusOpen), string(StatusInvestigate), string(StatusMitigated), string(StatusResolved), string(StatusClosed), string(StatusRejected):
@@ -228,7 +221,6 @@ func validateStatus(st CaseStatus) error {
 		return fmt.Errorf("%w: %q", ErrInvalidStatus, st)
 	}
 }
-
 func isHexSha256Case(s string) bool {
 	if s == "" {
 		return true
@@ -251,7 +243,6 @@ func (c *Case) Normalize() {
 	c.Meta.Title = strings.TrimSpace(c.Meta.Title)
 	c.Meta.Producer = strings.TrimSpace(c.Meta.Producer)
 	c.Meta.Source = strings.TrimSpace(c.Meta.Source)
-
 	if !c.Meta.Created.IsZero() {
 		c.Meta.Created = c.Meta.Created.UTC()
 	}
@@ -266,13 +257,10 @@ func (c *Case) Normalize() {
 		t := c.Meta.Closed.UTC()
 		c.Meta.Closed = &t
 	}
-
 	c.Meta.PrevHash = strings.TrimSpace(strings.ToLower(c.Meta.PrevHash))
 	c.Meta.Hash = strings.TrimSpace(strings.ToLower(c.Meta.Hash))
-
 	c.Meta.Assignment.Assignee = strings.TrimSpace(c.Meta.Assignment.Assignee)
 	c.Meta.Assignment.Team = strings.TrimSpace(c.Meta.Assignment.Team)
-
 	if c.Attributes != nil {
 		clean := make(map[string]string, len(c.Attributes))
 		for k, v := range c.Attributes {
@@ -288,7 +276,6 @@ func (c *Case) Normalize() {
 			c.Attributes = clean
 		}
 	}
-
 	c.Summary = strings.TrimSpace(c.Summary)
 }
 
@@ -324,7 +311,6 @@ func (c Case) Validate() error {
 	if c.Meta.Closed != nil && c.Meta.Opened != nil && c.Meta.Closed.Before(*c.Meta.Opened) {
 		return errors.New("canonical: closed cannot be before opened")
 	}
-
 	if c.Subject != nil {
 		if err := c.Subject.Validate(); err != nil {
 			return err
@@ -361,7 +347,6 @@ func (c Case) Validate() error {
 	}
 	return nil
 }
-
 func validateEvidence(ev CaseEvidence) error {
 	kind := strings.TrimSpace(string(ev.Kind))
 	switch kind {
@@ -369,12 +354,10 @@ func validateEvidence(ev CaseEvidence) error {
 	default:
 		return fmt.Errorf("%w: unknown kind %q", ErrInvalidEvidence, ev.Kind)
 	}
-
 	sh := strings.TrimSpace(strings.ToLower(ev.SHA256))
 	if sh != "" && !isHexSha256Case(sh) {
 		return fmt.Errorf("%w: invalid sha256", ErrInvalidEvidence)
 	}
-
 	switch EvidenceKind(kind) {
 	case EvidenceEvent:
 		if strings.TrimSpace(string(ev.Event)) == "" {
@@ -399,7 +382,6 @@ func validateEvidence(ev CaseEvidence) error {
 			return fmt.Errorf("%w: note evidence requires note", ErrInvalidEvidence)
 		}
 	}
-
 	return nil
 }
 
@@ -447,12 +429,10 @@ func (c *Case) TransitionStatus(next CaseStatus, now time.Time) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
-
 	next = CaseStatus(strings.TrimSpace(strings.ToLower(string(next))))
 	if err := validateStatus(next); err != nil {
 		return err
 	}
-
 	cur := c.Meta.Status
 	allowed := map[CaseStatus][]CaseStatus{
 		StatusOpen:        {StatusInvestigate, StatusRejected, StatusClosed},
@@ -462,7 +442,6 @@ func (c *Case) TransitionStatus(next CaseStatus, now time.Time) error {
 		StatusRejected:    {StatusClosed},
 		StatusClosed:      {},
 	}
-
 	ok := false
 	for _, st := range allowed[cur] {
 		if st == next {
@@ -473,13 +452,11 @@ func (c *Case) TransitionStatus(next CaseStatus, now time.Time) error {
 	if !ok {
 		return fmt.Errorf("canonical: invalid status transition %q -> %q", cur, next)
 	}
-
 	if now.IsZero() {
 		now = time.Unix(0, 0).UTC()
 	}
 	c.Meta.Status = next
 	c.Meta.Updated = now.UTC()
-
 	if c.Meta.Opened == nil && (next == StatusInvestigate || next == StatusMitigated || next == StatusResolved) {
 		t := now.UTC()
 		c.Meta.Opened = &t
@@ -488,7 +465,6 @@ func (c *Case) TransitionStatus(next CaseStatus, now time.Time) error {
 		t := now.UTC()
 		c.Meta.Closed = &t
 	}
-
 	c.Normalize()
 	return c.Validate()
 }
@@ -501,17 +477,14 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 		Kind   EntityKind `json:"kind"`
 		ID     EntityID   `json:"id"`
 	}
-
 	aliasEntity := func(r EntityRef) entityAlias {
 		return entityAlias{Tenant: r.Tenant, Kind: r.Kind, ID: r.ID}
 	}
-
 	var subj *entityAlias
 	if c.Subject != nil {
 		a := aliasEntity(*c.Subject)
 		subj = &a
 	}
-
 	relEnt := make([]entityAlias, 0, len(c.RelatedEntities))
 	for _, r := range c.RelatedEntities {
 		relEnt = append(relEnt, aliasEntity(r))
@@ -525,13 +498,10 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 		}
 		return relEnt[i].ID < relEnt[j].ID
 	})
-
 	relEvt := append([]EventID(nil), c.RelatedEvents...)
 	sort.Slice(relEvt, func(i, j int) bool { return relEvt[i] < relEvt[j] })
-
 	relMet := append([]MetricName(nil), c.RelatedMetrics...)
 	sort.Slice(relMet, func(i, j int) bool { return relMet[i] < relMet[j] })
-
 	ev := append([]CaseEvidence(nil), c.Evidence...)
 	sort.Slice(ev, func(i, j int) bool {
 		if ev[i].Kind != ev[j].Kind {
@@ -557,7 +527,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 		}
 		return si < sj
 	})
-
 	attrs := c.Attributes
 	if attrs != nil {
 		keys := make([]string, 0, len(attrs))
@@ -571,7 +540,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 		}
 		attrs = ordered
 	}
-
 	type evidenceAlias struct {
 		Kind   EvidenceKind `json:"kind"`
 		Event  EventID      `json:"event_id,omitempty"`
@@ -580,7 +548,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 		SHA256 string       `json:"sha256,omitempty"`
 		Note   string       `json:"note,omitempty"`
 	}
-
 	evAlias := make([]evidenceAlias, 0, len(ev))
 	for i := range ev {
 		var ent *entityAlias
@@ -597,7 +564,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 			Note:   strings.TrimSpace(ev[i].Note),
 		})
 	}
-
 	canon := struct {
 		Meta struct {
 			ID       CaseID       `json:"id"`
@@ -620,15 +586,14 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 			PrevHash string `json:"prev_hash,omitempty"`
 		} `json:"meta"`
 
-		Subject         *entityAlias    `json:"subject,omitempty"`
-		RelatedEntities []entityAlias   `json:"related_entities,omitempty"`
-		RelatedEvents   []EventID       `json:"related_events,omitempty"`
-		RelatedMetrics  []MetricName    `json:"related_metrics,omitempty"`
-		Evidence        []evidenceAlias `json:"evidence,omitempty"`
+		Subject         *entityAlias      `json:"subject,omitempty"`
+		RelatedEntities []entityAlias     `json:"related_entities,omitempty"`
+		RelatedEvents   []EventID         `json:"related_events,omitempty"`
+		RelatedMetrics  []MetricName      `json:"related_metrics,omitempty"`
+		Evidence        []evidenceAlias   `json:"evidence,omitempty"`
 		Attributes      map[string]string `json:"attributes,omitempty"`
-		Summary         string          `json:"summary,omitempty"`
+		Summary         string            `json:"summary,omitempty"`
 	}{}
-
 	canon.Meta.ID = c.Meta.ID
 	canon.Meta.Tenant = c.Meta.Tenant
 	canon.Meta.Type = c.Meta.Type
@@ -650,7 +615,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 	canon.Meta.Producer = strings.TrimSpace(c.Meta.Producer)
 	canon.Meta.Source = strings.TrimSpace(c.Meta.Source)
 	canon.Meta.PrevHash = strings.TrimSpace(strings.ToLower(c.Meta.PrevHash))
-
 	canon.Subject = subj
 	if len(relEnt) > 0 {
 		canon.RelatedEntities = relEnt
@@ -666,7 +630,6 @@ func (c Case) CanonicalBytes() ([]byte, error) {
 	}
 	canon.Attributes = attrs
 	canon.Summary = strings.TrimSpace(c.Summary)
-
 	return json.Marshal(canon)
 }
 
@@ -684,7 +647,7 @@ func (c *Case) ComputeHash(prevHash string) error {
 	}
 	sum := sha256.Sum256(b)
 	c.Meta.Hash = hex.EncodeToString(sum[:])
-	return nil
+	// return nil
 }
 
 // VerifyHash recomputes hash from current PrevHash and canonical bytes and compares.

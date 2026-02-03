@@ -9,7 +9,8 @@ package ledger
 //   - CanonicalEventBytes(e) => canonical JSON bytes with sorted keys at all depths.
 //   - chain hash progression:
 //       prev := "GENESIS"
-//       hash := sha256(prev + "\n" + canonicalEventJSON) as hex
+//       hash := sha256(prev + "\n" + canonicalEventJSON)
+// as hex
 //       prev = hash
 //
 // Determinism guarantees:
@@ -46,7 +47,6 @@ type Link struct {
 	PrevHash string `json:"prev_hash"`
 	Hash     string `json:"hash"`
 }
-
 type Chain struct {
 	TenantID string `json:"tenant_id"`
 	Head     string `json:"head"`
@@ -59,7 +59,6 @@ func BuildChain(tenantID string, events []Event) (Chain, error) {
 	if len(events) == 0 {
 		return Chain{}, fmt.Errorf("%w: %w: no events", ErrChain, ErrChainInvalid)
 	}
-
 	tid := normCollapse(tenantID)
 	if tid == "" {
 		tid = normCollapse(events[0].TenantID)
@@ -68,7 +67,8 @@ func BuildChain(tenantID string, events []Event) (Chain, error) {
 		return Chain{}, fmt.Errorf("%w: %w: tenant_id required", ErrChain, ErrChainInvalid)
 	}
 
-	// Copy events (do not mutate caller) and normalize tenant enforcement.
+	// Copy events (do not mutate caller)
+	// and normalize tenant enforcement.
 	evs := make([]Event, len(events))
 	for i := range events {
 		evs[i] = deepCopyEventForChain(events[i])
@@ -99,7 +99,6 @@ func BuildChain(tenantID string, events []Event) (Chain, error) {
 		}
 		return normCollapse(evs[i].EventID) < normCollapse(evs[j].EventID)
 	})
-
 	links := make([]Link, 0, len(evs))
 	prev := genesisPrevHash
 
@@ -118,7 +117,6 @@ func BuildChain(tenantID string, events []Event) (Chain, error) {
 		})
 		prev = h
 	}
-
 	return Chain{TenantID: tid, Head: prev, Links: links}, nil
 }
 
@@ -132,12 +130,10 @@ func VerifyChain(chain Chain, events []Event) error {
 	if tid == "" {
 		return fmt.Errorf("%w: %w: chain tenant_id required", ErrChain, ErrChainInvalid)
 	}
-
 	built, err := BuildChain(tid, events)
 	if err != nil {
 		return err
 	}
-
 	if normCollapse(chain.Head) != normCollapse(built.Head) {
 		return fmt.Errorf("%w: head mismatch", ErrChainMismatch)
 	}
@@ -146,7 +142,6 @@ func VerifyChain(chain Chain, events []Event) error {
 	if len(chain.Links) != len(built.Links) {
 		return fmt.Errorf("%w: link count mismatch", ErrChainMismatch)
 	}
-
 	for i := range built.Links {
 		a := chain.Links[i]
 		b := built.Links[i]
@@ -158,7 +153,6 @@ func VerifyChain(chain Chain, events []Event) error {
 			return fmt.Errorf("%w: link mismatch at index %d", ErrChainMismatch, i)
 		}
 	}
-
 	return nil
 }
 
@@ -193,7 +187,6 @@ func CanonicalEventBytes(e Event) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: json marshal: %v", ErrChain, err)
 	}
-
 	return b, nil
 }
 
@@ -205,12 +198,10 @@ type canonicalKV struct {
 	K string      `json:"k"`
 	V interface{} `json:"v"`
 }
-
 type canonicalSKV struct {
 	K string `json:"k"`
 	V string `json:"v"`
 }
-
 type canonicalEvent struct {
 	TenantID  string         `json:"tenant_id"`
 	EventID   string         `json:"event_id"`
@@ -229,10 +220,8 @@ func canonicalStringMap(m map[string]string) []canonicalSKV {
 	if m == nil || len(m) == 0 {
 		return nil
 	}
-
 	keys := make([]string, 0, len(m))
 	tmp := make(map[string]string, len(m))
-
 	for k, v := range m {
 		kk := normCollapse(k)
 		if kk == "" {
@@ -240,27 +229,22 @@ func canonicalStringMap(m map[string]string) []canonicalSKV {
 		}
 		tmp[kk] = normCollapse(v)
 	}
-
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make([]canonicalSKV, 0, len(keys))
 	for _, k := range keys {
 		out = append(out, canonicalSKV{K: k, V: tmp[k]})
 	}
 	return out
 }
-
 func canonicalAnyMap(m map[string]any) []canonicalKV {
 	if m == nil || len(m) == 0 {
 		return nil
 	}
-
 	keys := make([]string, 0, len(m))
 	tmp := make(map[string]any, len(m))
-
 	for k, v := range m {
 		kk := normCollapse(k)
 		if kk == "" {
@@ -268,39 +252,36 @@ func canonicalAnyMap(m map[string]any) []canonicalKV {
 		}
 		tmp[kk] = canonicalizeAny(v)
 	}
-
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make([]canonicalKV, 0, len(keys))
 	for _, k := range keys {
 		out = append(out, canonicalKV{K: k, V: tmp[k]})
 	}
 	return out
 }
-
 func canonicalizeAny(v any) any {
 	switch t := v.(type) {
 	case nil:
 		return nil
 	case string:
 		return normCollapse(t)
-	case bool:
-		return t
-	case float64:
+		// case bool:
+		// return t
+		// case float64:
 		// json.Unmarshal uses float64 for numbers; keep as-is.
-		return t
-	case float32:
+		// return t
+		// case float32:
 		return float64(t)
-	case int:
+		// case int:
 		return float64(t)
-	case int64:
+		// case int64:
 		return float64(t)
-	case uint64:
+		// case uint64:
 		return float64(t)
-	case json.Number:
+		// case json.Number:
 		// Convert to float64 deterministically if possible, otherwise string.
 		if f, err := t.Float64(); err == nil {
 			return f
@@ -339,7 +320,6 @@ func hashStep(prev string, canonicalEventJSON []byte) string {
 	_, _ = h.Write(canonicalEventJSON)
 	return hex.EncodeToString(h.Sum(nil))
 }
-
 func deepCopyEventForChain(e Event) Event {
 	// Minimal deep copy to avoid caller mutation during canonicalization.
 	out := e
@@ -356,7 +336,6 @@ func deepCopyEventForChain(e Event) Event {
 	}
 	return out
 }
-
 func deepCopyAnyMapForChain(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 	// Copy in deterministic key order to avoid accidental map sharing; map order still irrelevant internally.
@@ -370,7 +349,6 @@ func deepCopyAnyMapForChain(m map[string]any) map[string]any {
 	}
 	return out
 }
-
 func deepCopyAnyForChain(v any) any {
 	switch t := v.(type) {
 	case nil:
@@ -403,7 +381,6 @@ func deepCopyAnyForChain(v any) any {
 		return t
 	}
 }
-
 func parseRFC3339Strict(s string) (time.Time, error) {
 	s = normCollapse(s)
 	if s == "" {

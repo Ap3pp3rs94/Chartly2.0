@@ -15,7 +15,8 @@ import (
 //
 // Design Notes:
 // - TenantID is REQUIRED for EntityRef to prevent cross-tenant leakage.
-// - Kind is a normalized string (lowercase, trimmed) validated against a safe charset.
+// - Kind is a normalized string (lowercase, trimmed)
+// validated against a safe charset.
 // - EntityID is an opaque identifier (ULID/UUID/KSUID/etc). We validate charset/length only,
 //   not semantic meaning (services may choose their own generator).
 //
@@ -26,9 +27,9 @@ import (
 //   "local/stream/01J0MZ3K9J6TQ4P5QJ0K6W3D9K"
 //   "tenant-a/device/550e8400e29b41d4a716446655440000"
 
-type TenantID string
-type EntityID string
-type EntityKind string
+// type TenantID string
+// type EntityID string
+// type EntityKind string
 
 // Entity is an object description (optional payload lives elsewhere).
 // Many systems will store only EntityRef, but Entity is useful for typed metadata.
@@ -102,14 +103,12 @@ func NormalizeKind(s string) EntityKind {
 
 // Common errors are exported for easy checks in callers.
 var (
-	ErrEmptyTenant = errors.New("canonical: tenant id is required")
-	ErrEmptyKind   = errors.New("canonical: entity kind is required")
-	ErrEmptyID     = errors.New("canonical: entity id is required")
-
-	ErrInvalidTenant = errors.New("canonical: invalid tenant id")
-	ErrInvalidKind   = errors.New("canonical: invalid entity kind")
-	ErrInvalidID     = errors.New("canonical: invalid entity id")
-
+	ErrEmptyTenant      = errors.New("canonical: tenant id is required")
+	ErrEmptyKind        = errors.New("canonical: entity kind is required")
+	ErrEmptyID          = errors.New("canonical: entity id is required")
+	ErrInvalidTenant    = errors.New("canonical: invalid tenant id")
+	ErrInvalidKind      = errors.New("canonical: invalid entity kind")
+	ErrInvalidID        = errors.New("canonical: invalid entity id")
 	ErrInvalidRefFormat = errors.New("canonical: invalid entity ref format (expected <tenant>/<kind>/<id>)")
 )
 

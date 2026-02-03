@@ -38,7 +38,6 @@ type Event struct {
 	Detail    map[string]any    `json:"detail,omitempty"`
 	Meta      map[string]string `json:"meta,omitempty"`
 }
-
 type AppendOnly struct {
 	mu     sync.Mutex
 	max    int
@@ -66,17 +65,14 @@ func (l *AppendOnly) Append(e Event) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	if _, ok := l.idx[ev.TenantID]; !ok {
 		l.idx[ev.TenantID] = make(map[string]int)
 	}
 	if _, exists := l.idx[ev.TenantID][ev.EventID]; exists {
 		return false, nil
 	}
-
 	pos := len(l.events)
 	l.events = append(l.events, ev)
 	l.idx[ev.TenantID][ev.EventID] = pos
@@ -85,7 +81,6 @@ func (l *AppendOnly) Append(e Event) (bool, error) {
 	if l.max > 0 && len(l.events) > l.max {
 		l.evictDeterministic()
 	}
-
 	return true, nil
 }
 
@@ -96,10 +91,8 @@ func (l *AppendOnly) Get(tenantID string, eventID string) (Event, bool) {
 	if t == "" || id == "" {
 		return Event{}, false
 	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	m := l.idx[t]
 	if m == nil {
 		return Event{}, false
@@ -121,7 +114,6 @@ func (l *AppendOnly) List(tenantID string, since string, limit int) ([]Event, er
 	if t == "" {
 		return nil, fmt.Errorf("%w: %w: tenantID required", ErrLedger, ErrLedgerInvalid)
 	}
-
 	var sinceT time.Time
 	var hasSince bool
 	if norm(since) != "" {
@@ -132,14 +124,12 @@ func (l *AppendOnly) List(tenantID string, since string, limit int) ([]Event, er
 		sinceT = st
 		hasSince = true
 	}
-
 	if limit <= 0 {
 		limit = 200
 	}
 	if limit > 5000 {
 		limit = 5000
 	}
-
 	l.mu.Lock()
 	// Snapshot and filter under lock.
 	tmp := make([]Event, 0, min(limit, len(l.events)))
@@ -172,11 +162,9 @@ func (l *AppendOnly) List(tenantID string, since string, limit int) ([]Event, er
 		}
 		return tmp[i].EventID < tmp[j].EventID
 	})
-
 	if len(tmp) > limit {
 		tmp = tmp[:limit]
 	}
-
 	return tmp, nil
 }
 
@@ -186,10 +174,8 @@ func (l *AppendOnly) List(tenantID string, since string, limit int) ([]Event, er
 func (l *AppendOnly) Stats() map[string]any {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	tenants := len(l.idx)
 	total := len(l.events)
-
 	return map[string]any{
 		"total_events": total,
 		"tenants":      tenants,
@@ -213,7 +199,6 @@ func (l *AppendOnly) evictDeterministic() {
 		tid string
 		eid string
 	}
-
 	items := make([]item, 0, len(l.events))
 	for i, ev := range l.events {
 		t, err := parseRFC3339(ev.TS)
@@ -223,7 +208,6 @@ func (l *AppendOnly) evictDeterministic() {
 		}
 		items = append(items, item{pos: i, ts: t, tid: ev.TenantID, eid: ev.EventID})
 	}
-
 	sort.Slice(items, func(i, j int) bool {
 		a := items[i]
 		b := items[j]
@@ -249,7 +233,6 @@ func (l *AppendOnly) evictDeterministic() {
 	// Rebuild events slice without dropped positions; rebuild index deterministically.
 	newEvents := make([]Event, 0, l.max)
 	newIdx := make(map[string]map[string]int)
-
 	for i, ev := range l.events {
 		if _, drop := toDrop[i]; drop {
 			continue
@@ -261,32 +244,26 @@ func (l *AppendOnly) evictDeterministic() {
 		}
 		newIdx[ev.TenantID][ev.EventID] = pos
 	}
-
 	l.events = newEvents
 	l.idx = newIdx
 }
-
 func normalizeAndValidate(e Event) (Event, time.Time, error) {
 	ev := deepCopyEvent(e)
-
 	ev.TenantID = norm(ev.TenantID)
 	ev.EventID = norm(ev.EventID)
 	ev.TS = norm(ev.TS)
 	ev.Action = norm(ev.Action)
 	ev.Outcome = norm(ev.Outcome)
-
 	ev.ObjectKey = norm(ev.ObjectKey)
 	ev.RequestID = norm(ev.RequestID)
 	ev.ActorID = norm(ev.ActorID)
 	ev.Source = norm(ev.Source)
-
 	if ev.TenantID == "" || ev.EventID == "" || ev.Action == "" || ev.Outcome == "" {
 		return Event{}, time.Time{}, fmt.Errorf("%w: %w: tenant_id/event_id/action/outcome required", ErrLedger, ErrLedgerInvalid)
 	}
 	if ev.TS == "" {
 		return Event{}, time.Time{}, fmt.Errorf("%w: %w: ts required", ErrLedger, ErrLedgerInvalid)
 	}
-
 	ts, err := parseRFC3339(ev.TS)
 	if err != nil {
 		return Event{}, time.Time{}, fmt.Errorf("%w: %w: invalid ts", ErrLedger, ErrLedgerInvalid)
@@ -295,10 +272,8 @@ func normalizeAndValidate(e Event) (Event, time.Time, error) {
 	// Normalize maps deterministically (copy + stable key normalization).
 	ev.Meta = normalizeStringMap(ev.Meta)
 	ev.Detail = normalizeAnyMap(ev.Detail)
-
-	return ev, ts, nil
+	// return ev, ts, nil
 }
-
 func deepCopyEvent(e Event) Event {
 	out := e
 	if e.Meta != nil {
@@ -312,12 +287,10 @@ func deepCopyEvent(e Event) Event {
 	}
 	return out
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
 	}
-
 	tmp := make(map[string]string, len(m))
 	for k, v := range m {
 		kk := normCollapse(k)
@@ -326,20 +299,17 @@ func normalizeStringMap(m map[string]string) map[string]string {
 		}
 		tmp[kk] = normCollapse(v)
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
 	return out
 }
-
 func normalizeAnyMap(m map[string]any) map[string]any {
 	if m == nil || len(m) == 0 {
 		return map[string]any{}
@@ -354,20 +324,17 @@ func normalizeAnyMap(m map[string]any) map[string]any {
 		}
 		tmp[kk] = deepCopyAny(v)
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]any, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
 	return out
 }
-
 func deepCopyAnyMap(m map[string]any) map[string]any {
 	out := make(map[string]any, len(m))
 	for k, v := range m {
@@ -375,24 +342,23 @@ func deepCopyAnyMap(m map[string]any) map[string]any {
 	}
 	return out
 }
-
 func deepCopyAny(v any) any {
 	switch t := v.(type) {
 	case nil:
 		return nil
 	case string:
 		return normCollapse(t)
-	case bool:
-		return t
-	case float64:
-		return t
-	case float32:
+		// case bool:
+		// return t
+		// case float64:
+		// return t
+		// case float32:
 		return float64(t)
-	case int:
+		// case int:
 		return float64(t)
-	case int64:
+		// case int64:
 		return float64(t)
-	case uint64:
+		// case uint64:
 		return float64(t)
 	case map[string]any:
 		return deepCopyAnyMap(t)
@@ -407,7 +373,6 @@ func deepCopyAny(v any) any {
 		return normCollapse(fmt.Sprintf("%v", t))
 	}
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = norm(s)
 	if s == "" {
@@ -422,13 +387,11 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	return s
+	// return s
 }
-
 func normCollapse(s string) string {
 	s = norm(s)
 	if s == "" {
@@ -436,7 +399,6 @@ func normCollapse(s string) string {
 	}
 	return strings.Join(strings.Fields(s), " ")
 }
-
 func min(a, b int) int {
 	if a < b {
 		return a

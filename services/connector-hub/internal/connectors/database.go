@@ -17,35 +17,29 @@ func NewDatabaseConnector(id string, caps []string) DatabaseConnector {
 	if len(caps) == 0 {
 		caps = []string{"ingest", "discover"}
 	}
-
 	return DatabaseConnector{
 		BaseConnector: NewBaseConnector(id, "db", caps),
 	}
 }
-
 func (c DatabaseConnector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "dsn", "engine"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	engine := strings.ToLower(strings.TrimSpace(cfg["engine"]))
 	dsn := strings.TrimSpace(cfg["dsn"])
 	if engine == "" || dsn == "" {
 		return registry.ErrInvalidConfig
 	}
-
 	switch engine {
 	case "postgres", "mysql", "sqlite", "mssql", "other":
 		// ok
-	default:
-		return registry.ErrInvalidConfig
+		// default:
+		// return registry.ErrInvalidConfig
 	}
-
 	if engine == "sqlite" {
 		// file path; no network guard needed
-		return nil
+		// return nil
 	}
-
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
 	if !allowPrivate {
 		if host := extractHostFromDSN(dsn); host != "" {
@@ -54,10 +48,8 @@ func (c DatabaseConnector) ValidateConfig(cfg map[string]string) error {
 			}
 		}
 	}
-
 	return nil
 }
-
 func (c DatabaseConnector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	_ = ctx
 	_ = req
@@ -72,7 +64,6 @@ func (c DatabaseConnector) Ingest(ctx context.Context, cfg map[string]string, re
 			_ = ms
 		}
 	}
-
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),
@@ -102,7 +93,6 @@ func extractHostFromDSN(dsn string) string {
 					break
 				}
 			}
-
 			val := strings.Trim(rest[:end], `"'`)
 
 			// strip :port
@@ -142,13 +132,11 @@ func extractHostFromDSN(dsn string) string {
 				break
 			}
 		}
-
 		hostport := strings.TrimSpace(after[:end])
 		if host, _, ok := strings.Cut(hostport, ":"); ok {
 			return host
 		}
 		return hostport
 	}
-
 	return ""
 }

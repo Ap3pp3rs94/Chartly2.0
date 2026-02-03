@@ -24,23 +24,22 @@ type Config struct {
 // LoadConfigFromEnv reads Ollama settings from env. No OpenAI/Codex runtime coupling.
 func LoadConfigFromEnv() Config {
 	base := strings.TrimSpace(os.Getenv("OLLAMA_ENDPOINT"))
-	if base == "" {
+if base == "" {
 		base = "http://127.0.0.1:11434"
 	}
 	model := strings.TrimSpace(os.Getenv("OLLAMA_MODEL"))
-	if model == "" {
+if model == "" {
 		model = "llama3.1:8b"
 	}
 
 	// Optional override; keep sane default.
 	t := strings.TrimSpace(os.Getenv("OLLAMA_TIMEOUT_SECONDS"))
-	timeout := 60
+timeout := 60
 	if t != "" {
 		if n, err := parseInt(t); err == nil && n > 0 {
 			timeout = n
 		}
 	}
-
 	return Config{BaseURL: base, Model: model, TimeoutSec: timeout}
 }
 
@@ -54,16 +53,15 @@ func NewClient(cfg Config) (Client, error) {
 	}
 	return newOllamaClient(cfg), nil
 }
-
 func parseInt(s string) (int, error) {
 	// minimal helper to avoid pulling strconv into consumers
-	var n int
+	// var n int
 	for _, r := range s {
 		if r < '0' || r > '9' {
 			return 0, errors.New("invalid int")
 		}
 		n = n*10 + int(r-'0')
-		if n > 3600 {
+if n > 3600 {
 			return 0, errors.New("too large")
 		}
 	}
@@ -75,5 +73,6 @@ func withTimeout(ctx context.Context, sec int) (context.Context, context.CancelF
 	if sec <= 0 {
 		return ctx, func() {}
 	}
-	return context.WithTimeout(ctx, time.Duration(sec)*time.Second)
+	return context.WithTimeout(ctx, time.Duration(sec)
+*time.Second)
 }

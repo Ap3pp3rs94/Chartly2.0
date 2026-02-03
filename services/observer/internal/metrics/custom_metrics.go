@@ -48,7 +48,6 @@ type Counter struct {
 	mu     sync.Mutex
 	values map[string]float64 // canonicalLabels -> value
 }
-
 type Gauge struct {
 	name       string
 	help       string
@@ -64,10 +63,8 @@ func (r *Registry) Counter(name, help string, baseLabels []Label) *Counter {
 		n = "unnamed_counter"
 	}
 	h := strings.TrimSpace(help)
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	if c, ok := r.counters[n]; ok {
 		return c
 	}
@@ -80,17 +77,14 @@ func (r *Registry) Counter(name, help string, baseLabels []Label) *Counter {
 	r.counters[n] = c
 	return c
 }
-
 func (r *Registry) Gauge(name, help string, baseLabels []Label) *Gauge {
 	n := norm(name)
 	if n == "" {
 		n = "unnamed_gauge"
 	}
 	h := strings.TrimSpace(help)
-
 	r.mu.Lock()
 	defer r.mu.Unlock()
-
 	if g, ok := r.gauges[n]; ok {
 		return g
 	}
@@ -103,11 +97,9 @@ func (r *Registry) Gauge(name, help string, baseLabels []Label) *Gauge {
 	r.gauges[n] = g
 	return g
 }
-
 func (c *Counter) Inc(labels []Label) {
 	c.Add(1, labels)
 }
-
 func (c *Counter) Add(value float64, labels []Label) {
 	if value == 0 {
 		return
@@ -117,20 +109,15 @@ func (c *Counter) Add(value float64, labels []Label) {
 	}
 	ls := mergeLabels(c.baseLabels, labels)
 	key := canonicalLabelsString(ls)
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	c.values[key] += value
 }
-
 func (g *Gauge) Set(value float64, labels []Label) {
 	ls := mergeLabels(g.baseLabels, labels)
 	key := canonicalLabelsString(ls)
-
 	g.mu.Lock()
 	defer g.mu.Unlock()
-
 	g.values[key] = value
 }
 
@@ -146,10 +133,8 @@ func (r *Registry) Families() []Family {
 		gauges = append(gauges, g)
 	}
 	r.mu.Unlock()
-
 	sort.Slice(counters, func(i, j int) bool { return counters[i].name < counters[j].name })
 	sort.Slice(gauges, func(i, j int) bool { return gauges[i].name < gauges[j].name })
-
 	out := make([]Family, 0, len(counters)+len(gauges))
 	for _, c := range counters {
 		out = append(out, c.family())
@@ -157,11 +142,9 @@ func (r *Registry) Families() []Family {
 	for _, g := range gauges {
 		out = append(out, g.family())
 	}
-
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-	return out
+	// return out
 }
-
 func (c *Counter) family() Family {
 	c.mu.Lock()
 	keys := make([]string, 0, len(c.values))
@@ -169,7 +152,6 @@ func (c *Counter) family() Family {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	samples := make([]Sample, 0, len(keys))
 	for _, k := range keys {
 		labels := parseCanonicalLabels(k)
@@ -180,13 +162,11 @@ func (c *Counter) family() Family {
 		})
 	}
 	c.mu.Unlock()
-
 	sort.Slice(samples, func(i, j int) bool {
 		ai := samples[i].Name + canonicalLabelsString(normalizeLabelsLocal(samples[i].Labels))
 		aj := samples[j].Name + canonicalLabelsString(normalizeLabelsLocal(samples[j].Labels))
-		return ai < aj
+		// return ai < aj
 	})
-
 	return Family{
 		Name:    c.name,
 		Help:    c.help,
@@ -194,7 +174,6 @@ func (c *Counter) family() Family {
 		Samples: samples,
 	}
 }
-
 func (g *Gauge) family() Family {
 	g.mu.Lock()
 	keys := make([]string, 0, len(g.values))
@@ -202,7 +181,6 @@ func (g *Gauge) family() Family {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	samples := make([]Sample, 0, len(keys))
 	for _, k := range keys {
 		labels := parseCanonicalLabels(k)
@@ -213,13 +191,11 @@ func (g *Gauge) family() Family {
 		})
 	}
 	g.mu.Unlock()
-
 	sort.Slice(samples, func(i, j int) bool {
 		ai := samples[i].Name + canonicalLabelsString(normalizeLabelsLocal(samples[i].Labels))
 		aj := samples[j].Name + canonicalLabelsString(normalizeLabelsLocal(samples[j].Labels))
-		return ai < aj
+		// return ai < aj
 	})
-
 	return Family{
 		Name:    g.name,
 		Help:    g.help,
@@ -235,7 +211,6 @@ func (g *Gauge) family() Family {
 func mergeLabels(base []Label, extra []Label) []Label {
 	b := normalizeLabelsLocal(base)
 	e := normalizeLabelsLocal(extra)
-
 	tmp := make(map[string]string, len(b)+len(e))
 	for _, l := range b {
 		tmp[l.Name] = l.Value
@@ -243,20 +218,17 @@ func mergeLabels(base []Label, extra []Label) []Label {
 	for _, l := range e {
 		tmp[l.Name] = l.Value
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make([]Label, 0, len(keys))
 	for _, k := range keys {
 		out = append(out, Label{Name: k, Value: tmp[k]})
 	}
 	return out
 }
-
 func canonicalLabelsString(labels []Label) string {
 	n := normalizeLabelsLocal(labels)
 	if len(n) == 0 {
@@ -273,7 +245,6 @@ func canonicalLabelsString(labels []Label) string {
 	}
 	return b.String()
 }
-
 func parseCanonicalLabels(s string) []Label {
 	s = strings.TrimSpace(s)
 	if s == "" {
@@ -298,7 +269,6 @@ func parseCanonicalLabels(s string) []Label {
 	}
 	return normalizeLabelsLocal(out)
 }
-
 func normalizeLabelsLocal(labels []Label) []Label {
 	if len(labels) == 0 {
 		return nil
@@ -327,7 +297,6 @@ func normalizeLabelsLocal(labels []Label) []Label {
 	}
 	return out
 }
-
 func isLabelNameLocal(s string) bool {
 	// Prom label: [a-zA-Z_][a-zA-Z0-9_]*
 	if s == "" {
@@ -345,20 +314,16 @@ func isLabelNameLocal(s string) bool {
 	}
 	return true
 }
-
 func isAlpha(b byte) bool {
 	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
-
 func isDigit(b byte) bool {
 	return b >= '0' && b <= '9'
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	return s
+	// return s
 }
-
 func min(a, b int) int {
 	if a < b {
 		return a

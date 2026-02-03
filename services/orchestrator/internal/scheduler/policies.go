@@ -20,17 +20,15 @@ type QuietHours struct {
 	EndHHMM   string `json:"end_hhmm"`
 	Mode      string `json:"mode"` // "deny" | "allow"
 }
-
 type Policy struct {
-	Enabled                  bool     `json:"enabled"`
-	MaxTriggersPerMinute     int      `json:"max_triggers_per_minute"`
-	MaxTriggersPerJobPerHour int      `json:"max_triggers_per_job_per_hour"`
-	AllowJobTypes            []string `json:"allow_job_types"`
-	DenyTenants              []string `json:"deny_tenants"`
-	AllowTenants             []string `json:"allow_tenants"`
+	Enabled                  bool       `json:"enabled"`
+	MaxTriggersPerMinute     int        `json:"max_triggers_per_minute"`
+	MaxTriggersPerJobPerHour int        `json:"max_triggers_per_job_per_hour"`
+	AllowJobTypes            []string   `json:"allow_job_types"`
+	DenyTenants              []string   `json:"deny_tenants"`
+	AllowTenants             []string   `json:"allow_tenants"`
 	QuietHours               QuietHours `json:"quiet_hours"`
 }
-
 type Decision struct {
 	Allowed bool              `json:"allowed"`
 	Reason  string            `json:"reason"`
@@ -54,7 +52,6 @@ func DefaultPolicy() Policy {
 		},
 	}
 }
-
 func (p Policy) Validate() error {
 	if p.MaxTriggersPerMinute <= 0 {
 		return fmt.Errorf("%w: max_triggers_per_minute", ErrPolicyInvalid)
@@ -144,10 +141,8 @@ func (p *Policy) Decide(now time.Time, tenantID string, job CronJob) Decision {
 			return dec
 		}
 	}
-
 	return Decision{Allowed: true, Reason: "allowed"}
 }
-
 func quietHoursDecision(q QuietHours, now time.Time) Decision {
 	loc := time.UTC
 	if tz := strings.TrimSpace(q.Timezone); tz != "" {
@@ -158,10 +153,9 @@ func quietHoursDecision(q QuietHours, now time.Time) Decision {
 	mode := strings.ToLower(strings.TrimSpace(q.Mode))
 	startMin, _ := parseHHMM(q.StartHHMM)
 	endMin, _ := parseHHMM(q.EndHHMM)
-
 	t := now.In(loc)
-	minOfDay := t.Hour()*60 + t.Minute()
-
+	minOfDay := t.Hour()
+	*60 + t.Minute()
 	inQuiet := isInWindow(minOfDay, startMin, endMin)
 	switch mode {
 	case "deny":
@@ -191,7 +185,6 @@ func isInWindow(minute, start, end int) bool {
 	// wrap midnight
 	return minute >= start || minute < end
 }
-
 func parseHHMM(s string) (int, error) {
 	s = strings.TrimSpace(s)
 	parts := strings.Split(s, ":")
@@ -213,8 +206,8 @@ func parseHHMM(s string) (int, error) {
 // In-memory limiter (concurrency-safe, bounded memory, prunes old keys)
 ////////////////////////////////////////////////////////////////////////////////
 
-type minuteKey int64
-type hourKey string
+// type minuteKey int64
+// type hourKey string
 
 type Limiter struct {
 	p Policy
@@ -228,13 +221,13 @@ type Limiter struct {
 	perJobHourCounts map[hourKey]int
 
 	// last prune markers
-	lastPrunedMinute int64
-	lastPrunedHour   int64
+	// lastPrunedMinute int64
+	// lastPrunedHour   int64
 }
 
 func NewLimiter(p Policy) *Limiter {
 	return &Limiter{
-		p:               p,
+		p:                p,
 		minuteCounts:     make(map[minuteKey]int),
 		perJobHourCounts: make(map[hourKey]int),
 		lastPrunedMinute: 0,
@@ -247,7 +240,6 @@ func (l *Limiter) Allow(now time.Time, tenantID string, jobName string) (ok bool
 	if !l.p.Enabled {
 		return true, "policy_disabled"
 	}
-
 	m := now.Unix() / 60
 	h := now.Unix() / 3600
 
@@ -268,7 +260,6 @@ func (l *Limiter) Allow(now time.Time, tenantID string, jobName string) (ok bool
 	if l.perJobHourCounts[hk] >= l.p.MaxTriggersPerJobPerHour {
 		return false, "rate_limited_job_hour"
 	}
-
 	l.minuteCounts[mk]++
 	l.perJobHourCounts[hk]++
 	return true, "allowed"
@@ -281,10 +272,8 @@ func (l *Limiter) ResetOld(now time.Time) {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	l.pruneLocked(m, h)
 }
-
 func (l *Limiter) pruneLocked(curMinute int64, curHour int64) {
 	// Keep last 5 minutes
 	if l.lastPrunedMinute == 0 || curMinute-l.lastPrunedMinute >= 2 {

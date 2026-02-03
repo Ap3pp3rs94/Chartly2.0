@@ -21,22 +21,19 @@ type Job struct {
 	Attempt     int               `json:"attempt"`
 	Payload     map[string]string `json:"payload,omitempty"`
 }
-
 type Envelope struct {
 	Version string `json:"version"`
 	Type    string `json:"type"` // "job"
 	SentAt  string `json:"sent_at"`
 	Job     Job    `json:"job"`
 }
-
 type Publisher interface {
-	Publish(ctx context.Context, job Job) error
+	Publish(ctx context.Context, job Job)
+	// error
 }
-
 type Encoder interface {
 	Encode(job Job) ([]byte, error)
 }
-
 type JSONEncoder struct{}
 
 func (JSONEncoder) Encode(job Job) ([]byte, error) {
@@ -48,7 +45,6 @@ func (JSONEncoder) Encode(job Job) ([]byte, error) {
 	}
 	return json.Marshal(env)
 }
-
 func Decode(b []byte) (Envelope, error) {
 	var env Envelope
 	dec := json.NewDecoder(bytesReader(b))
@@ -86,20 +82,16 @@ func NewInMemoryPublisher(buf int) *InMemoryPublisher {
 		enc: JSONEncoder{},
 	}
 }
-
 func (p *InMemoryPublisher) Channel() <-chan Envelope { return p.ch }
-
 func (p *InMemoryPublisher) Publish(ctx context.Context, job Job) error {
 	// Encode to validate envelope shape, even if we publish the struct.
 	_, _ = p.enc.Encode(job)
-
 	env := Envelope{
 		Version: "v1",
 		Type:    "job",
 		SentAt:  time.Now().UTC().Format(time.RFC3339Nano),
 		Job:     job,
 	}
-
 	select {
 	case p.ch <- env:
 		return nil

@@ -18,7 +18,6 @@ func TestCanonicalHeaderJSON_RetailLocation(t *testing.T) {
 		"Open_Hours":       "Mon-Sat 09:00-18:00",
 		"Phone":            "555-0100",
 	}
-
 	got, err := canonicalHeaderJSON(headers)
 	if err != nil {
 		t.Fatalf("canonicalHeaderJSON: %v", err)
@@ -41,7 +40,6 @@ func TestCanonicalHeaderJSON_RetailLocation(t *testing.T) {
 	if got != want {
 		t.Fatalf("canonicalHeaderJSON mismatch:\n got: %s\nwant: %s", got, want)
 	}
-
 	decoded, err := decodeHeaderJSON(got)
 	if err != nil {
 		t.Fatalf("decodeHeaderJSON: %v", err)
@@ -59,7 +57,6 @@ func TestCanonicalHeaderJSON_RetailLocation(t *testing.T) {
 		t.Fatalf("decoded address_line1 mismatch: %q", decoded["address_line1"])
 	}
 }
-
 func TestValidateTableName(t *testing.T) {
 	valid := []string{
 		"chartly_objects",
@@ -74,7 +71,6 @@ func TestValidateTableName(t *testing.T) {
 		"chartly_objects;drop",
 		"123chartly",
 	}
-
 	for _, v := range valid {
 		if err := validateTableName(v); err != nil {
 			t.Fatalf("expected valid table name %q, got err: %v", v, err)

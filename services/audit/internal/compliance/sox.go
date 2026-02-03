@@ -35,7 +35,7 @@ var (
 	ErrSOXPolicy  = errors.New("sox policy")
 )
 
-type Control string
+// type Control string
 
 const (
 	ControlAccess             Control = "access"
@@ -57,25 +57,23 @@ type MappingRule struct {
 
 // RetentionPolicy provides guidance for how long to retain SOX-relevant audit artifacts.
 type RetentionPolicy struct {
-	Version    string                 `json:"version"`
+	Version string `json:"version"`
 	// Default: 7 years (commonly used for SOX-related retention guidance).
-	MaxAge     time.Duration          `json:"max_age"`
+	MaxAge     time.Duration             `json:"max_age"`
 	PerControl map[Control]time.Duration `json:"per_control,omitempty"`
 }
-
 type Attestation struct {
 	Algorithm string `json:"algorithm"` // "sha256"
 	Value     string `json:"value"`     // hex (64)
 }
-
 type ChangeRecord struct {
 	ActorID   string            `json:"actor_id,omitempty"`
 	RequestID string            `json:"request_id,omitempty"`
 	ObjectKey string            `json:"object_key,omitempty"`
 	Action    string            `json:"action,omitempty"`
 	Outcome   string            `json:"outcome,omitempty"`
-	TS        string            `json:"ts,omitempty"` // RFC3339Nano if available
-	Fields    []string          `json:"fields,omitempty"` // deterministic sorted list
+	TS        string            `json:"ts,omitempty"`      // RFC3339Nano if available
+	Fields    []string          `json:"fields,omitempty"`  // deterministic sorted list
 	Summary   map[string]string `json:"summary,omitempty"` // deterministic keys
 }
 
@@ -105,7 +103,6 @@ func MapControls(action string, outcome string, rules []MappingRule) ([]Control,
 	if a == "" {
 		return []Control{ControlUnknown}, nil
 	}
-
 	nrules := normalizeRules(rules)
 	found := make([]Control, 0, 4)
 	for _, r := range nrules {
@@ -121,7 +118,6 @@ func MapControls(action string, outcome string, rules []MappingRule) ([]Control,
 			}
 		}
 	}
-
 	if len(found) == 0 {
 		return []Control{ControlUnknown}, nil
 	}
@@ -136,8 +132,7 @@ func MapControls(action string, outcome string, rules []MappingRule) ([]Control,
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return string(out[i]) < string(out[j]) })
-
-	return out, nil
+	// return out, nil
 }
 
 // DecideRetention returns keep/drop guidance for a control at time "now" relative to eventTS.
@@ -146,29 +141,24 @@ func DecideRetention(policy RetentionPolicy, now time.Time, eventTS string, cont
 	if now.IsZero() {
 		return false, "", fmt.Errorf("%w: %w: now required", ErrSOX, ErrSOXInvalid)
 	}
-
 	eventTS = normCollapse(eventTS)
 	if eventTS == "" {
 		// If we cannot timestamp, advise keep to avoid accidental non-compliance.
 		return true, "keep:missing_ts", nil
 	}
-
 	t, err := parseRFC3339(eventTS)
 	if err != nil {
 		return true, "keep:invalid_ts", nil
 	}
-
 	maxAge := p.MaxAge
 	if p.PerControl != nil {
 		if v, ok := p.PerControl[control]; ok && v > 0 {
 			maxAge = v
 		}
 	}
-
 	if maxAge <= 0 {
 		return false, "", fmt.Errorf("%w: %w: max_age must be >0", ErrSOX, ErrSOXPolicy)
 	}
-
 	cutoff := now.Add(-maxAge)
 	keep := t.After(cutoff) || t.Equal(cutoff)
 	if keep {
@@ -193,7 +183,6 @@ func ExtractChangeRecord(doc map[string]any) (ChangeRecord, error) {
 	if doc == nil {
 		return ChangeRecord{Summary: map[string]string{"fields": "0"}}, nil
 	}
-
 	getS := func(path string) string {
 		if v, ok := getPath(doc, path); ok {
 			if s, ok := v.(string); ok {
@@ -202,7 +191,6 @@ func ExtractChangeRecord(doc map[string]any) (ChangeRecord, error) {
 		}
 		return ""
 	}
-
 	cr := ChangeRecord{
 		ActorID:   getS("actor_id"),
 		RequestID: getS("request_id"),
@@ -228,13 +216,11 @@ func ExtractChangeRecord(doc map[string]any) (ChangeRecord, error) {
 			}
 		}
 	}
-
 	fields = normalizePathList(fields)
 	cr.Fields = fields
 	cr.Summary = map[string]string{
 		"fields": fmt.Sprintf("%d", len(fields)),
 	}
-
 	return cr, nil
 }
 
@@ -255,17 +241,14 @@ func normalizeRules(rules []MappingRule) []MappingRule {
 		}
 		n = append(n, rr)
 	}
-	
 	sort.Slice(n, func(i, j int) bool {
 		if n[i].ActionContains != n[j].ActionContains {
 			return n[i].ActionContains < n[j].ActionContains
 		}
 		return n[i].OutcomeEquals < n[j].OutcomeEquals
 	})
-
-	return n
+	// return n
 }
-
 func normalizeControls(in []Control) []Control {
 	if len(in) == 0 {
 		return []Control{ControlUnknown}
@@ -282,9 +265,8 @@ func normalizeControls(in []Control) []Control {
 		out = append(out, c)
 	}
 	sort.Slice(out, func(i, j int) bool { return string(out[i]) < string(out[j]) })
-	return out
+	// return out
 }
-
 func normalizeRetention(p RetentionPolicy) RetentionPolicy {
 	pp := p
 	pp.Version = normCollapse(pp.Version)
@@ -294,7 +276,6 @@ func normalizeRetention(p RetentionPolicy) RetentionPolicy {
 	if pp.MaxAge <= 0 {
 		pp.MaxAge = 7 * 365 * 24 * time.Hour
 	}
-	
 	if pp.PerControl != nil {
 		tmp := make(map[Control]time.Duration, len(pp.PerControl))
 		keys := make([]string, 0, len(pp.PerControl))
@@ -311,7 +292,6 @@ func normalizeRetention(p RetentionPolicy) RetentionPolicy {
 		}
 		pp.PerControl = tmp
 	}
-
 	return pp
 }
 
@@ -328,24 +308,23 @@ func canonicalJSONBytes(v any) ([]byte, error) {
 	}
 	return b, nil
 }
-
 func canonicalizeAny(v any) any {
 	switch t := v.(type) {
 	case nil:
 		return nil
 	case string:
 		return normCollapse(t)
-	case bool:
-		return t
-	case float64:
-		return t
-	case float32:
+		// case bool:
+		// return t
+		// case float64:
+		// return t
+		// case float32:
 		return float64(t)
-	case int:
+		// case int:
 		return float64(t)
-	case int64:
+		// case int64:
 		return float64(t)
-	case uint64:
+		// case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))
@@ -395,7 +374,6 @@ func canonicalizeAny(v any) any {
 		return normCollapse(fmt.Sprintf("%v", t))
 	}
 }
-
 func getPath(root map[string]any, path string) (any, bool) {
 	parts := strings.Split(normCollapse(path), ".")
 	cur := any(root)
@@ -421,7 +399,6 @@ func getPath(root map[string]any, path string) (any, bool) {
 	}
 	return nil, false
 }
-
 func normalizePathList(in []string) []string {
 	tmp := make([]string, 0, len(in))
 	for _, p := range in {
@@ -433,7 +410,7 @@ func normalizePathList(in []string) []string {
 	}
 	sort.Strings(tmp)
 	out := make([]string, 0, len(tmp))
-	var last string
+	// var last string
 	for _, p := range tmp {
 		if p != last {
 			out = append(out, p)
@@ -442,7 +419,6 @@ func normalizePathList(in []string) []string {
 	}
 	return out
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {

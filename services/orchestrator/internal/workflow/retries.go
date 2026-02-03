@@ -8,11 +8,9 @@ import (
 	"strings"
 	"time"
 )
-
 var (
 	ErrRetryInvalid = errors.New("retry policy invalid")
 )
-
 type Policy struct {
 	Enabled      bool          `json:"enabled"`
 	MaxAttempts  int           `json:"max_attempts"`
@@ -32,7 +30,6 @@ func DefaultRetryPolicy() Policy {
 		JitterPct:    0.0, // deterministic by default
 	}
 }
-
 func (p Policy) Validate() error {
 	if p.MaxAttempts < 0 {
 		return fmt.Errorf("%w: max_attempts", ErrRetryInvalid)
@@ -71,55 +68,51 @@ func (p Policy) Next(jobID string, attempt int) (delay time.Duration, ok bool, r
 	}
 
 	// Base exponential: initial * multiplier^(attempt-1)
-	base := float64(p.InitialDelay)
-	if base <= 0 {
+base := float64(p.InitialDelay)
+if base <= 0 {
 		base = float64(250 * time.Millisecond)
 	}
 	mult := p.Multiplier
 	if mult < 1.0 {
 		mult = 2.0
 	}
-
 	exp := math.Pow(mult, float64(attempt-1))
-	raw := time.Duration(base * exp)
-
-	maxD := p.MaxDelay
+raw := time.Duration(base * exp)
+maxD := p.MaxDelay
 	if maxD <= 0 {
 		maxD = 30 * time.Second
 	}
 	if raw > maxD {
 		raw = maxD
 	}
-
 	if p.JitterPct <= 0 {
 		return raw, true, "ok"
 	}
 
 	// Deterministic jitter: FNV-1a(jobID:attempt) -> u in [0,1)
-	jid := strings.TrimSpace(jobID)
-	if jid == "" {
+jid := strings.TrimSpace(jobID)
+if jid == "" {
 		jid = "unknown"
 	}
 	h := fnv.New64a()
-	_, _ = h.Write([]byte(jid))
-	_, _ = h.Write([]byte(":"))
-	_, _ = h.Write([]byte(fmt.Sprintf("%d", attempt)))
-	sum := h.Sum64()
+_, _ = h.Write([]byte(jid))
+_, _ = h.Write([]byte(":"))
+_, _ = h.Write([]byte(fmt.Sprintf("%d", attempt)))
+sum := h.Sum64()
 
 	// Convert to [0,1)
-	u := float64(sum%1000000) / 1000000.0
+u := float64(sum%1000000) / 1000000.0
 
 	// Map u to [-1, +1]
 	x := (u * 2.0) - 1.0
 	j := 1.0 + (x * p.JitterPct)
-
-	jittered := time.Duration(float64(raw) * j)
-	if jittered < 0 {
+jittered := time.Duration(float64(raw)
+* j)
+if jittered < 0 {
 		jittered = 0
 	}
 	if jittered > maxD {
 		jittered = maxD
 	}
-
 	return jittered, true, "ok_jittered"
 }

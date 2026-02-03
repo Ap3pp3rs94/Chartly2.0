@@ -23,21 +23,25 @@ import (
 // - Tamper-evidence ready: prev_hash + hash allow hash chaining (optional in v0).
 //
 // Hashing:
-// - CanonicalBytes() returns stable JSON bytes (deterministic order) for hashing.
-// - ComputeHash(prevHash) sets PrevHash + Hash fields.
-// - Hash is SHA-256 over CanonicalBytes() with PrevHash included.
+// - CanonicalBytes()
+returns stable JSON bytes (deterministic order)
+// for hashing.
+// - ComputeHash(prevHash)
+// sets PrevHash + Hash fields.
+// - Hash is SHA-256 over CanonicalBytes()
+// with PrevHash included.
 //
 // String conventions:
 // - IDs are validated as opaque tokens (similar to EntityID rules).
 // - EventType is normalized lower-case with safe charset.
 
-type EventID string
-type TraceID string
-type SpanID string
-type CorrelationID string
+// type EventID string
+// type TraceID string
+// type SpanID string
+// type CorrelationID string
 
 // EventType is a stable category like "trade.signal.created" or "storage.chunk.written"
-type EventType string
+// type EventType string
 
 // EventMeta holds envelope metadata separate from payload.
 // Keep this stable; add new fields carefully (backwards compatibility).
@@ -63,15 +67,15 @@ type EventMeta struct {
 	Schema   string `json:"schema,omitempty"`   // optional payload schema/version tag
 
 	// Tamper-evidence (optional in v0)
-	PrevHash string `json:"prev_hash,omitempty"` // hex sha256
+PrevHash string `json:"prev_hash,omitempty"` // hex sha256
 	Hash     string `json:"hash,omitempty"`      // hex sha256
 }
 
 // Event is the full envelope.
 type Event struct {
-	Meta       EventMeta           `json:"meta"`
-	Payload    json.RawMessage     `json:"payload,omitempty"`
-	Attributes map[string]string   `json:"attributes,omitempty"`
+	Meta       EventMeta         `json:"meta"`
+	Payload    json.RawMessage   `json:"payload,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // NormalizeType lowercases and trims.
@@ -81,17 +85,16 @@ func NormalizeType(s string) EventType {
 
 var (
 	ErrEmptyEventID   = errors.New("canonical: event id is required")
-	ErrEmptyEventType = errors.New("canonical: event type is required")
-	ErrEmptyOccurred  = errors.New("canonical: occurred time is required")
-	ErrEmptyEmitted   = errors.New("canonical: emitted time is required")
-	ErrInvalidEventID = errors.New("canonical: invalid event id")
-	ErrInvalidType    = errors.New("canonical: invalid event type")
-	ErrInvalidHash    = errors.New("canonical: invalid hash (expected hex sha256)")
+ErrEmptyEventType = errors.New("canonical: event type is required")
+ErrEmptyOccurred  = errors.New("canonical: occurred time is required")
+ErrEmptyEmitted   = errors.New("canonical: emitted time is required")
+ErrInvalidEventID = errors.New("canonical: invalid event id")
+ErrInvalidType    = errors.New("canonical: invalid event type")
+ErrInvalidHash    = errors.New("canonical: invalid hash (expected hex sha256)")
 )
-
 func validateOpaqueID(label string, s string) error {
 	s = strings.TrimSpace(s)
-	if s == "" {
+if s == "" {
 		return fmt.Errorf("canonical: %s is required", label)
 	}
 	// Permissive opaque token: [A-Za-z0-9][A-Za-z0-9._-]{0,127}
@@ -109,10 +112,9 @@ func validateOpaqueID(label string, s string) error {
 	}
 	return nil
 }
-
 func validateEventType(t EventType) error {
 	s := strings.TrimSpace(string(t))
-	if s == "" {
+if s == "" {
 		return ErrEmptyEventType
 	}
 	// event type pattern: starts with a-z, then [a-z0-9._-], 1..96 chars
@@ -129,7 +131,6 @@ func validateEventType(t EventType) error {
 	}
 	return nil
 }
-
 func isHexSha256(s string) bool {
 	if s == "" {
 		return true
@@ -149,19 +150,17 @@ func isHexSha256(s string) bool {
 // Normalize enforces consistent casing/UTC times and cleans attribute keys.
 func (e *Event) Normalize() {
 	e.Meta.Type = NormalizeType(string(e.Meta.Type))
-
-	if !e.Meta.Occurred.IsZero() {
+if !e.Meta.Occurred.IsZero() {
 		e.Meta.Occurred = e.Meta.Occurred.UTC()
 	}
 	if !e.Meta.Emitted.IsZero() {
 		e.Meta.Emitted = e.Meta.Emitted.UTC()
 	}
-
 	if e.Attributes != nil {
 		clean := make(map[string]string, len(e.Attributes))
-		for k, v := range e.Attributes {
+for k, v := range e.Attributes {
 			k2 := strings.TrimSpace(strings.ToLower(k))
-			if k2 == "" {
+if k2 == "" {
 				continue
 			}
 			clean[k2] = strings.TrimSpace(v)
@@ -172,12 +171,11 @@ func (e *Event) Normalize() {
 			e.Attributes = clean
 		}
 	}
-
 	e.Meta.Producer = strings.TrimSpace(e.Meta.Producer)
-	e.Meta.Source = strings.TrimSpace(e.Meta.Source)
-	e.Meta.Schema = strings.TrimSpace(e.Meta.Schema)
-	e.Meta.PrevHash = strings.TrimSpace(strings.ToLower(e.Meta.PrevHash))
-	e.Meta.Hash = strings.TrimSpace(strings.ToLower(e.Meta.Hash))
+e.Meta.Source = strings.TrimSpace(e.Meta.Source)
+e.Meta.Schema = strings.TrimSpace(e.Meta.Schema)
+e.Meta.PrevHash = strings.TrimSpace(strings.ToLower(e.Meta.PrevHash))
+e.Meta.Hash = strings.TrimSpace(strings.ToLower(e.Meta.Hash))
 }
 
 // Validate checks the envelope is safe to route/store.
@@ -240,7 +238,6 @@ func NewEvent(tenant TenantID, eventType string, occurred time.Time, payload jso
 	if payload == nil {
 		payload = json.RawMessage("null")
 	}
-
 	emitted := occurred
 	e := Event{
 		Meta: EventMeta{
@@ -252,10 +249,9 @@ func NewEvent(tenant TenantID, eventType string, occurred time.Time, payload jso
 		},
 		Payload: payload,
 	}
-
 	e.Meta.ID = DeterministicEventID(e)
-	e.Normalize()
-	if err := e.Validate(); err != nil {
+e.Normalize()
+if err := e.Validate(); err != nil {
 		return Event{}, err
 	}
 	return e, nil
@@ -265,10 +261,9 @@ func NewEvent(tenant TenantID, eventType string, occurred time.Time, payload jso
 // This is a safe fallback when no external ID is provided.
 func DeterministicEventID(e Event) EventID {
 	seed := buildEventIDSeed(e)
-	sum := sha256.Sum256(seed)
-	return EventID(hex.EncodeToString(sum[:8])) // 16 hex chars
+sum := sha256.Sum256(seed)
+return EventID(hex.EncodeToString(sum[:8])) // 16 hex chars
 }
-
 func buildEventIDSeed(e Event) []byte {
 	// Stable seed: tenant|type|occurred|payload
 	p := e.Payload
@@ -295,12 +290,12 @@ func (e Event) CanonicalBytes() ([]byte, error) {
 	var attrs []kv
 	if e.Attributes != nil {
 		keys := make([]string, 0, len(e.Attributes))
-		for k := range e.Attributes {
+for k := range e.Attributes {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		attrs = make([]kv, 0, len(keys))
-		for _, k := range keys {
+attrs = make([]kv, 0, len(keys))
+for _, k := range keys {
 			attrs = append(attrs, kv{K: k, V: e.Attributes[k]})
 		}
 	}
@@ -321,7 +316,7 @@ func (e Event) CanonicalBytes() ([]byte, error) {
 	}
 
 	// IMPORTANT: exclude Meta.Hash (self-referential)
-	canon := struct {
+canon := struct {
 		Meta struct {
 			ID            EventID       `json:"id"`
 			Tenant        TenantID      `json:"tenant"`
@@ -341,13 +336,12 @@ func (e Event) CanonicalBytes() ([]byte, error) {
 		Payload    json.RawMessage `json:"payload,omitempty"`
 		Attributes []kv            `json:"attributes,omitempty"`
 	}{}
-
 	canon.Meta.ID = e.Meta.ID
 	canon.Meta.Tenant = e.Meta.Tenant
 	canon.Meta.Type = e.Meta.Type
 	canon.Meta.Occurred = e.Meta.Occurred.UTC().Format(time.RFC3339Nano)
-	canon.Meta.Emitted = e.Meta.Emitted.UTC().Format(time.RFC3339Nano)
-	canon.Meta.Subject = subj
+canon.Meta.Emitted = e.Meta.Emitted.UTC().Format(time.RFC3339Nano)
+canon.Meta.Subject = subj
 	canon.Meta.TraceID = e.Meta.TraceID
 	canon.Meta.SpanID = e.Meta.SpanID
 	canon.Meta.ParentEventID = e.Meta.ParentEventID
@@ -356,27 +350,28 @@ func (e Event) CanonicalBytes() ([]byte, error) {
 	canon.Meta.Source = e.Meta.Source
 	canon.Meta.Schema = e.Meta.Schema
 	canon.Meta.PrevHash = strings.TrimSpace(strings.ToLower(e.Meta.PrevHash))
-	canon.Payload = e.Payload
+canon.Payload = e.Payload
 	canon.Attributes = attrs
 
 	return json.Marshal(canon)
 }
 
-// ComputeHash sets PrevHash and Hash fields (SHA-256) using CanonicalBytes.
+// ComputeHash sets PrevHash and Hash fields (SHA-256)
+// using CanonicalBytes.
 func (e *Event) ComputeHash(prevHash string) error {
 	e.Meta.PrevHash = strings.TrimSpace(strings.ToLower(prevHash))
-	e.Meta.Hash = ""
+e.Meta.Hash = ""
 	e.Normalize()
-	if err := e.Validate(); err != nil {
+if err := e.Validate(); err != nil {
 		return err
 	}
 	b, err := e.CanonicalBytes()
-	if err != nil {
+if err != nil {
 		return err
 	}
 	sum := sha256.Sum256(b)
-	e.Meta.Hash = hex.EncodeToString(sum[:])
-	return nil
+e.Meta.Hash = hex.EncodeToString(sum[:])
+// return nil
 }
 
 // VerifyHash recomputes hash from current PrevHash and canonical bytes and compares.
@@ -385,11 +380,11 @@ func (e Event) VerifyHash() bool {
 		return false
 	}
 	b, err := e.CanonicalBytes()
-	if err != nil {
+if err != nil {
 		return false
 	}
 	sum := sha256.Sum256(b)
-	return strings.EqualFold(e.Meta.Hash, hex.EncodeToString(sum[:]))
+return strings.EqualFold(e.Meta.Hash, hex.EncodeToString(sum[:]))
 }
 
 // PartitionKey returns a deterministic partition key for storage/routing.
@@ -399,5 +394,5 @@ func (e Event) PartitionKey() (string, error) {
 		return "", err
 	}
 	day := e.Meta.Occurred.UTC().Format("2006-01-02")
-	return fmt.Sprintf("%s/%s/%s", e.Meta.Tenant, e.Meta.Type, day), nil
+return fmt.Sprintf("%s/%s/%s", e.Meta.Tenant, e.Meta.Type, day), nil
 }

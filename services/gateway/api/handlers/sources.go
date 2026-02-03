@@ -25,22 +25,18 @@ type Source struct {
 	CreatedAt string         `json:"created_at"`
 	UpdatedAt string         `json:"updated_at"`
 }
-
 type sourceCreateReq struct {
 	Name    string         `json:"name"`
 	Kind    string         `json:"kind"`
 	Enabled *bool          `json:"enabled"`
 	Config  map[string]any `json:"config"`
 }
-
 type sourcesCreateResp struct {
 	Source Source `json:"source"`
 }
-
 type sourcesListResp struct {
 	Sources []Source `json:"sources"`
 }
-
 type errResp struct {
 	Error struct {
 		Code    string `json:"code"`
@@ -56,17 +52,14 @@ func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	e.Error.Message = msg
 	_ = json.NewEncoder(w).Encode(e)
 }
-
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
-
 func nowRFC3339Nano() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
 }
-
 func generateSourceID() (string, error) {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -74,7 +67,6 @@ func generateSourceID() (string, error) {
 	}
 	return "src_" + hex.EncodeToString(b[:]), nil
 }
-
 func envIsLocal() bool {
 	env := strings.TrimSpace(os.Getenv("CHARTLY_ENV"))
 	if env == "" {
@@ -82,7 +74,6 @@ func envIsLocal() bool {
 	}
 	return strings.EqualFold(env, "local")
 }
-
 func tenantFromHeader(r *http.Request) (string, bool) {
 	t := strings.TrimSpace(r.Header.Get("X-Tenant-Id"))
 	if t == "" {
@@ -93,7 +84,6 @@ func tenantFromHeader(r *http.Request) (string, bool) {
 	}
 	return t, true
 }
-
 func validateKind(kind string) bool {
 	switch kind {
 	case "api", "domain", "db", "file", "webhook", "other":
@@ -134,7 +124,6 @@ type sourceStore struct {
 func newSourceStore() *sourceStore {
 	return &sourceStore{data: make(map[string]map[string]Source)}
 }
-
 func (s *sourceStore) upsert(src Source) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -145,7 +134,6 @@ func (s *sourceStore) upsert(src Source) {
 	}
 	m[src.ID] = src
 }
-
 func (s *sourceStore) list(tenantID string) []Source {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -167,51 +155,43 @@ func SourcesCreate(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeader(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		return
+		// return
 	}
-
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	defer r.Body.Close()
-
 	var req sourceCreateReq
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		return
+		// return
 	}
-
 	req.Name = strings.TrimSpace(req.Name)
 	req.Kind = strings.TrimSpace(req.Kind)
-
 	if len(req.Name) < 1 || len(req.Name) > 256 {
 		writeErr(w, http.StatusBadRequest, "invalid_name", "name must be 1..256 characters")
-		return
+		// return
 	}
 	if !validateKind(req.Kind) {
 		writeErr(w, http.StatusBadRequest, "invalid_kind", "kind must be one of: api, domain, db, file, webhook, other")
-		return
+		// return
 	}
-
 	if req.Config == nil {
 		req.Config = map[string]any{}
 	}
 	if badKey, bad := hasForbiddenTopLevelConfigKeys(req.Config); bad {
 		writeErr(w, http.StatusBadRequest, "forbidden_config_key", "config contains forbidden key: "+badKey)
-		return
+		// return
 	}
-
 	enabled := true
 	if req.Enabled != nil {
 		enabled = *req.Enabled
 	}
-
 	id, err := generateSourceID()
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "id_generation_failed", "failed to generate source id")
-		return
+		// return
 	}
-
 	ts := nowRFC3339Nano()
 	src := Source{
 		ID:        id,
@@ -223,7 +203,6 @@ func SourcesCreate(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: ts,
 		UpdatedAt: ts,
 	}
-
 	sources.upsert(src)
 	writeJSON(w, http.StatusCreated, sourcesCreateResp{Source: src})
 }
@@ -233,9 +212,8 @@ func SourcesList(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeader(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		return
+		// return
 	}
-
 	list := sources.list(tenantID)
 	writeJSON(w, http.StatusOK, sourcesListResp{Sources: list})
 }

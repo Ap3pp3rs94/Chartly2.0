@@ -18,42 +18,33 @@ func NewWebSocketConnector(id string, caps []string) WebSocketConnector {
 	if len(caps) == 0 {
 		caps = []string{"ingest"}
 	}
-
 	return WebSocketConnector{
 		BaseConnector: NewBaseConnector(id, "webhook", caps),
 	}
 }
-
 func (c WebSocketConnector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "url"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	raw := strings.TrimSpace(cfg["url"])
 	if !(strings.HasPrefix(raw, "ws://") || strings.HasPrefix(raw, "wss://")) {
 		return registry.ErrInvalidConfig
 	}
-
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
-
 	u, err := url.Parse(raw)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return registry.ErrInvalidConfig
 	}
-
 	if u.Scheme != "ws" && u.Scheme != "wss" {
 		return registry.ErrInvalidConfig
 	}
-
 	if !allowPrivate {
 		if isPrivateHost(u.Hostname()) {
 			return errors.New("private networks denied")
 		}
 	}
-
 	return nil
 }
-
 func (c WebSocketConnector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	_ = ctx
 	_ = req
@@ -68,7 +59,6 @@ func (c WebSocketConnector) Ingest(ctx context.Context, cfg map[string]string, r
 			_ = ms
 		}
 	}
-
 	return registry.IngestResult{
 		Accepted:    false,
 		ConnectorID: c.ID(),

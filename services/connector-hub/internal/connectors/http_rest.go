@@ -23,60 +23,48 @@ func NewHTTPRestConnector(id string, caps []string) HTTPRestConnector {
 	if len(caps) == 0 {
 		caps = []string{"ingest"}
 	}
-
 	return HTTPRestConnector{
 		BaseConnector: NewBaseConnector(id, "api", caps),
 	}
 }
-
 func (c HTTPRestConnector) ValidateConfig(cfg map[string]string) error {
 	if err := c.RequireKeys(cfg, "base_url"); err != nil {
 		return registry.ErrInvalidConfig
 	}
-
 	base := strings.TrimSpace(cfg["base_url"])
 	if !(strings.HasPrefix(base, "http://") || strings.HasPrefix(base, "https://")) {
 		return registry.ErrInvalidConfig
 	}
-
 	m := strings.ToUpper(strings.TrimSpace(cfg["method"]))
 	if m == "" {
 		m = "GET"
 	}
-
 	switch m {
 	case "GET", "POST", "PUT", "PATCH", "DELETE":
 		// ok
-	default:
-		return registry.ErrInvalidConfig
+		// default:
+		// return registry.ErrInvalidConfig
 	}
-
 	return nil
 }
-
 func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, req registry.IngestRequest) (registry.IngestResult, error) {
 	if err := c.ValidateConfig(cfg); err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "invalid config"}, err
 	}
-
 	base := strings.TrimSpace(cfg["base_url"])
 	path := strings.TrimSpace(cfg["path"])
 	if path == "" {
 		path = "/"
 	}
-
 	m := strings.ToUpper(strings.TrimSpace(cfg["method"]))
 	if m == "" {
 		m = "GET"
 	}
-
 	allowPrivate := strings.EqualFold(strings.TrimSpace(cfg["allow_private_networks"]), "true")
-
 	u, err := url.Parse(base)
 	if err != nil || u.Scheme == "" || u.Host == "" {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "invalid base_url"}, registry.ErrInvalidConfig
 	}
-
 	if u.Scheme != "http" && u.Scheme != "https" {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "non-http scheme denied"}, registry.ErrInvalidConfig
 	}
@@ -88,11 +76,9 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 			return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "private networks denied"}, errors.New("private networks denied")
 		}
 	}
-
 	fullURL := strings.TrimRight(base, "/") + path
 	var body io.Reader
 	hasBody := (m == "POST" || m == "PUT" || m == "PATCH")
-
 	if hasBody {
 		b, _ := json.Marshal(req.Payload)
 		body = bytes.NewReader(b)
@@ -105,13 +91,11 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 			timeout = ms
 		}
 	}
-
 	if timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
-
 	httpReq, err := http.NewRequestWithContext(ctx, m, fullURL, body)
 	if err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "request build failed"}, err
@@ -126,7 +110,6 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 			}
 		}
 	}
-
 	if hasBody {
 		httpReq.Header.Set("Content-Type", "application/json")
 	}
@@ -140,7 +123,6 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 	if rid := strings.TrimSpace(req.Payload["request_id"]); rid != "" {
 		httpReq.Header.Set("X-Request-Id", rid)
 	}
-
 	transport := &http.Transport{
 		Proxy: http.ProxyFromEnvironment,
 		DialContext: (&net.Dialer{
@@ -154,11 +136,9 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 		TLSHandshakeTimeout:   5 * time.Second,
 		ExpectContinueTimeout: 1 * time.Second,
 	}
-
 	client := &http.Client{
 		Transport: transport,
 	}
-
 	res, err := client.Do(httpReq)
 	if err != nil {
 		return registry.IngestResult{Accepted: false, ConnectorID: c.ID(), Notes: "request failed"}, err
@@ -167,13 +147,11 @@ func (c HTTPRestConnector) Ingest(ctx context.Context, cfg map[string]string, re
 
 	// capture up to 1KB for notes
 	buf, _ := io.ReadAll(io.LimitReader(res.Body, 1024))
-
 	accepted := res.StatusCode >= 200 && res.StatusCode < 300
 	notes := "status=" + res.Status
 	if len(buf) > 0 {
 		notes += " body=" + sanitizeNote(string(buf))
 	}
-
 	return registry.IngestResult{
 		Accepted:    accepted,
 		ConnectorID: c.ID(),
@@ -194,15 +172,12 @@ func isPrivateHost(host string) bool {
 	if ip == nil {
 		return false
 	}
-
 	return isPrivateIP(ip)
 }
-
 func isPrivateIP(ip net.IP) bool {
 	if ip == nil {
 		return false
 	}
-
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return true
 	}
@@ -235,10 +210,8 @@ func isPrivateIP(ip net.IP) bool {
 			return true
 		}
 	}
-
 	return false
 }
-
 func sanitizeNote(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "\r", " ")

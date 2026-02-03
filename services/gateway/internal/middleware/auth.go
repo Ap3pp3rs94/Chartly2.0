@@ -26,12 +26,10 @@ func writeErr(w http.ResponseWriter, status int, code, msg string) {
 	e.Error.Message = msg
 	_ = json.NewEncoder(w).Encode(e)
 }
-
 func authEnabled() bool {
 	v := strings.TrimSpace(os.Getenv("AUTH_ENABLED"))
 	return strings.EqualFold(v, "true")
 }
-
 func b64urlDecode(s string) ([]byte, error) {
 	// Add padding if missing
 	if s == "" {
@@ -43,13 +41,11 @@ func b64urlDecode(s string) ([]byte, error) {
 	}
 	return base64.URLEncoding.DecodeString(s)
 }
-
 func hmacSHA256(key []byte, data []byte) []byte {
 	m := hmac.New(sha256.New, key)
 	_, _ = m.Write(data)
 	return m.Sum(nil)
 }
-
 func claimString(v any) (string, bool) {
 	s, ok := v.(string)
 	if !ok {
@@ -61,7 +57,6 @@ func claimString(v any) (string, bool) {
 	}
 	return s, true
 }
-
 func claimNumber(v any) (float64, bool) {
 	switch t := v.(type) {
 	case float64:
@@ -74,7 +69,6 @@ func claimNumber(v any) (float64, bool) {
 		return 0, false
 	}
 }
-
 func audMatches(aud any, expected string) bool {
 	if expected == "" {
 		return true
@@ -92,7 +86,6 @@ func audMatches(aud any, expected string) bool {
 	}
 	return false
 }
-
 func issMatches(iss any, expected string) bool {
 	if expected == "" {
 		return true
@@ -102,29 +95,24 @@ func issMatches(iss any, expected string) bool {
 	}
 	return false
 }
-
 func verifyJWT(token string) (tenantID string, ok bool, msg string) {
 	keyStr := os.Getenv("AUTH_JWT_SIGNING_KEY")
 	if strings.TrimSpace(keyStr) == "" {
 		return "", false, "auth signing key not configured"
 	}
 	key := []byte(keyStr)
-
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
 		return "", false, "invalid token"
 	}
-
 	_, err := b64urlDecode(parts[0])
 	if err != nil {
 		return "", false, "invalid token"
 	}
-
 	payloadB, err := b64urlDecode(parts[1])
 	if err != nil {
 		return "", false, "invalid token"
 	}
-
 	sigB, err := b64urlDecode(parts[2])
 	if err != nil {
 		return "", false, "invalid token"
@@ -155,49 +143,41 @@ func verifyJWT(token string) (tenantID string, ok bool, msg string) {
 	if time.Now().UTC().After(exp.Add(30 * time.Second)) {
 		return "", false, "token expired"
 	}
-
 	issExpected := strings.TrimSpace(os.Getenv("AUTH_JWT_ISSUER"))
 	audExpected := strings.TrimSpace(os.Getenv("AUTH_JWT_AUDIENCE"))
-
 	if !issMatches(claims["iss"], issExpected) {
 		return "", false, "invalid issuer"
 	}
 	if !audMatches(claims["aud"], audExpected) {
 		return "", false, "invalid audience"
 	}
-
 	tenantRaw, _ := claims["tenant_id"]
 	tid, okT := claimString(tenantRaw)
 	if !okT {
 		return "", false, "missing tenant_id"
 	}
-
 	return tid, true, ""
 }
-
 func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !authEnabled() {
 			next.ServeHTTP(w, r)
-			return
+			// return
 		}
-
 		authz := strings.TrimSpace(r.Header.Get("Authorization"))
 		if authz == "" || !strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
-			return
+			// return
 		}
-
 		token := strings.TrimSpace(authz[len("bearer "):])
 		if token == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
-			return
+			// return
 		}
-
 		tenantID, ok, msg := verifyJWT(token)
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", msg)
-			return
+			// return
 		}
 
 		// Enforce tenant header consistency
@@ -206,9 +186,8 @@ func Auth(next http.Handler) http.Handler {
 			r.Header.Set("X-Tenant-Id", tenantID)
 		} else if existing != tenantID {
 			writeErr(w, http.StatusForbidden, "unauthorized", "tenant mismatch")
-			return
+			// return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }

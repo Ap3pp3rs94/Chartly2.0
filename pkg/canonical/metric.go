@@ -19,17 +19,20 @@ import (
 // Properties:
 // - Multi-tenant safe: Tenant REQUIRED.
 // - Prometheus-compatible semantics but JSON-first transport.
-// - Optional linkage to EntityRef (subject) and EventID.
+// - Optional linkage to EntityRef (subject)
+// and EventID.
 //
 // Hashing:
-// - CanonicalBytes() returns deterministic JSON bytes.
-// - ComputeHash() sets Hash as SHA-256 over canonical bytes.
+// - CanonicalBytes()
+// returns deterministic JSON bytes.
+// - ComputeHash()
+// sets Hash as SHA-256 over canonical bytes.
 //
 // Partitioning:
 // - PartitionKey: "<tenant>/<name>/<yyyy-mm-dd>"
 
-type MetricName string
-type MetricType string
+// type MetricName string
+// type MetricType string
 
 const (
 	MetricGauge     MetricType = "gauge"
@@ -78,11 +81,11 @@ type MetricMeta struct {
 
 // Metric is the full envelope.
 type Metric struct {
-	Meta   MetricMeta         `json:"meta"`
-	Val    MetricValue        `json:"val"`
-	Labels map[string]string  `json:"labels,omitempty"`
+	Meta   MetricMeta        `json:"meta"`
+	Val    MetricValue       `json:"val"`
+	Labels map[string]string `json:"labels,omitempty"`
 	// Optional tamper-evident hash (v0 optional)
-	Hash   string             `json:"hash,omitempty"` // hex sha256
+	Hash string `json:"hash,omitempty"` // hex sha256
 }
 
 var (
@@ -120,7 +123,6 @@ func ValidateMetricName(n MetricName) error {
 	}
 	return nil
 }
-
 func ValidateMetricType(t MetricType) error {
 	switch strings.TrimSpace(string(t)) {
 	case string(MetricGauge), string(MetricCounter), string(MetricHistogram), string(MetricSummary):
@@ -129,7 +131,6 @@ func ValidateMetricType(t MetricType) error {
 		return fmt.Errorf("%w: %q", ErrInvalidMetricTy, t)
 	}
 }
-
 func isHexSha256Metric(s string) bool {
 	if s == "" {
 		return true
@@ -152,11 +153,9 @@ func (m *Metric) Normalize() {
 	m.Meta.Producer = strings.TrimSpace(m.Meta.Producer)
 	m.Meta.Source = strings.TrimSpace(m.Meta.Source)
 	m.Meta.Unit = strings.TrimSpace(m.Meta.Unit)
-
 	if !m.Meta.Observed.IsZero() {
 		m.Meta.Observed = m.Meta.Observed.UTC()
 	}
-
 	if m.Labels != nil {
 		clean := make(map[string]string, len(m.Labels))
 		for k, v := range m.Labels {
@@ -172,7 +171,6 @@ func (m *Metric) Normalize() {
 			m.Labels = clean
 		}
 	}
-
 	m.Hash = strings.TrimSpace(strings.ToLower(m.Hash))
 }
 
@@ -200,7 +198,6 @@ func (m Metric) Validate() error {
 			return err
 		}
 	}
-
 	switch m.Meta.Type {
 	case MetricGauge, MetricCounter:
 		if m.Val.Scalar == nil || m.Val.Histogram != nil || m.Val.Summary != nil {
@@ -226,13 +223,11 @@ func (m Metric) Validate() error {
 	default:
 		return fmt.Errorf("%w: %q", ErrInvalidMetricTy, m.Meta.Type)
 	}
-
 	if !isHexSha256Metric(strings.TrimSpace(strings.ToLower(m.Hash))) {
 		return ErrInvalidMetricHs
 	}
 	return nil
 }
-
 func validateHistogram(b []HistogramBucket) error {
 	prevLe := -1.0e308
 	var prevCount uint64 = 0
@@ -251,7 +246,6 @@ func validateHistogram(b []HistogramBucket) error {
 	}
 	return nil
 }
-
 func validateSummary(q []SummaryQuantile) error {
 	prevQ := -1.0
 	for i, sq := range q {
@@ -306,7 +300,6 @@ func (m Metric) CanonicalBytes() ([]byte, error) {
 			ID:     m.Meta.Subject.ID,
 		}
 	}
-
 	labels := m.Labels
 	if labels != nil {
 		keys := make([]string, 0, len(labels))
@@ -333,24 +326,22 @@ func (m Metric) CanonicalBytes() ([]byte, error) {
 		sort.Slice(q, func(i, j int) bool { return q[i].Q < q[j].Q })
 		val.Summary = q
 	}
-
 	canon := struct {
 		Meta struct {
-			ID       string      `json:"id,omitempty"`
-			Tenant   TenantID    `json:"tenant"`
-			Name     MetricName  `json:"name"`
-			Type     MetricType  `json:"type"`
-			Observed string      `json:"observed"`
+			ID       string        `json:"id,omitempty"`
+			Tenant   TenantID      `json:"tenant"`
+			Name     MetricName    `json:"name"`
+			Type     MetricType    `json:"type"`
+			Observed string        `json:"observed"`
 			Subject  *subjectAlias `json:"subject,omitempty"`
-			EventID  EventID     `json:"event_id,omitempty"`
-			Producer string      `json:"producer,omitempty"`
-			Source   string      `json:"source,omitempty"`
-			Unit     string      `json:"unit,omitempty"`
+			EventID  EventID       `json:"event_id,omitempty"`
+			Producer string        `json:"producer,omitempty"`
+			Source   string        `json:"source,omitempty"`
+			Unit     string        `json:"unit,omitempty"`
 		} `json:"meta"`
 		Val    MetricValue       `json:"val"`
 		Labels map[string]string `json:"labels,omitempty"`
 	}{}
-
 	canon.Meta.ID = strings.TrimSpace(m.Meta.ID)
 	canon.Meta.Tenant = m.Meta.Tenant
 	canon.Meta.Name = m.Meta.Name
@@ -381,7 +372,7 @@ func (m *Metric) ComputeHash() error {
 	}
 	sum := sha256.Sum256(b)
 	m.Hash = hex.EncodeToString(sum[:])
-	return nil
+	// return nil
 }
 
 // VerifyHash recomputes hash and compares.

@@ -17,7 +17,6 @@ type bucket struct {
 	lastRefill time.Time
 	lastSeen   time.Time
 }
-
 type limiter struct {
 	mu       sync.Mutex
 	ratePerS float64
@@ -40,7 +39,6 @@ func newLimiter(rpm int, burst int) *limiter {
 	go l.cleanupLoop()
 	return l
 }
-
 func (l *limiter) cleanupLoop() {
 	t := time.NewTicker(5 * time.Minute)
 	defer t.Stop()
@@ -55,13 +53,10 @@ func (l *limiter) cleanupLoop() {
 		l.mu.Unlock()
 	}
 }
-
 func (l *limiter) allow(key string) (allowed bool, retryAfter time.Duration) {
 	now := time.Now().UTC()
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	b, ok := l.buckets[key]
 	if !ok {
 		b = &bucket{
@@ -78,7 +73,6 @@ func (l *limiter) allow(key string) (allowed bool, retryAfter time.Duration) {
 		b.tokens = min(l.burst, b.tokens+(elapsed*l.ratePerS))
 		b.lastRefill = now
 	}
-
 	b.lastSeen = now
 
 	if b.tokens >= 1.0 {
@@ -94,14 +88,12 @@ func (l *limiter) allow(key string) (allowed bool, retryAfter time.Duration) {
 	}
 	return false, time.Duration(secs * float64(time.Second))
 }
-
 func min(a, b float64) float64 {
 	if a < b {
 		return a
 	}
 	return b
 }
-
 func parseIntEnv(name string, def int) int {
 	v := strings.TrimSpace(os.Getenv(name))
 	if v == "" {
@@ -120,7 +112,6 @@ func ipKey(ip string) string {
 	sum := sha256.Sum256([]byte(ip))
 	return hex.EncodeToString(sum[:16]) // 128-bit truncated
 }
-
 func clientIP(r *http.Request) string {
 	// Prefer X-Forwarded-For first IP (common in proxied environments).
 	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
@@ -151,11 +142,10 @@ func RateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := clientIP(r)
 		key := ipKey(ip)
-
 		ok, retry := globalLimiter.allow(key)
 		if ok {
 			next.ServeHTTP(w, r)
-			return
+			// return
 		}
 
 		// Retry-After best-effort (integer seconds)

@@ -5,27 +5,32 @@ package timeseries
 // This file implements a deterministic, production-grade decoder for the CHTS1
 // on-wire format emitted by writer.go. It performs:
 //
-//   1) Header validation:
+//   1)
+// Header validation:
 //        - Magic "CHTS1"
 //        - Version=1
 //        - Flags (bit0 = gzip body)
 //        - MetaLen + MetaJSON (canonical JSON)
 //
-//   2) Meta parsing:
+//   2)
+// Meta parsing:
 //        - MetaJSON is unmarshaled into ChunkMeta
 //        - Meta is normalized and time fields are validated (RFC3339/RFC3339Nano)
 //
-//   3) BODY handling:
+//   3)
+// BODY handling:
 //        - Remaining bytes are BODY (optionally gzip compressed)
 //        - If gzip flag is set, decompress BODY only
 //
-//   4) Integrity checks:
+//   4)
+// Integrity checks:
 //        - BodyCRC32: last 4 bytes of decoded BODY; verifies crc32 over BODY bytes
 //          excluding the trailing BodyCRC32 field. Coverage is bytes AFTER SeriesCount
 //          through the final SeriesCRC32 (inclusive).
 //        - SeriesCRC32: validates each series block CRC32 over (SeriesKeyJSON + encoded points bytes).
 //
-//   5) Deterministic output:
+//   5)
+// Deterministic output:
 //        - Series are returned sorted by deterministic SeriesKey string (same helper as writer.go)
 //        - Points are returned in ascending time order as encoded
 //
@@ -72,43 +77,35 @@ type ReaderOptions struct {
 	MaxPoints int   // default 500000
 	AllowNaN  bool  // default false (reject NaN/Inf unless true)
 }
-
 type DecodedPoint struct {
 	TS    string  // RFC3339Nano
 	Value float64 // numeric
 }
-
 type DecodedSeries struct {
 	Key    SeriesKey
 	Points []DecodedPoint
 	Start  string // RFC3339Nano (first point)
 	End    string // RFC3339Nano (last point; consumer may treat as exclusive-ish)
 }
-
 type DecodedChunk struct {
 	Meta   ChunkMeta
 	Series []DecodedSeries
 	Ref    ChunkRef // computed from bytes (sha256) + counts
 }
-
 type Source interface {
 	Get(ctx context.Context, tenantID, objectKey string) (contentType string, data []byte, meta map[string]string, err error)
 }
 
 func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	o := normalizeReaderOptions(opts)
-
 	if data == nil {
 		return DecodedChunk{}, fmt.Errorf("%w: nil data", ErrDecodeInvalid)
 	}
-
 	if o.MaxBytes > 0 && int64(len(data)) > o.MaxBytes {
 		return DecodedChunk{}, fmt.Errorf("%w: max bytes exceeded (%d>%d)", ErrDecodeTooLarge, len(data), o.MaxBytes)
 	}
-
 	sum := sha256.Sum256(data)
 	shaHex := hex.EncodeToString(sum[:])
-
 	r := bytes.NewReader(data)
 
 	// Header: Magic(5) + Version(u16) + Flags(u16) + MetaLen(u32) + MetaJSON
@@ -119,7 +116,6 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	if string(magic) != "CHTS1" {
 		return DecodedChunk{}, fmt.Errorf("%w: bad magic", ErrDecodeInvalid)
 	}
-
 	var b2 [2]byte
 	if _, err := io.ReadFull(r, b2[:]); err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: header version: %v", ErrDecodeInvalid, err)
@@ -128,12 +124,10 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	if version != 1 {
 		return DecodedChunk{}, fmt.Errorf("%w: unsupported version=%d", ErrDecodeInvalid, version)
 	}
-
 	if _, err := io.ReadFull(r, b2[:]); err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: header flags: %v", ErrDecodeInvalid, err)
 	}
 	flags := binary.LittleEndian.Uint16(b2[:])
-
 	var b4 [4]byte
 	if _, err := io.ReadFull(r, b4[:]); err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: header metalen: %v", ErrDecodeInvalid, err)
@@ -145,12 +139,10 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	if o.MaxBytes > 0 && int64(metaLen) > o.MaxBytes {
 		return DecodedChunk{}, fmt.Errorf("%w: meta too large", ErrDecodeTooLarge)
 	}
-
 	metaJSON := make([]byte, metaLen)
 	if _, err := io.ReadFull(r, metaJSON); err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: meta read: %v", ErrDecodeMeta, err)
 	}
-
 	var meta ChunkMeta
 	if err := json.Unmarshal(metaJSON, &meta); err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: meta json: %v", ErrDecodeMeta, err)
@@ -171,7 +163,6 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	if o.MaxBytes > 0 && int64(len(bodyRaw)) > o.MaxBytes {
 		return DecodedChunk{}, fmt.Errorf("%w: body too large", ErrDecodeTooLarge)
 	}
-
 	const flagGzipBody = uint16(1)
 	body := bodyRaw
 	if (flags & flagGzipBody) != 0 {
@@ -181,7 +172,6 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 		}
 		body = dec
 	}
-
 	series, counts, err := decodeBody(body, o)
 	if err != nil {
 		return DecodedChunk{}, err
@@ -191,7 +181,6 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 	sort.Slice(series, func(i, j int) bool {
 		return seriesKeyString(series[i].Key) < seriesKeyString(series[j].Key)
 	})
-
 	ref := ChunkRef{
 		ObjectKey:   "",
 		ContentType: "application/x-chartly-tschunk",
@@ -202,35 +191,29 @@ func Decode(data []byte, opts ReaderOptions) (DecodedChunk, error) {
 		Series:      counts.series,
 		Points:      counts.points,
 	}
-
 	return DecodedChunk{
 		Meta:   meta,
 		Series: series,
 		Ref:    ref,
 	}, nil
 }
-
 func DecodeFrom(ctx context.Context, tenantID string, objectKey string, src Source, opts ReaderOptions) (DecodedChunk, error) {
 	if src == nil {
 		return DecodedChunk{}, fmt.Errorf("%w: nil source", ErrDecodeSource)
 	}
-
 	tenantID = normalizeString(tenantID)
 	objectKey = strings.TrimSpace(objectKey)
 	if tenantID == "" || objectKey == "" {
 		return DecodedChunk{}, fmt.Errorf("%w: tenantID/objectKey required", ErrDecodeInvalid)
 	}
-
 	_, data, _, err := src.Get(ctx, tenantID, objectKey)
 	if err != nil {
 		return DecodedChunk{}, fmt.Errorf("%w: get: %v", ErrDecodeSource, err)
 	}
-
 	ch, err := Decode(data, opts)
 	if err != nil {
 		return DecodedChunk{}, err
 	}
-
 	ch.Ref.ObjectKey = objectKey
 	return ch, nil
 }
@@ -265,9 +248,7 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 	if gotBodyCRC != wantBodyCRC {
 		return nil, decodeCounts{}, fmt.Errorf("%w: body crc mismatch", ErrDecodeCRC)
 	}
-
 	r := bytes.NewReader(bodyWithoutCRC)
-
 	var b4 [4]byte
 	if _, err := io.ReadFull(r, b4[:]); err != nil {
 		return nil, decodeCounts{}, fmt.Errorf("%w: seriescount: %v", ErrDecodeBody, err)
@@ -279,7 +260,6 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 	if opts.MaxSeries > 0 && seriesCount > opts.MaxSeries {
 		return nil, decodeCounts{}, fmt.Errorf("%w: too many series (%d>%d)", ErrDecodeTooLarge, seriesCount, opts.MaxSeries)
 	}
-
 	out := make([]DecodedSeries, 0, seriesCount)
 	totalPts := 0
 
@@ -295,12 +275,10 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 		if opts.MaxBytes > 0 && int64(keyLen) > opts.MaxBytes {
 			return nil, decodeCounts{}, fmt.Errorf("%w: series key too large", ErrDecodeTooLarge)
 		}
-
 		keyJSON := make([]byte, keyLen)
 		if _, err := io.ReadFull(r, keyJSON); err != nil {
 			return nil, decodeCounts{}, fmt.Errorf("%w: series key json: %v", ErrDecodeBody, err)
 		}
-
 		var key SeriesKey
 		if err := json.Unmarshal(keyJSON, &key); err != nil {
 			return nil, decodeCounts{}, fmt.Errorf("%w: series key decode: %v", ErrDecodeBody, err)
@@ -330,7 +308,7 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 		base := int64(binary.LittleEndian.Uint64(b8[:]))
 
 		// For SeriesCRC32 verification: accumulate exact encoded points bytes in decode order.
-		var rawPoints bytes.Buffer
+		// var rawPoints bytes.Buffer
 		points := make([]DecodedPoint, 0, pointsCount)
 		prev := base
 
@@ -340,14 +318,12 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 				return nil, decodeCounts{}, fmt.Errorf("%w: delta ts: %v", ErrDecodeBody, err)
 			}
 			rawPoints.Write(rawDelta)
-
 			var fb [8]byte
 			if _, err := io.ReadFull(r, fb[:]); err != nil {
 				return nil, decodeCounts{}, fmt.Errorf("%w: value: %v", ErrDecodeBody, err)
 			}
 			rawPoints.Write(fb[:])
-
-			var tsN int64
+			// var tsN int64
 			if pi == 0 {
 				tsN = base
 			} else {
@@ -359,7 +335,6 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 			if !opts.AllowNaN && (math.IsNaN(val) || math.IsInf(val, 0)) {
 				return nil, decodeCounts{}, fmt.Errorf("%w: NaN/Inf not allowed", ErrDecodeBody)
 			}
-
 			ts := time.Unix(0, tsN).UTC().Format(time.RFC3339Nano)
 			points = append(points, DecodedPoint{TS: ts, Value: val})
 			totalPts++
@@ -377,7 +352,6 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 		if gotSeriesCRC != wantSeriesCRC {
 			return nil, decodeCounts{}, fmt.Errorf("%w: series crc mismatch", ErrDecodeCRC)
 		}
-
 		ds := DecodedSeries{Key: key, Points: points}
 		if len(points) > 0 {
 			ds.Start = points[0].TS
@@ -390,10 +364,8 @@ func decodeBody(body []byte, opts ReaderOptions) ([]DecodedSeries, decodeCounts,
 	if r.Len() != 0 {
 		return nil, decodeCounts{}, fmt.Errorf("%w: trailing bytes in body", ErrDecodeInvalid)
 	}
-
 	return out, decodeCounts{series: len(out), points: totalPts}, nil
 }
-
 func normalizeReaderOptions(opts ReaderOptions) ReaderOptions {
 	o := opts
 	if o.MaxBytes <= 0 {
@@ -407,19 +379,16 @@ func normalizeReaderOptions(opts ReaderOptions) ReaderOptions {
 	}
 	return o
 }
-
 func gunzipBody(in []byte, maxBytes int64) ([]byte, error) {
 	zr, err := gzip.NewReader(bytes.NewReader(in))
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = zr.Close() }()
-
 	var r io.Reader = zr
 	if maxBytes > 0 {
 		r = io.LimitReader(zr, maxBytes+1)
 	}
-
 	out, err := io.ReadAll(r)
 	if err != nil {
 		return nil, err
@@ -429,7 +398,6 @@ func gunzipBody(in []byte, maxBytes int64) ([]byte, error) {
 	}
 	return out, nil
 }
-
 func readVarintWithRaw(r *bytes.Reader) (int64, []byte, error) {
 	// Read bytes until varint terminates; record raw bytes for CRC verification.
 	var raw [binary.MaxVarintLen64]byte
@@ -451,7 +419,6 @@ func readVarintWithRaw(r *bytes.Reader) (int64, []byte, error) {
 	}
 	return v, raw[:n], nil
 }
-
 func validateChunkMetaForDecode(m ChunkMeta) error {
 	if strings.TrimSpace(m.TenantID) == "" || strings.TrimSpace(m.Namespace) == "" {
 		return fmt.Errorf("%w: tenant_id/namespace required", ErrDecodeMeta)
@@ -459,12 +426,11 @@ func validateChunkMetaForDecode(m ChunkMeta) error {
 	if strings.TrimSpace(m.Start) == "" || strings.TrimSpace(m.End) == "" {
 		return fmt.Errorf("%w: start/end required", ErrDecodeMeta)
 	}
-
-startT, err := parseRFC3339MetaDecode(m.Start)
+	startT, err := parseRFC3339MetaDecode(m.Start)
 	if err != nil {
 		return err
 	}
-endT, err := parseRFC3339MetaDecode(m.End)
+	endT, err := parseRFC3339MetaDecode(m.End)
 	if err != nil {
 		return err
 	}
@@ -478,7 +444,6 @@ endT, err := parseRFC3339MetaDecode(m.End)
 	}
 	return nil
 }
-
 func parseRFC3339MetaDecode(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")

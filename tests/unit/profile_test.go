@@ -35,7 +35,6 @@ func (p Profile) Validate() error {
 			}
 		}
 	}
-
 	if strings.TrimSpace(p.BaseURL) == "" {
 		return errors.New("base_url is required")
 	}
@@ -66,7 +65,6 @@ func (p Profile) Validate() error {
 			}
 		}
 	}
-
 	r := p.Timeouts.RequestMS
 	c := p.Timeouts.ConnectMS
 
@@ -76,10 +74,8 @@ func (p Profile) Validate() error {
 	if c < 50 || c > r {
 		return fmt.Errorf("connect_ms out of range: %d (request_ms=%d)", c, r)
 	}
-
 	return nil
 }
-
 func goodProfile() Profile {
 	var p Profile
 	p.Name = "default"
@@ -92,14 +88,12 @@ func goodProfile() Profile {
 	p.Timeouts.ConnectMS = 1000
 	return p
 }
-
 func TestProfileValidate_GoodProfilePasses(t *testing.T) {
 	p := goodProfile()
 	if err := p.Validate(); err != nil {
 		t.Fatalf("expected valid profile, got error: %v", err)
 	}
 }
-
 func TestProfileValidate_NilHeadersIsValid(t *testing.T) {
 	p := goodProfile()
 	p.DefaultHeaders = nil
@@ -107,13 +101,10 @@ func TestProfileValidate_NilHeadersIsValid(t *testing.T) {
 		t.Fatalf("expected nil DefaultHeaders to be valid, got error: %v", err)
 	}
 }
-
 func TestProfileValidate_Rules(t *testing.T) {
 	tests := []struct {
-		name      string
-		mutate    func(p *Profile)
-		wantError string
-	}{
+		name   string
+		mutate func(p *Profile) // wantError string }{
 		{
 			name: "name required",
 			mutate: func(p *Profile) {
@@ -207,7 +198,6 @@ func TestProfileValidate_Rules(t *testing.T) {
 			wantError: "connect_ms out of range",
 		},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p := goodProfile()

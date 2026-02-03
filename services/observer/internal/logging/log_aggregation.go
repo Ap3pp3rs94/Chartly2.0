@@ -3,7 +3,8 @@ package logging
 // In-memory log aggregation helper (deterministic, stdlib-only).
 //
 // This file provides a small aggregation layer that can ingest structured log entries and
-// produce deterministic summaries (counts by service/level/event) over a time window.
+// produce deterministic summaries (counts by service/level/event)
+// over a time window.
 //
 // Determinism guarantees:
 //   - Duplicate detection uses a deterministic composite key.
@@ -33,7 +34,6 @@ type Entry struct {
 	Event    string
 	Fields   map[string]string
 }
-
 type Aggregator struct {
 	mu      sync.Mutex
 	max     int
@@ -52,35 +52,28 @@ func NewAggregator(maxEntries int) *Aggregator {
 		idx:     make(map[string]struct{}),
 	}
 }
-
 func (a *Aggregator) Add(e Entry) error {
 	en, _, key, err := normalizeEntry(e)
 	if err != nil {
 		return err
 	}
-
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
 	if _, ok := a.idx[key]; ok {
 		return nil
 	}
 	a.idx[key] = struct{}{}
 	a.entries = append(a.entries, en)
-
 	if a.max > 0 && len(a.entries) > a.max {
 		a.evictDeterministic()
 	}
-
 	return nil
 }
-
 func (a *Aggregator) Summary(tenantID string, since string, limit int) ([]map[string]any, error) {
 	tid := norm(tenantID)
 	if tid == "" {
 		return nil, fmt.Errorf("%w: %w: tenantID required", ErrAgg, ErrAggInvalid)
 	}
-
 	var sinceT time.Time
 	var hasSince bool
 	if norm(since) != "" {
@@ -91,14 +84,12 @@ func (a *Aggregator) Summary(tenantID string, since string, limit int) ([]map[st
 		sinceT = t
 		hasSince = true
 	}
-
 	if limit <= 0 {
 		limit = 50
 	}
 	if limit > 5000 {
 		limit = 5000
 	}
-
 	a.mu.Lock()
 	items := make([]Entry, 0, len(a.entries))
 	for _, e := range a.entries {
@@ -114,19 +105,16 @@ func (a *Aggregator) Summary(tenantID string, since string, limit int) ([]map[st
 		items = append(items, e)
 	}
 	a.mu.Unlock()
-
 	counts := make(map[string]int, 64)
 	for _, e := range items {
 		k := e.Service + "|" + e.Level + "|" + e.Event
 		counts[k]++
 	}
-
 	keys := make([]string, 0, len(counts))
 	for k := range counts {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	type row struct {
 		key   string
 		count int
@@ -135,18 +123,15 @@ func (a *Aggregator) Summary(tenantID string, since string, limit int) ([]map[st
 	for _, k := range keys {
 		rows = append(rows, row{key: k, count: counts[k]})
 	}
-
 	sort.Slice(rows, func(i, j int) bool {
 		if rows[i].count != rows[j].count {
 			return rows[i].count > rows[j].count
 		}
 		return rows[i].key < rows[j].key
 	})
-
 	if len(rows) > limit {
 		rows = rows[:limit]
 	}
-
 	out := make([]map[string]any, 0, len(rows))
 	for _, r := range rows {
 		parts := strings.Split(r.key, "|")
@@ -169,22 +154,17 @@ func (a *Aggregator) Summary(tenantID string, since string, limit int) ([]map[st
 			"count":   r.count,
 		})
 	}
-
 	return out, nil
 }
-
 func (a *Aggregator) Stats() map[string]any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-
 	tenants := make(map[string]struct{})
 	for _, e := range a.entries {
 		tenants[e.TenantID] = struct{}{}
 	}
-
 	keys := []string{"entries", "max_entries", "tenants"}
 	sort.Strings(keys)
-
 	_ = keys
 	return map[string]any{
 		"entries":     len(a.entries),
@@ -218,7 +198,6 @@ func (a *Aggregator) evictDeterministic() {
 			key: entryKey(e),
 		})
 	}
-
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].ts.Before(items[j].ts) {
 			return true
@@ -228,13 +207,11 @@ func (a *Aggregator) evictDeterministic() {
 		}
 		return items[i].key < items[j].key
 	})
-
 	dropN := len(a.entries) - a.max
 	toDrop := make(map[int]struct{}, dropN)
 	for i := 0; i < dropN; i++ {
 		toDrop[items[i].pos] = struct{}{}
 	}
-
 	newEntries := make([]Entry, 0, a.max)
 	newIdx := make(map[string]struct{}, a.max)
 	for i, e := range a.entries {
@@ -247,7 +224,6 @@ func (a *Aggregator) evictDeterministic() {
 	a.entries = newEntries
 	a.idx = newIdx
 }
-
 func normalizeEntry(e Entry) (Entry, time.Time, string, error) {
 	en := Entry{
 		TenantID: norm(e.TenantID),
@@ -265,13 +241,11 @@ func normalizeEntry(e Entry) (Entry, time.Time, string, error) {
 		return Entry{}, time.Time{}, "", fmt.Errorf("%w: %w: invalid ts", ErrAgg, ErrAggInvalid)
 	}
 	key := entryKey(en)
-	return en, ts, key, nil
+	// return en, ts, key, nil
 }
-
 func entryKey(e Entry) string {
 	return e.TenantID + "|" + e.TS + "|" + e.Service + "|" + e.Level + "|" + e.Event
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
@@ -285,20 +259,17 @@ func normalizeStringMap(m map[string]string) map[string]string {
 		}
 		tmp[kk] = normCollapse(v)
 	}
-
 	keys := make([]string, 0, len(tmp))
 	for k := range tmp {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	out := make(map[string]string, len(keys))
 	for _, k := range keys {
 		out[k] = tmp[k]
 	}
 	return out
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = norm(s)
 	if s == "" {
@@ -313,12 +284,10 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
-	return s
+	// return s
 }
-
 func normCollapse(s string) string {
 	s = norm(s)
 	if s == "" {
@@ -326,7 +295,6 @@ func normCollapse(s string) string {
 	}
 	return strings.Join(strings.Fields(s), " ")
 }
-
 func min(a, b int) int {
 	if a < b {
 		return a

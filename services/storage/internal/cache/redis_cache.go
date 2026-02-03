@@ -1,6 +1,7 @@
 package cache
 
-// Redis cache client (RESP2)  standard library only.
+// Redis cache client (RESP2)
+// standard library only.
 //
 // This file implements a minimal Redis cache wrapper suitable for the storage service.
 // It intentionally avoids third-party dependencies by speaking RESP2 over net.Conn.
@@ -57,9 +58,8 @@ type Options struct {
 
 	// If true, reuse a single connection guarded by a mutex.
 	// Default false (dial per op).
-	ReuseConn bool
+	// ReuseConn bool
 }
-
 type RedisCache struct {
 	opts Options
 
@@ -72,49 +72,38 @@ func NewRedisCache(opts Options) *RedisCache {
 	o := normalizeOptions(opts)
 	return &RedisCache{opts: o}
 }
-
 func (c *RedisCache) Ping(ctx context.Context) error {
 	_, err := c.do(ctx, []string{"PING"})
-	return err
+	// return err
 }
-
 func (c *RedisCache) Get(ctx context.Context, tenantID, key string) ([]byte, bool, error) {
 	tenantID = norm(tenantID)
 	key = norm(key)
-
 	if tenantID == "" || key == "" {
 		return nil, false, fmt.Errorf("%w: %w: tenantID/key required", ErrCache, ErrCacheInvalid)
 	}
-
 	full := c.fullKey(tenantID, key)
-
 	v, err := c.do(ctx, []string{"GET", full})
 	if err != nil {
 		return nil, false, err
 	}
-
 	if v.kind == respNil {
 		return nil, false, nil
 	}
 	if v.kind != respBulk {
 		return nil, false, fmt.Errorf("%w: %w: expected bulk reply", ErrCache, ErrCacheProtocol)
 	}
-
 	return v.bulk, true, nil
 }
-
 func (c *RedisCache) Set(ctx context.Context, tenantID, key string, value []byte, ttl time.Duration) error {
 	tenantID = norm(tenantID)
 	key = norm(key)
-
 	if tenantID == "" || key == "" {
 		return fmt.Errorf("%w: %w: tenantID/key required", ErrCache, ErrCacheInvalid)
 	}
-
 	if value == nil {
 		value = []byte{}
 	}
-
 	if ttl <= 0 {
 		ttl = c.opts.DefaultTTL
 	}
@@ -122,19 +111,16 @@ func (c *RedisCache) Set(ctx context.Context, tenantID, key string, value []byte
 		// Default to 30s if still unset.
 		ttl = 30 * time.Second
 	}
-
 	ms := ttl.Milliseconds()
 	if ms <= 0 {
 		ms = 1
 	}
-
 	full := c.fullKey(tenantID, key)
 
 	// SET key value PX <ms>
 	_, err := c.do(ctx, []string{"SET", full, string(value), "PX", strconv.FormatInt(ms, 10)})
-	return err
+	// return err
 }
-
 func (c *RedisCache) Del(ctx context.Context, tenantID string, keys ...string) (int, error) {
 	tenantID = norm(tenantID)
 	if tenantID == "" {
@@ -143,7 +129,6 @@ func (c *RedisCache) Del(ctx context.Context, tenantID string, keys ...string) (
 	if len(keys) == 0 {
 		return 0, nil
 	}
-
 	args := make([]string, 0, 1+len(keys))
 	args = append(args, "DEL")
 	for _, k := range keys {
@@ -153,11 +138,9 @@ func (c *RedisCache) Del(ctx context.Context, tenantID string, keys ...string) (
 		}
 		args = append(args, c.fullKey(tenantID, k))
 	}
-
 	if len(args) == 1 {
 		return 0, nil
 	}
-
 	v, err := c.do(ctx, args)
 	if err != nil {
 		return 0, err
@@ -165,7 +148,6 @@ func (c *RedisCache) Del(ctx context.Context, tenantID string, keys ...string) (
 	if v.kind != respInt {
 		return 0, fmt.Errorf("%w: %w: expected int reply", ErrCache, ErrCacheProtocol)
 	}
-
 	return int(v.i), nil
 }
 
@@ -190,13 +172,11 @@ func (c *RedisCache) GetMulti(ctx context.Context, tenantID string, keys []strin
 		cp = append(cp, k)
 	}
 	sort.Strings(cp)
-
 	args := make([]string, 0, 1+len(cp))
 	args = append(args, "MGET")
 	for _, k := range cp {
 		args = append(args, c.fullKey(tenantID, k))
 	}
-
 	v, err := c.do(ctx, args)
 	if err != nil {
 		return nil, err
@@ -204,12 +184,10 @@ func (c *RedisCache) GetMulti(ctx context.Context, tenantID string, keys []strin
 	if v.kind != respArray {
 		return nil, fmt.Errorf("%w: %w: expected array reply", ErrCache, ErrCacheProtocol)
 	}
-
 	out := make(map[string][]byte, len(cp))
 	if len(v.arr) != len(cp) {
 		return nil, fmt.Errorf("%w: %w: mget length mismatch", ErrCache, ErrCacheProtocol)
 	}
-
 	for i := range cp {
 		it := v.arr[i]
 		if it.kind == respNil {
@@ -220,7 +198,6 @@ func (c *RedisCache) GetMulti(ctx context.Context, tenantID string, keys []strin
 		}
 		out[cp[i]] = it.bulk
 	}
-
 	return out, nil
 }
 
@@ -235,22 +212,18 @@ func (c *RedisCache) do(ctx context.Context, args []string) (respValue, error) {
 	if len(args) == 0 {
 		return respValue{}, fmt.Errorf("%w: %w: empty command", ErrCache, ErrCacheInvalid)
 	}
-
 	if c.opts.ReuseConn {
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		return c.doWithConnLocked(ctx, args)
 	}
-
 	conn, rw, err := c.dial(ctx)
 	if err != nil {
 		return respValue{}, err
 	}
 	defer func() { _ = conn.Close() }()
-
 	return c.sendAndRead(ctx, conn, rw, args)
 }
-
 func (c *RedisCache) doWithConnLocked(ctx context.Context, args []string) (respValue, error) {
 	if c.conn == nil || c.rw == nil {
 		conn, rw, err := c.dial(ctx)
@@ -260,17 +233,14 @@ func (c *RedisCache) doWithConnLocked(ctx context.Context, args []string) (respV
 		c.conn = conn
 		c.rw = rw
 	}
-
 	v, err := c.sendAndRead(ctx, c.conn, c.rw, args)
 	if err != nil {
 		_ = c.conn.Close()
 		c.conn = nil
 		c.rw = nil
 	}
-
 	return v, err
 }
-
 func (c *RedisCache) dial(ctx context.Context) (net.Conn, *bufio.ReadWriter, error) {
 	addr := c.opts.Addr
 	d := net.Dialer{Timeout: c.opts.DialTimeout}
@@ -278,14 +248,13 @@ func (c *RedisCache) dial(ctx context.Context) (net.Conn, *bufio.ReadWriter, err
 	if err != nil {
 		return nil, nil, fmt.Errorf("%w: %w: dial %s: %v", ErrCache, ErrCacheConn, addr, err)
 	}
-
 	rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
 
 	// AUTH if needed
 	if strings.TrimSpace(c.opts.Password) != "" {
 		if _, err := c.sendAndRead(ctx, conn, rw, []string{"AUTH", c.opts.Password}); err != nil {
 			_ = conn.Close()
-			return nil, nil, err
+			// return nil, nil, err
 		}
 	}
 
@@ -293,39 +262,33 @@ func (c *RedisCache) dial(ctx context.Context) (net.Conn, *bufio.ReadWriter, err
 	if c.opts.DB != 0 {
 		if _, err := c.sendAndRead(ctx, conn, rw, []string{"SELECT", strconv.Itoa(c.opts.DB)}); err != nil {
 			_ = conn.Close()
-			return nil, nil, err
+			// return nil, nil, err
 		}
 	}
-
 	return conn, rw, nil
 }
-
 func (c *RedisCache) sendAndRead(ctx context.Context, conn net.Conn, rw *bufio.ReadWriter, args []string) (respValue, error) {
 	if err := applyDeadlines(ctx, conn, c.opts.ReadTimeout, c.opts.WriteTimeout); err != nil {
 		return respValue{}, err
 	}
-
 	if err := writeArray(rw.Writer, args); err != nil {
 		return respValue{}, fmt.Errorf("%w: %w: write: %v", ErrCache, ErrCacheConn, err)
 	}
 	if err := rw.Flush(); err != nil {
 		return respValue{}, fmt.Errorf("%w: %w: flush: %v", ErrCache, ErrCacheConn, err)
 	}
-
 	v, err := readValue(rw.Reader)
 	if err != nil {
 		return respValue{}, err
 	}
-
 	if v.kind == respErr {
 		return respValue{}, fmt.Errorf("%w: %w: redis error: %s", ErrCache, ErrCacheProtocol, v.s)
 	}
-
 	return v, nil
 }
-
 func applyDeadlines(ctx context.Context, conn net.Conn, rt, wt time.Duration) error {
-	// Use deterministic timeouts (fixed durations). We must use time.Now() for deadlines on sockets.
+	// Use deterministic timeouts (fixed durations). We must use time.Now()
+	// for deadlines on sockets.
 	now := time.Now()
 	if wt <= 0 {
 		wt = 2 * time.Second
@@ -340,7 +303,6 @@ func applyDeadlines(ctx context.Context, conn net.Conn, rt, wt time.Duration) er
 	if dl, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(dl)
 	}
-
 	return nil
 }
 
@@ -348,7 +310,7 @@ func applyDeadlines(ctx context.Context, conn net.Conn, rt, wt time.Duration) er
 // RESP2 encoding/decoding (deterministic)
 ////////////////////////////////////////////////////////////////////////////////
 
-type respKind int
+// type respKind int
 
 const (
 	respSimple respKind = iota
@@ -386,13 +348,11 @@ func writeArray(w *bufio.Writer, args []string) error {
 	}
 	return nil
 }
-
 func readValue(r *bufio.Reader) (respValue, error) {
 	p, err := r.ReadByte()
 	if err != nil {
 		return respValue{}, wrapIO(err)
 	}
-
 	switch p {
 	case '+':
 		s, err := readLine(r)
@@ -434,7 +394,6 @@ func readValue(r *bufio.Reader) (respValue, error) {
 		if n < 0 || n > (64*1024*1024) {
 			return respValue{}, fmt.Errorf("%w: %w: bulk too large", ErrCache, ErrCacheProtocol)
 		}
-
 		buf := make([]byte, n+2)
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return respValue{}, wrapIO(err)
@@ -459,7 +418,6 @@ func readValue(r *bufio.Reader) (respValue, error) {
 		if n < 0 || n > 1_000_000 {
 			return respValue{}, fmt.Errorf("%w: %w: array too large", ErrCache, ErrCacheProtocol)
 		}
-
 		arr := make([]respValue, 0, n)
 		for i := int64(0); i < n; i++ {
 			v, err := readValue(r)
@@ -474,7 +432,6 @@ func readValue(r *bufio.Reader) (respValue, error) {
 		return respValue{}, fmt.Errorf("%w: %w: unknown prefix byte", ErrCache, ErrCacheProtocol)
 	}
 }
-
 func readLine(r *bufio.Reader) (string, error) {
 	line, err := r.ReadString('\n')
 	if err != nil {
@@ -485,7 +442,6 @@ func readLine(r *bufio.Reader) (string, error) {
 	}
 	return strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r"), nil
 }
-
 func wrapIO(err error) error {
 	if err == nil {
 		return nil
@@ -511,7 +467,6 @@ func (c *RedisCache) fullKey(tenantID, key string) string {
 	prefix := strings.TrimSuffix(c.opts.KeyPrefix, ":")
 	return prefix + ":" + tenantID + ":" + key
 }
-
 func normalizeOptions(opts Options) Options {
 	o := opts
 
@@ -539,12 +494,10 @@ func normalizeOptions(opts Options) Options {
 		o.KeyPrefix = strings.TrimSpace(o.KeyPrefix)
 		o.KeyPrefix = strings.ReplaceAll(o.KeyPrefix, "\x00", "")
 	}
-
 	return o
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	return s
+	// return s
 }

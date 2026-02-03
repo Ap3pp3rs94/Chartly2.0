@@ -32,16 +32,14 @@ type Principal struct {
 	ID   string `json:"id"`
 	Type string `json:"type"` // e.g. "user", "service"
 }
-
 type Assignment struct {
 	TenantID  string            `json:"tenant_id"`
 	Principal Principal         `json:"principal"`
 	RoleIDs   []string          `json:"role_ids"`
-	IssuedAt  string            `json:"issued_at"`           // RFC3339Nano (caller-provided)
+	IssuedAt  string            `json:"issued_at"`            // RFC3339Nano (caller-provided)
 	ExpiresAt string            `json:"expires_at,omitempty"` // RFC3339Nano optional
 	Meta      map[string]string `json:"meta,omitempty"`
 }
-
 type Decision struct {
 	Allowed        bool         `json:"allowed"`
 	Reason         string       `json:"reason"`
@@ -49,7 +47,6 @@ type Decision struct {
 	EffectiveRoles []string     `json:"effective_roles,omitempty"`
 	EffectivePerms []Permission `json:"effective_perms,omitempty"`
 }
-
 type Engine struct {
 	roles map[string]Role
 }
@@ -91,7 +88,6 @@ func NewEngine(roles map[string]Role) (*Engine, error) {
 
 		cp[r.ID] = r
 	}
-
 	return &Engine{roles: cp}, nil
 }
 
@@ -100,7 +96,6 @@ func (e *Engine) Compile(tenantID string, asg Assignment) ([]string, []Permissio
 	if e == nil {
 		return nil, nil, fmt.Errorf("%w: engine nil", ErrPolicyInvalid)
 	}
-
 	tid := norm(tenantID)
 	if tid == "" {
 		tid = norm(asg.TenantID)
@@ -108,15 +103,12 @@ func (e *Engine) Compile(tenantID string, asg Assignment) ([]string, []Permissio
 	if tid == "" {
 		return nil, nil, fmt.Errorf("%w: tenant_id required", ErrPolicyInvalid)
 	}
-
 	roleIDs := normalizeStringSlice(asg.RoleIDs)
 	if len(roleIDs) == 0 {
 		return nil, nil, fmt.Errorf("%w: no roles", ErrPolicyInvalid)
 	}
-
 	permSet := NewSet()
 	effectiveRoles := make([]string, 0, len(roleIDs))
-
 	for _, rid := range roleIDs {
 		perms, err := ExpandRole(rid, e.roles)
 		if err != nil {
@@ -127,7 +119,6 @@ func (e *Engine) Compile(tenantID string, asg Assignment) ([]string, []Permissio
 		}
 		effectiveRoles = append(effectiveRoles, rid)
 	}
-
 	effectiveRoles = normalizeStringSlice(effectiveRoles)
 	return effectiveRoles, permSet.List(), nil
 }
@@ -138,7 +129,6 @@ func (e *Engine) Decide(tenantID string, asg Assignment, want Permission, now ti
 	if e == nil {
 		return Decision{}, fmt.Errorf("%w: engine nil", ErrPolicyInvalid)
 	}
-
 	tid := norm(tenantID)
 	if tid == "" {
 		tid = norm(asg.TenantID)
@@ -158,7 +148,6 @@ func (e *Engine) Decide(tenantID string, asg Assignment, want Permission, now ti
 	if norm(asg.IssuedAt) == "" {
 		return Decision{}, fmt.Errorf("%w: issued_at required", ErrPolicyInvalid)
 	}
-	
 	iat, err := parseRFC3339(asg.IssuedAt)
 	if err != nil {
 		return Decision{}, fmt.Errorf("%w: invalid issued_at", ErrPolicyInvalid)
@@ -166,7 +155,6 @@ func (e *Engine) Decide(tenantID string, asg Assignment, want Permission, now ti
 	if !now.IsZero() && now.Before(iat) {
 		return Decision{}, fmt.Errorf("%w: assignment not yet valid", ErrPolicyExpired)
 	}
-
 	if norm(asg.ExpiresAt) != "" {
 		exp, err := parseRFC3339(asg.ExpiresAt)
 		if err != nil {
@@ -176,17 +164,14 @@ func (e *Engine) Decide(tenantID string, asg Assignment, want Permission, now ti
 			return Decision{}, fmt.Errorf("%w: assignment expired", ErrPolicyExpired)
 		}
 	}
-
 	w, err := Parse(string(want))
 	if err != nil {
 		return Decision{}, fmt.Errorf("%w: invalid want permission", ErrPolicyInvalid)
 	}
-
 	roles, perms, err := e.Compile(tid, asg)
 	if err != nil {
 		return Decision{}, err
 	}
-
 	matched := Permission("")
 	allowed := false
 	for _, g := range perms {
@@ -196,12 +181,10 @@ func (e *Engine) Decide(tenantID string, asg Assignment, want Permission, now ti
 			break // first match is deterministic because perms is sorted
 		}
 	}
-
 	reason := "denied"
 	if allowed {
 		reason = "allowed"
 	}
-
 	return Decision{
 		Allowed:        allowed,
 		Reason:         reason,
@@ -219,7 +202,6 @@ func normalizeStringSlice(in []string) []string {
 	if len(in) == 0 {
 		return nil
 	}
-	
 	tmp := make([]string, 0, len(in))
 	for _, s := range in {
 		n := norm(s)
@@ -228,10 +210,9 @@ func normalizeStringSlice(in []string) []string {
 		}
 		tmp = append(tmp, n)
 	}
-	
 	sort.Strings(tmp)
 	out := make([]string, 0, len(tmp))
-	var last string
+	// var last string
 	for _, s := range tmp {
 		if s != last {
 			out = append(out, s)
@@ -240,12 +221,10 @@ func normalizeStringSlice(in []string) []string {
 	}
 	return out
 }
-
 func normalizePermSlice(in []Permission) []Permission {
 	if len(in) == 0 {
 		return nil
 	}
-	
 	tmp := make([]Permission, 0, len(in))
 	for _, p := range in {
 		pp, err := Parse(string(p))
@@ -254,10 +233,9 @@ func normalizePermSlice(in []Permission) []Permission {
 		}
 		tmp = append(tmp, pp)
 	}
-	
 	sort.Slice(tmp, func(i, j int) bool { return tmp[i] < tmp[j] })
 	out := make([]Permission, 0, len(tmp))
-	var last Permission
+	// var last Permission
 	for _, p := range tmp {
 		if p != last {
 			out = append(out, p)
@@ -266,7 +244,6 @@ func normalizePermSlice(in []Permission) []Permission {
 	}
 	return out
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = norm(s)
 	if s == "" {
@@ -281,9 +258,8 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	return s
+	// return s
 }

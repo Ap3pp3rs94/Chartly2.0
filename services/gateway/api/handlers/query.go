@@ -16,7 +16,6 @@ type queryEcho struct {
 	End        string `json:"end,omitempty"`
 	Limit      int    `json:"limit"`
 }
-
 type queryStubResp struct {
 	Error   errResp   `json:"error"`
 	Request queryEcho `json:"request"`
@@ -29,7 +28,6 @@ func envIsLocalQuery() bool {
 	}
 	return strings.EqualFold(env, "local")
 }
-
 func tenantFromHeaderQuery(r *http.Request) (string, bool) {
 	t := strings.TrimSpace(r.Header.Get("X-Tenant-Id"))
 	if t == "" {
@@ -40,7 +38,6 @@ func tenantFromHeaderQuery(r *http.Request) (string, bool) {
 	}
 	return t, true
 }
-
 func parseRFC3339Optional(v string) (string, bool) {
 	v = strings.TrimSpace(v)
 	if v == "" {
@@ -54,41 +51,35 @@ func parseRFC3339Optional(v string) (string, bool) {
 	}
 	return "", false
 }
-
 func Query(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeaderQuery(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		return
+		// return
 	}
-
 	q := r.URL.Query()
 	sourceID := strings.TrimSpace(q.Get("source_id"))
 	if sourceID == "" {
 		writeErr(w, http.StatusBadRequest, "missing_source_id", "source_id is required")
-		return
+		// return
 	}
-
 	metric := strings.TrimSpace(q.Get("metric_name"))
-
 	start, ok := parseRFC3339Optional(q.Get("start"))
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "invalid_start", "start must be RFC3339")
-		return
+		// return
 	}
-
 	end, ok := parseRFC3339Optional(q.Get("end"))
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "invalid_end", "end must be RFC3339")
-		return
+		// return
 	}
-
 	limit := 1000
 	if ls := strings.TrimSpace(q.Get("limit")); ls != "" {
 		n, err := strconv.Atoi(ls)
 		if err != nil || n < 1 || n > 50000 {
 			writeErr(w, http.StatusBadRequest, "invalid_limit", "limit must be 1..50000")
-			return
+			// return
 		}
 		limit = n
 	}
@@ -104,16 +95,14 @@ func Query(w http.ResponseWriter, r *http.Request) {
 	}
 	if src == nil {
 		writeErr(w, http.StatusNotFound, "source_not_found", "source not found")
-		return
+		// return
 	}
 	if !src.Enabled {
 		writeErr(w, http.StatusConflict, "source_disabled", "source is disabled")
-		return
+		// return
 	}
-
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusNotImplemented)
-
 	var resp queryStubResp
 	resp.Error.Error.Code = "not_implemented"
 	resp.Error.Error.Message = "query not implemented"
@@ -124,6 +113,5 @@ func Query(w http.ResponseWriter, r *http.Request) {
 		End:        end,
 		Limit:      limit,
 	}
-
 	_ = json.NewEncoder(w).Encode(resp)
 }

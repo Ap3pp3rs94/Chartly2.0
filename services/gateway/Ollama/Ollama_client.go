@@ -39,60 +39,50 @@ func (c *Client) Generate(ctx context.Context, prompt string, system string, tem
 	if strings.TrimSpace(prompt) == "" {
 		return "", gwErr("validation_error", "prompt is required")
 	}
-
 	reqBody := map[string]any{
 		"model":  c.model,
 		"prompt": prompt,
 		"stream": false,
 	}
-
 	if strings.TrimSpace(system) != "" {
 		reqBody["system"] = system
 	}
-
 	if temperature != nil {
 		reqBody["options"] = map[string]any{"temperature": *temperature}
 	}
-
 	b, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", gwErr("encode_error", "failed to encode request")
 	}
-
 	url := c.baseURL + "/api/generate"
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return "", gwErr("request_error", "failed to create request")
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
-
 	res, err := c.httpc.Do(httpReq)
 	if err != nil {
 		return "", gwErr("upstream_error", "failed to call ollama")
 	}
 	defer res.Body.Close()
-
 	raw, err := io.ReadAll(res.Body)
 	if err != nil {
 		return "", gwErr("upstream_error", "failed to read ollama response")
 	}
-
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		return "", gwErr("upstream_error", fmt.Sprintf("ollama returned non-2xx (%d)", res.StatusCode))
 	}
-
 	var parsed struct {
 		Response string `json:"response"`
 	}
-
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		return "", gwErr("decode_error", "failed to parse ollama response")
 	}
-
 	return parsed.Response, nil
 }
 
-// gwErr formats errors to match {"error":{"code","message"}} semantics via the error message.
+// gwErr formats errors to match {"error":{"code","message"}}
+// semantics via the error message.
 func gwErr(code, message string) error {
 	if code == "" {
 		code = "error"

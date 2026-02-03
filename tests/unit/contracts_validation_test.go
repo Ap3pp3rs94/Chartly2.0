@@ -18,7 +18,6 @@ func TestContracts_ProfileValidate_ErrorTokensStable(t *testing.T) {
 		"request_ms out of range",
 		"connect_ms out of range",
 	}
-
 	cases := []struct {
 		name   string
 		mutate func(p *Profile)
@@ -73,7 +72,6 @@ func TestContracts_ProfileValidate_ErrorTokensStable(t *testing.T) {
 			},
 		},
 	}
-
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			p := goodProfile()
@@ -83,7 +81,6 @@ func TestContracts_ProfileValidate_ErrorTokensStable(t *testing.T) {
 				t.Fatalf("expected error, got nil")
 			}
 			msg := err.Error()
-
 			ok := false
 			for _, tok := range allowed {
 				if strings.Contains(msg, tok) {
@@ -97,7 +94,6 @@ func TestContracts_ProfileValidate_ErrorTokensStable(t *testing.T) {
 		})
 	}
 }
-
 func TestContracts_Normalizer_UnsupportedTypePrefix(t *testing.T) {
 	_, err := normalize(func() {})
 	if err == nil {
@@ -107,7 +103,6 @@ func TestContracts_Normalizer_UnsupportedTypePrefix(t *testing.T) {
 		t.Fatalf("expected prefix 'unsupported type:', got %q", err.Error())
 	}
 }
-
 func TestContracts_Connector_HealthClosedIsErrNotOpen(t *testing.T) {
 	c := newFakeConnector("fake")
 	err := c.Health(context.Background())

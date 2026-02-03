@@ -22,30 +22,25 @@ func loadCORSConfig() corsConfig {
 		origins = "*"
 	}
 	allowedOrigins := splitCSV(origins)
-
 	methods := strings.TrimSpace(os.Getenv("CORS_ALLOWED_METHODS"))
 	if methods == "" {
 		methods = "GET,POST,PUT,PATCH,DELETE,OPTIONS"
 	}
-
 	headers := strings.TrimSpace(os.Getenv("CORS_ALLOWED_HEADERS"))
 	if headers == "" {
 		headers = "*"
 	}
-
 	cred := strings.TrimSpace(os.Getenv("CORS_ALLOW_CREDENTIALS"))
 	allowCred := false
 	if cred != "" {
 		allowCred = strings.EqualFold(cred, "true")
 	}
-
 	maxAge := 600
 	if v := strings.TrimSpace(os.Getenv("CORS_MAX_AGE_SECONDS")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			maxAge = n
 		}
 	}
-
 	allowAll := false
 	for _, o := range allowedOrigins {
 		if o == "*" {
@@ -53,7 +48,6 @@ func loadCORSConfig() corsConfig {
 			break
 		}
 	}
-
 	return corsConfig{
 		allowedOrigins:   allowedOrigins,
 		allowedMethods:   methods,
@@ -63,7 +57,6 @@ func loadCORSConfig() corsConfig {
 		allowAllOrigins:  allowAll,
 	}
 }
-
 func splitCSV(s string) []string {
 	parts := strings.Split(s, ",")
 	out := make([]string, 0, len(parts))
@@ -79,13 +72,11 @@ func splitCSV(s string) []string {
 	}
 	return out
 }
-
 func originAllowed(cfg corsConfig, origin string) (string, bool) {
 	origin = strings.TrimSpace(origin)
 	if origin == "" {
 		return "", false
 	}
-
 	if cfg.allowCredentials {
 		// With credentials, we cannot use wildcard. Must explicitly allow origin.
 		for _, o := range cfg.allowedOrigins {
@@ -107,7 +98,6 @@ func originAllowed(cfg corsConfig, origin string) (string, bool) {
 	}
 	return "", false
 }
-
 func setCORSHeaders(w http.ResponseWriter, cfg corsConfig, allowedOrigin string) {
 	if allowedOrigin != "" {
 		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
@@ -117,7 +107,6 @@ func setCORSHeaders(w http.ResponseWriter, cfg corsConfig, allowedOrigin string)
 			w.Header().Add("Vary", "Origin")
 		}
 	}
-
 	w.Header().Set("Access-Control-Allow-Methods", cfg.allowedMethods)
 	w.Header().Set("Access-Control-Allow-Headers", cfg.allowedHeaders)
 	if cfg.allowCredentials {
@@ -125,10 +114,8 @@ func setCORSHeaders(w http.ResponseWriter, cfg corsConfig, allowedOrigin string)
 	}
 	w.Header().Set("Access-Control-Max-Age", strconv.Itoa(cfg.maxAgeSeconds))
 }
-
 func CORS(next http.Handler) http.Handler {
 	cfg := loadCORSConfig()
-
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		allowedOrigin, ok := originAllowed(cfg, origin)
@@ -143,9 +130,8 @@ func CORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 			// Always respond 204 to preflight; CORS headers are set only when origin allowed.
 			w.WriteHeader(http.StatusNoContent)
-			return
+			// return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }

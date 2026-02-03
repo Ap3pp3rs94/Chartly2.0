@@ -35,7 +35,6 @@ func TestCompactionToChunk(t *testing.T) {
 			},
 		},
 	}
-
 	meta := ChunkMeta{
 		TenantID:   "t1",
 		Namespace:  "ns",
@@ -43,13 +42,11 @@ func TestCompactionToChunk(t *testing.T) {
 		Start:      "2026-01-01T00:00:00Z",
 		End:        "2026-01-01T00:00:10Z",
 	}
-
 	opts := CompactionOptions{
 		Deduplicate:     true,
 		DuplicatePolicy: KeepFirst,
 		DropOutOfRange:  true,
 	}
-
 	sink := &memSink{}
 	ref, res, err := CompactToChunk(context.Background(), sink, meta, "prefix", series, opts)
 	if err != nil {
@@ -67,7 +64,6 @@ func TestCompactionToChunk(t *testing.T) {
 	if res.Dropped != 1 {
 		t.Fatalf("expected 1 dropped (out of window), got %d", res.Dropped)
 	}
-
 	decoded, err := Decode(sink.data, ReaderOptions{})
 	if err != nil {
 		t.Fatalf("decode: %v", err)

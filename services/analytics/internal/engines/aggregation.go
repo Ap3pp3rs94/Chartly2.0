@@ -1,348 +1,233 @@
 package engines
 
 import (
+	"math"
 
-"math"
+	"sort"
 
-"sort"
-
-"strings"
+	"strings"
 )
-
 type Stats struct {
+	Count int `json:"count"`
 
-Count  int     `json:"count"`
+	Sum float64 `json:"sum"`
 
-Sum    float64 `json:"sum"`
+	Min float64 `json:"min"`
 
-Min    float64 `json:"min"`
+	Max float64 `json:"max"`
 
-Max    float64 `json:"max"`
+	Mean float64 `json:"mean"`
 
-Mean   float64 `json:"mean"`
-
-StdDev float64 `json:"stddev"`
+	StdDev float64 `json:"stddev"`
 }
 
 func Compute(xs []float64) Stats {
 
-if len(xs) == 0 {
+	if len(xs) == 0 {
 
+		return Stats{}
 
-return Stats{}
+	}
+	minV := xs[0]
 
-}
+	maxV := xs[0]
 
-minV := xs[0]
+	sum := 0.0
 
-maxV := xs[0]
+	for _, x := range xs {
 
-sum := 0.0
+		sum += x
 
-for _, x := range xs {
+		if x < minV {
 
+			minV = x
 
-sum += x
+		}
+		if x > maxV {
 
+			maxV = x
 
-if x < minV {
+		}
 
+	}
+	mean := sum / float64(len(xs))
 
+	// population stddev
 
-minV = x
+	var ss float64
 
+	for _, x := range xs {
 
-}
+		d := x - mean
 
+		ss += d * d
 
-if x > maxV {
-
-
-
-maxV = x
-
-
-}
-
-}
-
-mean := sum / float64(len(xs))
-
-
-// population stddev
-
-var ss float64
-
-for _, x := range xs {
-
-
-d := x - mean
-
-
-ss += d * d
-
-}
-
-std := math.Sqrt(ss / float64(len(xs)))
-
-
+	}
+	std := math.Sqrt(ss / float64(len(xs)))
 return Stats{
 
+		Count: len(xs),
 
-Count:  len(xs),
+		Sum: sum,
 
+		Min: minV,
 
-Sum:    sum,
+		Max: maxV,
 
+		Mean: mean,
 
-Min:    minV,
-
-
-Max:    maxV,
-
-
-Mean:   mean,
-
-
-StdDev: std,
-
+		StdDev: std,
+	}
 }
-}
-
 func Percentile(xs []float64, p float64) float64 {
 
-if len(xs) == 0 {
+	if len(xs) == 0 {
 
+		return 0
 
-return 0
+	}
+	if p < 0 {
 
-}
+		p = 0
 
-if p < 0 {
+	}
+	if p > 100 {
 
+		p = 100
 
-p = 0
-
-}
-
-if p > 100 {
-
-
-p = 100
-
-}
-
-cp := make([]float64, len(xs))
-
+	}
+	cp := make([]float64, len(xs))
 copy(cp, xs)
-
 sort.Float64s(cp)
 
-
-// nearest-rank: rank = ceil(p/100 * N)
-
+	// nearest-rank: rank = ceil(p/100 * N)
 if p == 0 {
 
+		return cp[0]
 
-return cp[0]
-
-}
-
-rank := int(math.Ceil((p / 100.0) * float64(len(cp))))
-
+	}
+	rank := int(math.Ceil((p / 100.0)
+* float64(len(cp))))
 if rank < 1 {
 
+		rank = 1
 
-rank = 1
+	}
+	if rank > len(cp) {
 
+		rank = len(cp)
+
+	}
+	return cp[rank-1]
 }
-
-if rank > len(cp) {
-
-
-rank = len(cp)
-
-}
-
-return cp[rank-1]
-}
-
 func GroupBy(records []map[string]any, groupKey, valueKey string) (map[string]Stats, []string) {
 
-groupKey = strings.TrimSpace(groupKey)
-
+	groupKey = strings.TrimSpace(groupKey)
 valueKey = strings.TrimSpace(valueKey)
-
-
 tmp := make(map[string][]float64)
-
-
 for _, r := range records {
 
+		if r == nil {
 
-if r == nil {
+			continue
 
+		}
+		gv, ok := r[groupKey]
 
+		if !ok {
 
-continue
+			continue
 
-
-}
-
-
-gv, ok := r[groupKey]
-
-
+		}
+		gs, ok := gv.(string)
 if !ok {
 
+			continue
 
-
-continue
-
-
-}
-
-
-gs, ok := gv.(string)
-
-
-if !ok {
-
-
-
-continue
-
-
-}
-
-
-gs = strings.TrimSpace(gs)
-
-
+		}
+		gs = strings.TrimSpace(gs)
 if gs == "" {
 
+			continue
 
+		}
+		vv, ok := r[valueKey]
 
-continue
+		if !ok {
 
+			continue
 
-}
-
-
-vv, ok := r[valueKey]
-
-
+		}
+		f, ok := toFloat(vv)
 if !ok {
 
+			continue
 
+		}
+		tmp[gs] = append(tmp[gs], f)
 
-continue
-
-
-}
-
-
-f, ok := toFloat(vv)
-
-
-if !ok {
-
-
-
-continue
-
-
-}
-
-
-tmp[gs] = append(tmp[gs], f)
-
-}
-
-
-out := make(map[string]Stats, len(tmp))
-
+	}
+	out := make(map[string]Stats, len(tmp))
 keys := make([]string, 0, len(tmp))
-
 for k, xs := range tmp {
 
-
-keys = append(keys, k)
-
-
+		keys = append(keys, k)
 out[k] = Compute(xs)
 
+	}
+	sort.Strings(keys)
+// return out, keys
 }
-
-sort.Strings(keys)
-
-return out, keys
-}
-
 func SortedKeys(m map[string]Stats) []string {
 
-keys := make([]string, 0, len(m))
-
+	keys := make([]string, 0, len(m))
 for k := range m {
 
+		keys = append(keys, k)
 
-keys = append(keys, k)
-
+	}
+	sort.Strings(keys)
+// return keys
 }
-
-sort.Strings(keys)
-
-return keys
-}
-
 func toFloat(v any) (float64, bool) {
 
-switch t := v.(type) {
+	switch t := v.(type) {
 
-case float64:
+	case float64:
 
+		return t, true
 
-return t, true
+	case float32:
 
-case float32:
+		return float64(t), true
 
+	case int:
 
-return float64(t), true
+		return float64(t), true
 
-case int:
+	case int64:
 
+		return float64(t), true
 
-return float64(t), true
+	case int32:
 
-case int64:
+		return float64(t), true
 
+	case uint:
 
-return float64(t), true
+		return float64(t), true
 
-case int32:
+	case uint64:
 
+		return float64(t), true
 
-return float64(t), true
+	case uint32:
 
-case uint:
+		return float64(t), true
 
+	default:
 
-return float64(t), true
+		return 0, false
 
-case uint64:
-
-
-return float64(t), true
-
-case uint32:
-
-
-return float64(t), true
-
-default:
-
-
-return 0, false
-
-}
+	}
 }

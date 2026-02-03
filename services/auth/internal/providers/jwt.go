@@ -18,7 +18,8 @@ package providers
 //   - No randomness.
 //   - TokenID derived deterministically from canonical claim content.
 //   - Scopes are sorted and deduplicated deterministically.
-//   - Meta is canonicalized (normalized strings, sorted keys) before signing.
+//   - Meta is canonicalized (normalized strings, sorted keys)
+// before signing.
 
 import (
 	"crypto/hmac"
@@ -48,21 +49,17 @@ type Claims struct {
 	TokenID   string            `json:"token_id"`
 	Meta      map[string]string `json:"meta,omitempty"`
 }
-
 type Provider struct {
 	secret []byte
 }
-
 type tokenHeader struct {
 	Alg string `json:"alg"`
 	Typ string `json:"typ"`
 }
-
 type metaKV struct {
 	K string `json:"k"`
 	V string `json:"v"`
 }
-
 type tokenPayload struct {
 	TenantID  string   `json:"tenant_id"`
 	Subject   string   `json:"subject"`
@@ -79,22 +76,18 @@ func New(secret []byte) (*Provider, error) {
 	}
 	return &Provider{secret: append([]byte{}, secret...)}, nil
 }
-
 func (p *Provider) Sign(c Claims) (string, Claims, error) {
 	cc, err := normalizeClaims(c)
 	if err != nil {
 		return "", Claims{}, err
 	}
-
 	metaList := canonicalMeta(cc.Meta)
 	cc.TokenID = deterministicTokenID(cc, metaList)
-
 	h := tokenHeader{Alg: "HS256", Typ: "JWT"}
 	hb, err := json.Marshal(h)
 	if err != nil {
 		return "", Claims{}, fmt.Errorf("%w: header json: %v", ErrJWT, err)
 	}
-
 	pl := tokenPayload{
 		TenantID:  cc.TenantID,
 		Subject:   cc.Subject,
@@ -108,17 +101,14 @@ func (p *Provider) Sign(c Claims) (string, Claims, error) {
 	if err != nil {
 		return "", Claims{}, fmt.Errorf("%w: payload json: %v", ErrJWT, err)
 	}
-
 	h64 := b64url(hb)
 	p64 := b64url(pb)
 	unsigned := h64 + "." + p64
 
 	sig := hmacSHA256(p.secret, []byte(unsigned))
 	t64 := b64url(sig)
-
 	return unsigned + "." + t64, cc, nil
 }
-
 func (p *Provider) Verify(tok string) (Claims, error) {
 	tok = strings.TrimSpace(tok)
 	parts := strings.Split(tok, ".")
@@ -161,7 +151,6 @@ func (p *Provider) Verify(tok string) (Claims, error) {
 	if err := dec.Decode(&pl); err != nil {
 		return Claims{}, fmt.Errorf("%w: %w: bad claims json", ErrJWT, ErrJWTInvalid)
 	}
-
 	cc := Claims{
 		TenantID:  pl.TenantID,
 		Subject:   pl.Subject,
@@ -171,7 +160,6 @@ func (p *Provider) Verify(tok string) (Claims, error) {
 		TokenID:   pl.TokenID,
 		Meta:      metaToMap(pl.Meta),
 	}
-
 	cc, err = normalizeClaims(cc)
 	if err != nil {
 		return Claims{}, err
@@ -184,7 +172,6 @@ func (p *Provider) Verify(tok string) (Claims, error) {
 	} else if cc.TokenID != wantID {
 		return Claims{}, fmt.Errorf("%w: %w: token_id mismatch", ErrJWT, ErrJWTInvalid)
 	}
-
 	return cc, nil
 }
 
@@ -201,11 +188,9 @@ func normalizeClaims(c Claims) (Claims, error) {
 	cc.Meta = normalizeStringMap(cc.Meta)
 	cc.Scopes = normalizeScopes(cc.Scopes)
 	cc.TokenID = normCollapse(cc.TokenID)
-
 	if cc.TenantID == "" || cc.Subject == "" {
 		return Claims{}, fmt.Errorf("%w: %w: tenant_id/subject required", ErrJWT, ErrJWTInvalid)
 	}
-
 	ti, err := parseRFC3339(cc.IssuedAt)
 	if err != nil {
 		return Claims{}, fmt.Errorf("%w: %w: invalid issued_at", ErrJWT, ErrJWTInvalid)
@@ -217,13 +202,10 @@ func normalizeClaims(c Claims) (Claims, error) {
 	if te.Before(ti) {
 		return Claims{}, fmt.Errorf("%w: %w: expires_at < issued_at", ErrJWT, ErrJWTInvalid)
 	}
-
 	cc.IssuedAt = ti.UTC().Format(time.RFC3339Nano)
 	cc.ExpiresAt = te.UTC().Format(time.RFC3339Nano)
-
 	return cc, nil
 }
-
 func deterministicTokenID(c Claims, meta []metaKV) string {
 	// Canonical meta bytes via ordered kv slice
 	metaB, _ := json.Marshal(meta)
@@ -238,7 +220,6 @@ func deterministicTokenID(c Claims, meta []metaKV) string {
 	sum := sha256.Sum256([]byte(strings.Join(seedParts, "|")))
 	return hex.EncodeToString(sum[:8]) // 16 hex chars
 }
-
 func canonicalMeta(m map[string]string) []metaKV {
 	if m == nil || len(m) == 0 {
 		return nil
@@ -254,7 +235,6 @@ func canonicalMeta(m map[string]string) []metaKV {
 	}
 	return out
 }
-
 func metaToMap(kvs []metaKV) map[string]string {
 	if len(kvs) == 0 {
 		return map[string]string{}
@@ -272,7 +252,6 @@ func metaToMap(kvs []metaKV) map[string]string {
 	}
 	return out
 }
-
 func normalizeScopes(scopes []string) []string {
 	if len(scopes) == 0 {
 		return nil
@@ -296,7 +275,6 @@ func normalizeScopes(scopes []string) []string {
 	}
 	return out
 }
-
 func normalizeStringMap(m map[string]string) map[string]string {
 	if m == nil || len(m) == 0 {
 		return map[string]string{}
@@ -326,17 +304,14 @@ func normalizeStringMap(m map[string]string) map[string]string {
 func b64url(b []byte) string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
-
 func b64urlDecode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
 }
-
 func hmacSHA256(secret []byte, data []byte) []byte {
 	m := hmac.New(sha256.New, secret)
 	_, _ = m.Write(data)
 	return m.Sum(nil)
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = normCollapse(s)
 	if s == "" {
@@ -351,7 +326,6 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {

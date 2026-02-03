@@ -17,18 +17,15 @@ type Limits struct {
 	RPS           float64 `json:"rps"`
 	Burst         int     `json:"burst"`
 }
-
 type Decision struct {
 	Allowed bool   `json:"allowed"`
 	Reason  string `json:"reason"`
 }
-
 type domainState struct {
 	tokens     float64
 	lastRefill time.Time
 	inFlight   int
 }
-
 type DomainLimiter struct {
 	mu       sync.Mutex
 	defaults Limits
@@ -44,50 +41,41 @@ func NewDomainLimiter(defaults Limits) *DomainLimiter {
 		// if burst unspecified, default to MaxConcurrent
 		defaults.Burst = defaults.MaxConcurrent
 	}
-
 	return &DomainLimiter{
 		defaults: defaults,
 		per:      make(map[string]Limits),
 		state:    make(map[string]*domainState),
 	}
 }
-
 func (l *DomainLimiter) Set(domain string, lim Limits) {
 	domain = normalizeDomain(domain)
 	if domain == "" {
 		return
 	}
-
 	if lim.MaxConcurrent <= 0 {
 		lim.MaxConcurrent = l.defaults.MaxConcurrent
 	}
 	if lim.Burst <= 0 {
 		lim.Burst = l.defaults.Burst
 	}
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	l.per[domain] = lim
 	// reset state to apply new limits cleanly
 	delete(l.state, domain)
 }
-
 func (l *DomainLimiter) Acquire(ctx context.Context, domain string) (func(), error) {
 	domain = normalizeDomain(domain)
 	if domain == "" {
 		return func() {}, nil
 	}
-
 	t := time.NewTicker(25 * time.Millisecond)
 	defer t.Stop()
-
 	for {
 		ok, rel := l.tryAcquire(domain)
 		if ok {
 			return rel, nil
 		}
-
 		select {
 		case <-ctx.Done():
 			return nil, ErrLimitExceeded
@@ -96,16 +84,13 @@ func (l *DomainLimiter) Acquire(ctx context.Context, domain string) (func(), err
 		}
 	}
 }
-
 func (l *DomainLimiter) tryAcquire(domain string) (bool, func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	lim := l.defaults
 	if v, ok := l.per[domain]; ok {
 		lim = mergeLimits(l.defaults, v)
 	}
-
 	st, ok := l.state[domain]
 	if !ok {
 		st = &domainState{
@@ -115,7 +100,6 @@ func (l *DomainLimiter) tryAcquire(domain string) (bool, func()) {
 		}
 		l.state[domain] = st
 	}
-
 	now := time.Now()
 	refill(st, lim, now)
 
@@ -131,14 +115,12 @@ func (l *DomainLimiter) tryAcquire(domain string) (bool, func()) {
 		}
 		st.tokens -= 1.0
 	}
-
 	st.inFlight++
 
 	released := false
 	release := func() {
 		l.mu.Lock()
 		defer l.mu.Unlock()
-
 		if released {
 			return
 		}
@@ -148,28 +130,22 @@ func (l *DomainLimiter) tryAcquire(domain string) (bool, func()) {
 		if !ok2 {
 			return
 		}
-
 		if st2.inFlight > 0 {
 			st2.inFlight--
 		}
 
 		// tokens are not refunded; token bucket controls rate.
 	}
-
 	return true, release
 }
-
 func (l *DomainLimiter) Snapshot(domain string) map[string]any {
 	domain = normalizeDomain(domain)
-
 	l.mu.Lock()
 	defer l.mu.Unlock()
-
 	lim := l.defaults
 	if v, ok := l.per[domain]; ok {
 		lim = mergeLimits(l.defaults, v)
 	}
-
 	st, ok := l.state[domain]
 	if !ok {
 		return map[string]any{
@@ -181,7 +157,6 @@ func (l *DomainLimiter) Snapshot(domain string) map[string]any {
 			},
 		}
 	}
-
 	return map[string]any{
 		"domain": domain,
 		"limits": lim,
@@ -192,7 +167,6 @@ func (l *DomainLimiter) Snapshot(domain string) map[string]any {
 		},
 	}
 }
-
 func mergeLimits(def, in Limits) Limits {
 	out := in
 	if out.MaxConcurrent <= 0 {
@@ -203,23 +177,19 @@ func mergeLimits(def, in Limits) Limits {
 	}
 	return out
 }
-
 func refill(st *domainState, lim Limits, now time.Time) {
 	if st == nil {
 		return
 	}
-
 	if lim.RPS <= 0 {
 		// no rate limiting
 		st.lastRefill = now
 		return
 	}
-
 	elapsed := now.Sub(st.lastRefill).Seconds()
 	if elapsed <= 0 {
 		return
 	}
-
 	st.lastRefill = now
 	st.tokens += elapsed * lim.RPS
 
@@ -227,12 +197,10 @@ func refill(st *domainState, lim Limits, now time.Time) {
 	if capacity <= 0 {
 		capacity = 1
 	}
-
 	if st.tokens > capacity {
 		st.tokens = capacity
 	}
 }
-
 func normalizeDomain(d string) string {
 	d = strings.ToLower(strings.TrimSpace(d))
 	d = strings.TrimPrefix(d, "https://")

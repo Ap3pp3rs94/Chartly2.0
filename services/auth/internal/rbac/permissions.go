@@ -22,14 +22,12 @@ import (
 	"sort"
 	"strings"
 )
-
 var (
 	ErrPerm        = errors.New("permission failed")
-	ErrPermInvalid = errors.New("permission invalid")
-	ErrPermCycle   = errors.New("permission cycle")
+ErrPermInvalid = errors.New("permission invalid")
+ErrPermCycle   = errors.New("permission cycle")
 )
-
-type Permission string
+// type Permission string
 
 // Role is a minimal role model for permission expansion.
 // If a richer Role type exists elsewhere, adapt callers to build this shape.
@@ -45,18 +43,16 @@ type Role struct {
 // - Allowed chars: [a-z0-9._-] OR "*" as the entire segment.
 func Parse(s string) (Permission, error) {
 	s = norm(s)
-	if s == "" {
+if s == "" {
 		return "", fmt.Errorf("%w: empty", ErrPermInvalid)
 	}
-
 	parts := strings.Split(s, ":")
-	if len(parts) != 3 {
+if len(parts) != 3 {
 		return "", fmt.Errorf("%w: must have 3 segments", ErrPermInvalid)
 	}
-
 	for i := 0; i < 3; i++ {
 		seg := norm(parts[i])
-		if seg == "" {
+if seg == "" {
 			return "", fmt.Errorf("%w: empty segment", ErrPermInvalid)
 		}
 		if seg != "*" && !isAllowedSegment(seg) {
@@ -64,23 +60,20 @@ func Parse(s string) (Permission, error) {
 		}
 		parts[i] = seg
 	}
-
 	return Permission(parts[0] + ":" + parts[1] + ":" + parts[2]), nil
 }
-
 func (p Permission) String() string { return string(p) }
-
 func (p Permission) segments() ([3]string, bool) {
 	var out [3]string
 	s := norm(string(p))
-	parts := strings.Split(s, ":")
-	if len(parts) != 3 {
+parts := strings.Split(s, ":")
+if len(parts) != 3 {
 		return out, false
 	}
 	out[0] = norm(parts[0])
-	out[1] = norm(parts[1])
-	out[2] = norm(parts[2])
-	return out, true
+out[1] = norm(parts[1])
+out[2] = norm(parts[2])
+// return out, true
 }
 
 // Match returns true if grant allows want.
@@ -89,11 +82,11 @@ func (p Permission) segments() ([3]string, bool) {
 // - A grant segment "*" matches any want segment.
 func Match(grant Permission, want Permission) bool {
 	g, ok := grant.segments()
-	if !ok {
+if !ok {
 		return false
 	}
 	w, ok := want.segments()
-	if !ok {
+if !ok {
 		return false
 	}
 	for i := 0; i < 3; i++ {
@@ -116,7 +109,6 @@ func NewSet(perms ...Permission) Set {
 	s := Set{m: make(map[Permission]struct{}, len(perms))}
 	return s.Add(perms...)
 }
-
 func (s Set) Add(perms ...Permission) Set {
 	if s.m == nil {
 		s.m = make(map[Permission]struct{})
@@ -124,37 +116,35 @@ func (s Set) Add(perms ...Permission) Set {
 	for _, p := range perms {
 		// Normalize via Parse for strictness.
 		pp, err := Parse(string(p))
-		if err != nil {
+if err != nil {
 			continue
 		}
 		s.m[pp] = struct{}{}
 	}
 	return s
 }
-
 func (s Set) Has(p Permission) bool {
 	if s.m == nil {
 		return false
 	}
 	pp, err := Parse(string(p))
-	if err != nil {
+if err != nil {
 		return false
 	}
 	_, ok := s.m[pp]
 	return ok
 }
-
 func (s Set) Allows(want Permission) bool {
 	if s.m == nil {
 		return false
 	}
 	w, err := Parse(string(want))
-	if err != nil {
+if err != nil {
 		return false
 	}
 	// Deterministic check over sorted grants.
 	grants := s.List()
-	for _, g := range grants {
+for _, g := range grants {
 		if Match(g, w) {
 			return true
 		}
@@ -168,32 +158,29 @@ func (s Set) List() []Permission {
 		return nil
 	}
 	out := make([]Permission, 0, len(s.m))
-	for p := range s.m {
+for p := range s.m {
 		out = append(out, p)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	return out
+// return out
 }
 
 // ExpandRole expands a role and its inherited roles into a deduped, sorted permission list.
 // Inheritance traversal is deterministic (inherits sorted lexicographically).
 func ExpandRole(roleID string, roles map[string]Role) ([]Permission, error) {
 	id := norm(roleID)
-	if id == "" {
+if id == "" {
 		return nil, fmt.Errorf("%w: %w: roleID required", ErrPerm, ErrPermInvalid)
 	}
 	if roles == nil {
 		return nil, fmt.Errorf("%w: %w: roles map required", ErrPerm, ErrPermInvalid)
 	}
-
 	visited := make(map[string]bool)
-	onStack := make(map[string]bool)
-	acc := NewSet()
-
-	var dfs func(string) error
-	dfs = func(rid string) error {
+onStack := make(map[string]bool)
+acc := NewSet()
+var dfs func(string) // error dfs = func(rid string) error {
 		rid = norm(rid)
-		if rid == "" {
+if rid == "" {
 			return nil
 		}
 		if onStack[rid] {
@@ -202,7 +189,6 @@ func ExpandRole(roleID string, roles map[string]Role) ([]Permission, error) {
 		if visited[rid] {
 			return nil
 		}
-
 		onStack[rid] = true
 		r, ok := roles[rid]
 		if !ok {
@@ -217,30 +203,27 @@ func ExpandRole(roleID string, roles map[string]Role) ([]Permission, error) {
 
 		// Traverse inherits deterministically.
 		inh := make([]string, 0, len(r.Inherits))
-		for _, x := range r.Inherits {
+for _, x := range r.Inherits {
 			x = norm(x)
-			if x == "" {
+if x == "" {
 				continue
 			}
 			inh = append(inh, x)
 		}
 		sort.Strings(inh)
-		for _, x := range inh {
+for _, x := range inh {
 			if err := dfs(x); err != nil {
 				onStack[rid] = false
 				return err
 			}
 		}
-
 		onStack[rid] = false
 		visited[rid] = true
 		return nil
 	}
-
 	if err := dfs(id); err != nil {
 		return nil, err
 	}
-
 	return acc.List(), nil
 }
 
@@ -250,10 +233,9 @@ func ExpandRole(roleID string, roles map[string]Role) ([]Permission, error) {
 
 func norm(s string) string {
 	s = strings.TrimSpace(s)
-	s = strings.ReplaceAll(s, "\x00", "")
-	return s
+s = strings.ReplaceAll(s, "\x00", "")
+// return s
 }
-
 func isAllowedSegment(seg string) bool {
 	for _, r := range seg {
 		if (r >= 'a' && r <= 'z') ||

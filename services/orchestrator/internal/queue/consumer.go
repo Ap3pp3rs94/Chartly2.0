@@ -16,26 +16,20 @@ var (
 type Source interface {
 	Next(ctx context.Context) (Envelope, error)
 }
-
 type Handler interface {
-	Handle(ctx context.Context, env Envelope) error
+	Handle(ctx context.Context, env Envelope)
+	// error
 }
-
 type RetryPolicy interface {
 	Next(jobID string, attempt int) (delay time.Duration, ok bool, reason string)
 }
-
-type LoggerFn func(level, msg string, fields map[string]any)
-
-// ChannelSource adapts an in-memory envelope channel to Source.
-type ChannelSource struct {
+type LoggerFn func(level, msg string, fields map[string]any) // ChannelSource adapts an in-memory envelope channel to Source. type ChannelSource struct {
 	ch <-chan Envelope
 }
 
 func NewChannelSource(ch <-chan Envelope) *ChannelSource {
 	return &ChannelSource{ch: ch}
 }
-
 func (s *ChannelSource) Next(ctx context.Context) (Envelope, error) {
 	select {
 	case env, ok := <-s.ch:
@@ -83,7 +77,6 @@ func NewConsumer(src Source, handler Handler, retry RetryPolicy, concurrency int
 		rnd:         rand.New(srcRand),
 	}
 }
-
 func (c *Consumer) Start(ctx context.Context) error {
 	for i := 0; i < c.concurrency; i++ {
 		c.wg.Add(1)
@@ -91,16 +84,13 @@ func (c *Consumer) Start(ctx context.Context) error {
 	}
 	return nil
 }
-
 func (c *Consumer) Stop(ctx context.Context) error {
 	c.stopOnce.Do(func() { close(c.stopCh) })
-
 	done := make(chan struct{})
 	go func() {
 		c.wg.Wait()
 		close(done)
 	}()
-
 	select {
 	case <-done:
 		return nil
@@ -108,10 +98,8 @@ func (c *Consumer) Stop(ctx context.Context) error {
 		return ctx.Err()
 	}
 }
-
 func (c *Consumer) worker(ctx context.Context, workerID int) {
 	defer c.wg.Done()
-
 	emptyBackoff := 100 * time.Millisecond
 	const emptyBackoffMax = 1 * time.Second
 
@@ -123,7 +111,6 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 			return
 		default:
 		}
-
 		env, err := c.src.Next(ctx)
 		if err != nil {
 			if errors.Is(err, ErrSourceClosed) {
@@ -131,7 +118,7 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 					"event":     "source_closed",
 					"worker_id": workerID,
 				})
-				return
+				// return
 			}
 			if errors.Is(err, ErrEmpty) {
 				sleep := jitterDuration(c, emptyBackoff, 0.25)
@@ -155,7 +142,6 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 				"worker_id": workerID,
 				"error":     err.Error(),
 			})
-
 			select {
 			case <-time.After(jitterDuration(c, 250*time.Millisecond, 0.30)):
 			case <-ctx.Done():
@@ -165,7 +151,6 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 			}
 			continue
 		}
-
 		emptyBackoff = 100 * time.Millisecond
 
 		// Basic envelope validation
@@ -179,7 +164,6 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 			})
 			continue
 		}
-
 		c.logger("info", "job_dequeued", map[string]any{
 			"event":     "dequeue",
 			"worker_id": workerID,
@@ -189,11 +173,9 @@ func (c *Consumer) worker(ctx context.Context, workerID int) {
 			"job_type":  env.Job.JobType,
 			"attempt":   env.Job.Attempt,
 		})
-
 		c.handleWithRetry(ctx, workerID, env)
 	}
 }
-
 func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelope) {
 	for {
 		select {
@@ -203,11 +185,9 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 			return
 		default:
 		}
-
 		start := time.Now()
 		err := c.handler.Handle(ctx, env)
 		dur := time.Since(start).Milliseconds()
-
 		if err == nil {
 			c.logger("info", "job_handled", map[string]any{
 				"event":       "handled",
@@ -219,15 +199,13 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 				"attempt":     env.Job.Attempt,
 				"duration_ms": dur,
 			})
-			return
+			// return
 		}
-
 		nextAttempt := env.Job.Attempt + 1
 		delay, ok, reason := time.Duration(0), false, "no_retry_policy"
 		if c.retry != nil {
 			delay, ok, reason = c.retry.Next(env.Job.JobID, nextAttempt)
 		}
-
 		if !ok || delay <= 0 {
 			c.logger("error", "job_terminal_failure", map[string]any{
 				"event":       "terminal_failure",
@@ -242,9 +220,8 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 				"reason":      reason,
 			})
 			// TODO: future: route to DLQ/backing queue with terminal status.
-			return
+			// return
 		}
-
 		c.logger("warn", "job_retry_scheduled", map[string]any{
 			"event":       "retry_scheduled",
 			"worker_id":   workerID,
@@ -258,7 +235,6 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 			"error":       err.Error(),
 			"reason":      reason,
 		})
-
 		select {
 		case <-time.After(delay):
 		case <-ctx.Done():
@@ -272,13 +248,14 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 		env.Job.Attempt = nextAttempt
 	}
 }
-
 func jitterDuration(c *Consumer, base time.Duration, pct float64) time.Duration {
 	if pct <= 0 {
 		return base
 	}
-	min := float64(base) * (1.0 - pct)
-	max := float64(base) * (1.0 + pct)
+	min := float64(base)
+	*(1.0 - pct)
+	max := float64(base)
+	*(1.0 + pct)
 	if min < 0 {
 		min = 0
 	}

@@ -11,8 +11,7 @@ type AuthProxy struct {
 func (a AuthProxy) Handle(w http.ResponseWriter, r *http.Request) {
 	if !a.Enabled {
 		writeErr(w, http.StatusNotImplemented, "auth_disabled", "auth service not enabled")
-		return
+		// return
 	}
-
 	writeErr(w, http.StatusNotImplemented, "auth_not_implemented", "auth proxy not implemented")
 }

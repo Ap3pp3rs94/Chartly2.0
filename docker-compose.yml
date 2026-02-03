@@ -86,3 +86,142 @@ services:
       echo 'MinIO buckets ensured: chartly-raw, chartly-artifacts' &&
       exit 0
       "
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    container_name: chartly-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    networks:
+      - chartly-net
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    image: chartly-gateway:dev
+    container_name: chartly-gateway
+    restart: unless-stopped
+    environment:
+      CHARTLY_ENV: local
+      CHARTLY_LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    networks:
+      - chartly-net
+    depends_on:
+      - orchestrator
+      - connector-hub
+      - normalizer
+      - analytics
+      - storage
+      - audit
+      - auth
+      - observer
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: services/orchestrator/Dockerfile
+    image: chartly-orchestrator:dev
+    container_name: chartly-orchestrator
+    restart: unless-stopped
+    environment:
+      ORCHESTRATOR_ENV: local
+      ORCHESTRATOR_ADDR: "0.0.0.0:8081"
+    networks:
+      - chartly-net
+
+  connector-hub:
+    build:
+      context: .
+      dockerfile: services/connector-hub/Dockerfile
+    image: chartly-connector-hub:dev
+    container_name: chartly-connector-hub
+    restart: unless-stopped
+    environment:
+      CONNECTOR_HUB_ENV: local
+      CONNECTOR_HUB_ADDR: "0.0.0.0:8082"
+    networks:
+      - chartly-net
+
+  normalizer:
+    build:
+      context: .
+      dockerfile: services/normalizer/Dockerfile
+    image: chartly-normalizer:dev
+    container_name: chartly-normalizer
+    restart: unless-stopped
+    environment:
+      NORMALIZER_ENV: local
+      NORMALIZER_ADDR: "0.0.0.0:8083"
+    networks:
+      - chartly-net
+
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    image: chartly-analytics:dev
+    container_name: chartly-analytics
+    restart: unless-stopped
+    environment:
+      ANALYTICS_ENV: local
+      ANALYTICS_ADDR: "0.0.0.0:8084"
+      ANALYTICS_LOG_LEVEL: info
+    networks:
+      - chartly-net
+
+  storage:
+    build:
+      context: .
+      dockerfile: services/storage/Dockerfile
+    image: chartly-storage:dev
+    container_name: chartly-storage
+    restart: unless-stopped
+    environment:
+      STORAGE_ENV: local
+      STORAGE_ADDR: "0.0.0.0"
+      STORAGE_PORT: "8085"
+    networks:
+      - chartly-net
+
+  audit:
+    build:
+      context: .
+      dockerfile: services/audit/Dockerfile
+    image: chartly-audit:dev
+    container_name: chartly-audit
+    restart: unless-stopped
+    environment:
+      AUDIT_ENV: local
+      AUDIT_ADDR: "0.0.0.0:8086"
+    networks:
+      - chartly-net
+
+  auth:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    image: chartly-auth:dev
+    container_name: chartly-auth
+    restart: unless-stopped
+    environment:
+      AUTH_ENV: local
+      AUTH_ADDR: "0.0.0.0:8087"
+    networks:
+      - chartly-net
+
+  observer:
+    build:
+      context: .
+      dockerfile: services/observer/Dockerfile
+    image: chartly-observer:dev
+    container_name: chartly-observer
+    restart: unless-stopped
+    environment:
+      OBSERVER_ENV: local
+      OBSERVER_ADDR: "0.0.0.0:8088"
+    networks:
+      - chartly-net

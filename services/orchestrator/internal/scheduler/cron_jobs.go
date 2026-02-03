@@ -61,7 +61,6 @@ func ValidateCronExpr(expr string) error {
 	if len(fields) != 5 {
 		return fmt.Errorf("%w: expected 5 fields", ErrInvalidCron)
 	}
-
 	ranges := [5][2]int{
 		{0, 59}, // minute
 		{0, 23}, // hour
@@ -69,7 +68,6 @@ func ValidateCronExpr(expr string) error {
 		{1, 12}, // month
 		{0, 6},  // dow (0=Sun)
 	}
-
 	for i := 0; i < 5; i++ {
 		if err := validateField(fields[i], ranges[i][0], ranges[i][1]); err != nil {
 			return fmt.Errorf("%w: field %d: %v", ErrInvalidCron, i, err)
@@ -77,7 +75,6 @@ func ValidateCronExpr(expr string) error {
 	}
 	return nil
 }
-
 func validateField(field string, min, max int) error {
 	field = strings.TrimSpace(field)
 	if field == "" {
@@ -153,13 +150,11 @@ func NextRun(now time.Time, expr string, loc *time.Location) (time.Time, error) 
 	if err := ValidateCronExpr(expr); err != nil {
 		return time.Time{}, err
 	}
-
 	fields := strings.Fields(strings.TrimSpace(expr))
 	minF, hourF, domF, monF, dowF := fields[0], fields[1], fields[2], fields[3], fields[4]
 
 	// Start at next minute boundary in requested timezone
 	t := now.In(loc).Truncate(time.Minute).Add(time.Minute)
-
 	deadline := t.Add(366 * 24 * time.Hour)
 	for !t.After(deadline) {
 		if matchField(t.Minute(), minF) &&
@@ -171,10 +166,8 @@ func NextRun(now time.Time, expr string, loc *time.Location) (time.Time, error) 
 		}
 		t = t.Add(time.Minute)
 	}
-
 	return time.Time{}, fmt.Errorf("%w: no run found within 366 days", ErrInvalidCron)
 }
-
 func matchField(value int, field string) bool {
 	field = strings.TrimSpace(field)
 	if field == "*" {

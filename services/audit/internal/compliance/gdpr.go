@@ -18,7 +18,8 @@ package compliance
 //   - Redaction applies deterministic rules and emits deterministic summaries.
 //
 // Notes:
-//   - Treat these helpers as a toolkit. Enforcement (delete/export/retention application) is a higher-level concern.
+//   - Treat these helpers as a toolkit. Enforcement (delete/export/retention application)
+// is a higher-level concern.
 //   - This code intentionally stays stdlib-only.
 
 import (
@@ -41,7 +42,7 @@ var (
 
 // SubjectID is an identifier for a data subject (user/customer/device/etc.).
 // It is treated as a string in normalized form.
-type SubjectID string
+// type SubjectID string
 
 // Pseudonym describes a deterministic pseudonymous token derived from a SubjectID.
 type Pseudonym struct {
@@ -63,7 +64,8 @@ type RedactionRule struct {
 // This is data-only: it returns decisions; it does not delete anything.
 type RetentionPolicy struct {
 	Version string `json:"version"`
-	// MaxAge is the default retention window. Events older than (now - MaxAge) are considered expired.
+	// MaxAge is the default retention window. Events older than (now - MaxAge)
+	// are considered expired.
 	MaxAge time.Duration `json:"max_age"`
 	// PerAction overrides (optional): action -> max_age.
 	// WARNING: map order is not deterministic; callers should not serialize this map directly if they require stable bytes.
@@ -125,7 +127,6 @@ func Redact(doc map[string]any, rules []RedactionRule) (map[string]any, map[stri
 	if doc == nil {
 		return map[string]any{}, map[string]string{}, nil
 	}
-
 	rd := deepCopyAnyMap(doc)
 
 	// Normalize and sort rules deterministically by Path.
@@ -143,7 +144,6 @@ func Redact(doc map[string]any, rules []RedactionRule) (map[string]any, map[stri
 		}
 		nrules = append(nrules, rr)
 	}
-	
 	sort.Slice(nrules, func(i, j int) bool {
 		if nrules[i].Path != nrules[j].Path {
 			return nrules[i].Path < nrules[j].Path
@@ -168,7 +168,6 @@ func Redact(doc map[string]any, rules []RedactionRule) (map[string]any, map[stri
 	for i, p := range applied {
 		summary[fmt.Sprintf("redaction.path.%03d", i+1)] = p
 	}
-
 	return rd, summary, nil
 }
 
@@ -198,17 +197,14 @@ func DecideRetention(policy RetentionPolicy, now time.Time, eventTS string, acti
 	if now.IsZero() {
 		return Decision{}, fmt.Errorf("%w: %w: now required", ErrGDPR, ErrGDPRInvalid)
 	}
-
 	eventTS = normCollapse(eventTS)
 	action = normCollapse(action)
-
 	if eventTS == "" {
 		if p.ExpireOnInvalidTS {
 			return Decision{Keep: false, Reason: "expired:missing_ts"}, nil
 		}
 		return Decision{Keep: true, Reason: "keep:missing_ts"}, nil
 	}
-
 	t, err := parseRFC3339(eventTS)
 	if err != nil {
 		if p.ExpireOnInvalidTS {
@@ -216,21 +212,17 @@ func DecideRetention(policy RetentionPolicy, now time.Time, eventTS string, acti
 		}
 		return Decision{Keep: true, Reason: "keep:invalid_ts", EventTS: eventTS}, nil
 	}
-
 	maxAge := p.MaxAge
 	if action != "" && p.PerAction != nil {
 		if v, ok := p.PerAction[action]; ok && v > 0 {
 			maxAge = v
 		}
 	}
-
 	if maxAge <= 0 {
 		return Decision{}, fmt.Errorf("%w: %w: max_age must be >0", ErrGDPR, ErrGDPRPolicy)
 	}
-
 	cutoff := now.Add(-maxAge)
 	keep := t.After(cutoff) || t.Equal(cutoff)
-
 	return Decision{
 		Keep:     keep,
 		Reason:   ternary(keep, "keep:within_window", "expired:outside_window"),
@@ -285,7 +277,6 @@ func normalizePolicy(p RetentionPolicy) RetentionPolicy {
 		}
 		pp.PerAction = tmp
 	}
-
 	return pp
 }
 
@@ -341,17 +332,17 @@ func canonicalizeAny(v any) any {
 		return nil
 	case string:
 		return normCollapse(t)
-	case bool:
-		return t
-	case float64:
-		return t
-	case float32:
+		// case bool:
+		// return t
+		// case float64:
+		// return t
+		// case float32:
 		return float64(t)
-	case int:
+		// case int:
 		return float64(t)
-	case int64:
+		// case int64:
 		return float64(t)
-	case uint64:
+		// case uint64:
 		return float64(t)
 	case map[string]string:
 		keys := make([]string, 0, len(t))
@@ -402,7 +393,6 @@ func canonicalizeAny(v any) any {
 		return normCollapse(fmt.Sprintf("%v", t))
 	}
 }
-
 func deepCopyAnyMap(m map[string]any) map[string]any {
 	if m == nil {
 		return map[string]any{}
@@ -419,7 +409,6 @@ func deepCopyAnyMap(m map[string]any) map[string]any {
 	}
 	return out
 }
-
 func deepCopyAny(v any) any {
 	switch t := v.(type) {
 	case nil:
@@ -462,7 +451,6 @@ func deepCopyAny(v any) any {
 		return t
 	}
 }
-
 func parseRFC3339(s string) (time.Time, error) {
 	s = normCollapse(s)
 	if s == "" {
@@ -477,7 +465,6 @@ func parseRFC3339(s string) (time.Time, error) {
 	}
 	return t.UTC(), nil
 }
-
 func normCollapse(s string) string {
 	s = strings.TrimSpace(strings.ReplaceAll(s, "\x00", ""))
 	if s == "" {
@@ -485,7 +472,6 @@ func normCollapse(s string) string {
 	}
 	return strings.Join(strings.Fields(s), " ")
 }
-
 func ternary(ok bool, a, b string) string {
 	if ok {
 		return a

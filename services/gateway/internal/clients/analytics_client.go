@@ -27,44 +27,35 @@ func NewAnalyticsClientFromEnv() AnalyticsClient {
 		},
 	}
 }
-
 func (c AnalyticsClient) Health(ctx context.Context) error {
 	if c.HTTP == nil {
 		return errors.New("analytics client http is nil")
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/health", nil)
 	if err != nil {
 		return err
 	}
-
 	resp, err := c.HTTP.Do(req)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		return errors.New("analytics healthcheck failed")
 	}
-
 	return nil
 }
-
 func (c AnalyticsClient) GenerateReport(ctx context.Context, tenantID string, body []byte) (*http.Response, error) {
 	if c.HTTP == nil {
 		return nil, errors.New("analytics client http is nil")
 	}
-
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/reports", bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-
 	req.Header.Set("content-type", "application/json; charset=utf-8")
 	if strings.TrimSpace(tenantID) != "" {
 		req.Header.Set("X-Tenant-Id", tenantID)
 	}
-
 	return c.HTTP.Do(req)
 }

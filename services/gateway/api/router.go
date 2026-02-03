@@ -24,35 +24,32 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	eb.Error.Message = message
 	_ = json.NewEncoder(w).Encode(eb)
 }
-
 func requireJSON(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ct := r.Header.Get("content-type")
 		if ct == "" {
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "content-type is required for this endpoint")
-			return
+			// return
 		}
 
 		// Allow parameters e.g. application/json; charset=utf-8
 		if !strings.HasPrefix(strings.ToLower(ct), "application/json") {
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "content-type must be application/json")
-			return
+			// return
 		}
 		next(w, r)
 	}
 }
-
 func methodOnly(method string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != method {
 			w.Header().Set("allow", method)
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-			return
+			// return
 		}
 		next(w, r)
 	}
 }
-
 func recoverer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -95,6 +92,5 @@ func NewRouter() http.Handler {
 
 	// Reports (placeholder)
 	mux.HandleFunc("/reports", methodOnly(http.MethodPost, requireJSON(handlers.Reports)))
-
 	return recoverer(mux)
 }
