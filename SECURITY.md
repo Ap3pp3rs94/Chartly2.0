@@ -60,7 +60,7 @@ Chartly 2.0 is designed around the following core security principles:
 - Authentication is enforced at the **gateway**.
 - Supported mechanisms (incremental):
   - JWT (v0 baseline)
-  - OAuth2 / SAML (planned)
+  - OAuth2 / SAML (roadmap)
 - Internal services must not trust unauthenticated external requests.
 
 ### Authorization (RBAC)
