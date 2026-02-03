@@ -82,7 +82,7 @@ func Reports(w http.ResponseWriter, r *http.Request) {
 	tenantID, ok := tenantFromHeaderReports(r)
 	if !ok {
 		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
-		// return
+		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	defer r.Body.Close()
@@ -91,11 +91,11 @@ func Reports(w http.ResponseWriter, r *http.Request) {
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
-		// return
+		return
 	}
 	if len(req.Charts) == 0 {
 		writeErr(w, http.StatusBadRequest, "missing_charts", "charts must be a non-empty array")
-		// return
+		return
 	}
 
 	// Validate each chart and referenced sources
@@ -113,46 +113,46 @@ func Reports(w http.ResponseWriter, r *http.Request) {
 		c.TimeRange.Granularity = strings.TrimSpace(c.TimeRange.Granularity)
 		if c.Title == "" {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "chart title is required")
-			// return
+			return
 		}
 		if !validChartType(c.ChartType) {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "chart_type must be one of: line, bar, scatter, heatmap")
-			// return
+			return
 		}
 		if c.Dataset.SourceID == "" || c.Dataset.MetricName == "" {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "dataset.source_id and dataset.metric_name are required")
-			// return
+			return
 		}
 		if _, ok := srcIndex[c.Dataset.SourceID]; !ok {
 			writeErr(w, http.StatusNotFound, "source_not_found", "source not found: "+c.Dataset.SourceID)
-			// return
+			return
 		}
 		if !srcIndex[c.Dataset.SourceID].Enabled {
 			writeErr(w, http.StatusConflict, "source_disabled", "source is disabled: "+c.Dataset.SourceID)
-			// return
+			return
 		}
 		start, ok := parseRFC3339Required(c.TimeRange.Start)
 		if !ok {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.start must be RFC3339")
-			// return
+			return
 		}
 		end, ok := parseRFC3339Required(c.TimeRange.End)
 		if !ok {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.end must be RFC3339")
-			// return
+			return
 		}
 		c.TimeRange.Start = start
 		c.TimeRange.End = end
 		if !validGranularity(c.TimeRange.Granularity) {
 			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.granularity is invalid")
-			// return
+			return
 		}
 	}
 	w.Header().Set("content-type", "application/json; charset=utf-8")
 	w.WriteHeader(http.StatusNotImplemented)
 	var resp reportStubResp
-	resp.Error.Error.Code = "not_implemented"
-	resp.Error.Error.Message = "reports not implemented"
+	resp.Error.Error.Code = "feature_unavailable"
+	resp.Error.Error.Message = "reports feature is unavailable in this build"
 	resp.Request = req
 
 	_ = json.NewEncoder(w).Encode(resp)

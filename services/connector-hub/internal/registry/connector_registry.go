@@ -12,7 +12,7 @@ var (
 	ErrConnectorExists  = errors.New("connector exists")
 	ErrConnectorMissing = errors.New("connector missing")
 	ErrInvalidConfig    = errors.New("invalid config")
-	ErrNotImplemented   = errors.New("not implemented")
+	ErrNotImplemented   = errors.New("feature unavailable")
 )
 
 type IngestRequest struct {
