@@ -140,33 +140,33 @@ func (s *server) handleIssue(w http.ResponseWriter, r *http.Request, tenantID, r
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		// return
+		return
 	}
 	var in issueRequest
 	if err := decodeJSONStrict(r.Body, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		// return
+		return
 	}
 	sub := normCollapse(in.Subject)
 	if sub == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "subject required"})
-		// return
+		return
 	}
 	iat := normCollapse(in.IssuedAt)
 	exp := normCollapse(in.ExpiresAt)
 	ti, err := parseRFC3339(iat)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "issued_at must be rfc3339"})
-		// return
+		return
 	}
 	te, err := parseRFC3339(exp)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "expires_at must be rfc3339"})
-		// return
+		return
 	}
 	if te.Before(ti) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "expires_at must be >= issued_at"})
-		// return
+		return
 	}
 	scopes := normalizeScopes(in.Scopes)
 	claims := tokenClaims{
@@ -181,7 +181,7 @@ func (s *server) handleIssue(w http.ResponseWriter, r *http.Request, tenantID, r
 	tok, err := signToken(s.cfg.HMACSecret, claims)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "sign failed"})
-		// return
+		return
 	}
 	logJSON("info", "token_issued", map[string]any{
 		"tenant_id":  tenantID,
@@ -198,34 +198,34 @@ func (s *server) handleVerify(w http.ResponseWriter, r *http.Request, tenantID, 
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		// return
+		return
 	}
 	var in verifyRequest
 	if err := decodeJSONStrict(r.Body, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		// return
+		return
 	}
 	tok := strings.TrimSpace(in.Token)
 	if tok == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "token required"})
-		// return
+		return
 	}
 	claims, err := verifyToken(s.cfg.HMACSecret, tok)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid token"})
-		// return
+		return
 	}
 
 	// Enforce tenant header scope: token tenant must match request tenant.
 	if claims.TenantID != tenantID {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "tenant mismatch"})
-		// return
+		return
 	}
 
 	// Check revocation
 	if s.isRevoked(claims.TokenID) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "revoked"})
-		// return
+		return
 	}
 
 	// Check expiration (requires time.Now for runtime validity)
@@ -233,11 +233,11 @@ func (s *server) handleVerify(w http.ResponseWriter, r *http.Request, tenantID, 
 	exp, err := parseRFC3339(claims.ExpiresAt)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid exp"})
-		// return
+		return
 	}
 	if !now.Before(exp) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "expired"})
-		// return
+		return
 	}
 	logJSON("info", "token_verified", map[string]any{
 		"tenant_id":  tenantID,
@@ -250,26 +250,26 @@ func (s *server) handleRevoke(w http.ResponseWriter, r *http.Request, tenantID, 
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
-		// return
+		return
 	}
 	var in revokeRequest
 	if err := decodeJSONStrict(r.Body, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-		// return
+		return
 	}
 	tok := strings.TrimSpace(in.Token)
 	if tok == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "token required"})
-		// return
+		return
 	}
 	claims, err := verifyToken(s.cfg.HMACSecret, tok)
 	if err != nil {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "invalid token"})
-		// return
+		return
 	}
 	if claims.TenantID != tenantID {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "tenant mismatch"})
-		// return
+		return
 	}
 	s.revoke(claims.TokenID)
 	logJSON("info", "token_revoked", map[string]any{
@@ -298,17 +298,17 @@ func (s *server) withMiddleware(next func(http.ResponseWriter, *http.Request, st
 		}
 		reqID := s.requestID(r)
 		w.Header().Set("X-Request-Id", reqID)
-		tenantID, err := s.tenantID(r)
-		if err != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
-			// return
-		}
+	tenantID, err := s.tenantID(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": err.Error()})
+		return
+	}
 
 		// Tenant required for /v0/* unless local env; local defaults to "local".
 		if strings.HasPrefix(r.URL.Path, "/v0/") && strings.ToLower(s.cfg.Env) != "local" {
 			if tenantID == "" {
 				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing tenant header"})
-				// return
+				return
 			}
 		}
 		if strings.ToLower(s.cfg.Env) == "local" && tenantID == "" {
