@@ -69,7 +69,7 @@ func (d *DAG) AddEdge(from, to NodeID) error {
 		return fmt.Errorf("%w: to=%s", ErrNodeMissing, to)
 	}
 	d.Edges = append(d.Edges, Edge{From: from, To: to})
-	// return nil
+	return nil
 }
 func (d *DAG) Validate() error {
 	if d == nil {
@@ -87,7 +87,7 @@ func (d *DAG) Validate() error {
 		}
 	}
 	_, err := d.TopoSort()
-	// return err
+	return err
 }
 
 // TopoSort returns a deterministic stable topological ordering using Kahn's algorithm.
@@ -175,11 +175,11 @@ func sortedKeys(m map[NodeID]struct{}) []NodeID {
 		out = append(out, k)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
-	// return out
+	return out
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Builder (placeholder plan -> DAG conversion)
+// Builder (plan -> DAG conversion)
 ////////////////////////////////////////////////////////////////////////////////
 
 type JobPlan struct {
