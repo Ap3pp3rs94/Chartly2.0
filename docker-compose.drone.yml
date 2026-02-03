@@ -1,0 +1,11 @@
+services:
+  drone:
+    build:
+      context: .
+      dockerfile: cmd/drone/Dockerfile
+    environment:
+      CONTROL_PLANE: ${CONTROL_PLANE:-http://host.docker.internal:8090}
+      DRONE_ID: ${DRONE_ID:-}
+      PROCESS_INTERVAL: ${PROCESS_INTERVAL:-5m}
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: unless-stopped
