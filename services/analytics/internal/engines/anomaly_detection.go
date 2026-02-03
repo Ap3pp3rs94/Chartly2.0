@@ -72,7 +72,7 @@ func (c *AnomalyConfig) withDefaults() AnomalyConfig {
 	cfg := *c
 
 	cfg.Method = strings.ToLower(strings.TrimSpace(cfg.Method))
-if cfg.Method == "" {
+	if cfg.Method == "" {
 
 		cfg.Method = "auto"
 
@@ -165,7 +165,7 @@ if cfg.Method == "" {
 func (c *AnomalyConfig) validate() error {
 
 	m := strings.ToLower(strings.TrimSpace(c.Method))
-switch m {
+	switch m {
 
 	case "rolling_zscore", "rolling_mad", "rolling_iqr", "seasonal_residual", "cusum", "ewma_control", "page_hinkley", "auto":
 	default:
@@ -202,7 +202,7 @@ switch m {
 func DetectSeries(points []SeriesPoint, cfg AnomalyConfig) ([]Anomaly, DetectionSummary, error) {
 
 	ps := make([]Point, 0, len(points))
-for _, p := range points {
+	for _, p := range points {
 
 		ps = append(ps, Point{Ts: p.Ts, Value: p.Value})
 
@@ -212,13 +212,13 @@ for _, p := range points {
 func Detect(points []Point, cfg AnomalyConfig) ([]Anomaly, DetectionSummary, error) {
 
 	cfg = cfg.withDefaults()
-if err := cfg.validate(); err != nil {
+	if err := cfg.validate(); err != nil {
 
 		return nil, DetectionSummary{}, err
 
 	}
 	times, tsStrings, xs, err := clean(points, cfg.MinPoints)
-if err != nil {
+	if err != nil {
 
 		return nil, DetectionSummary{}, err
 
@@ -235,16 +235,16 @@ if err != nil {
 	case "rolling_zscore":
 
 		out = detectRollingZ(tsStrings, xs, cfg)
-case "rolling_mad":
+	case "rolling_mad":
 
 		out = detectRollingMAD(tsStrings, xs, cfg)
-case "rolling_iqr":
+	case "rolling_iqr":
 
 		out = detectRollingIQR(tsStrings, xs, cfg)
-case "seasonal_residual":
+	case "seasonal_residual":
 
 		o, n := detectSeasonalResidual(tsStrings, xs, cfg)
-out = o
+		out = o
 
 		for k, v := range n {
 
@@ -254,7 +254,7 @@ out = o
 	case "cusum":
 
 		o, n := detectCUSUM(tsStrings, xs, cfg)
-out = o
+		out = o
 
 		for k, v := range n {
 
@@ -264,7 +264,7 @@ out = o
 	case "ewma_control":
 
 		o, n := detectEWMA(tsStrings, xs, cfg)
-out = o
+		out = o
 
 		for k, v := range n {
 
@@ -274,10 +274,10 @@ out = o
 	case "page_hinkley":
 
 		out = detectPageHinkley(tsStrings, xs, cfg)
-case "auto":
+	case "auto":
 
 		o, n := detectAuto(tsStrings, xs, cfg)
-out = o
+		out = o
 
 		for k, v := range n {
 
@@ -290,7 +290,7 @@ out = o
 
 	}
 	out = capAnomalies(out, cfg.MaxAnomalies)
-sum := DetectionSummary{
+	sum := DetectionSummary{
 
 		Method: method,
 
@@ -317,16 +317,16 @@ func clean(points []Point, minPoints int) ([]time.Time, []string, []float64, err
 		v float64
 	}
 	tmp := make([]kv, 0, len(points))
-for _, p := range points {
+	for _, p := range points {
 
 		ts := strings.TrimSpace(p.Ts)
-if ts == "" {
+		if ts == "" {
 
 			continue
 
 		}
 		t, err := parseRFC3339(ts)
-if err != nil {
+		if err != nil {
 
 			continue
 
@@ -344,9 +344,9 @@ if err != nil {
 	// collapse duplicates by exact timestamp: average values
 
 	outT := make([]time.Time, 0, len(tmp))
-outTS := make([]string, 0, len(tmp))
-outX := make([]float64, 0, len(tmp))
-i := 0
+	outTS := make([]string, 0, len(tmp))
+	outX := make([]float64, 0, len(tmp))
+	i := 0
 
 	for i < len(tmp) {
 
@@ -368,9 +368,9 @@ i := 0
 
 		}
 		outT = append(outT, t)
-outTS = append(outTS, t.Format(time.RFC3339Nano))
-outX = append(outX, sum/float64(cnt))
-i = j
+		outTS = append(outTS, t.Format(time.RFC3339Nano))
+		outX = append(outX, sum/float64(cnt))
+		i = j
 
 	}
 	if len(outX) < maxInt(3, minPoints) {
@@ -388,7 +388,7 @@ func parseRFC3339(ts string) (time.Time, error) {
 
 	}
 	t, err := time.Parse(time.RFC3339, ts)
-if err != nil {
+	if err != nil {
 
 		return time.Time{}, err
 
@@ -397,9 +397,7 @@ if err != nil {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-// Rolling Z-score (mean/std)
-with O(n)
-// running sums
+// Rolling Z-score (mean/std) with O(n) running sums
 ////////////////////////////////////////////////////////////////////////////////
 
 func detectRollingZ(ts []string, xs []float64, cfg AnomalyConfig) []Anomaly {
@@ -438,19 +436,19 @@ if i-start > w {
 		if n >= 3 {
 
 			mean := sum / float64(n)
-variance := (sumsq/float64(n) - mean*mean)
-if variance < 0 {
+			variance := (sumsq/float64(n) - mean*mean)
+			if variance < 0 {
 
 				variance = 0
 
 			}
 			std := math.Sqrt(variance)
-if std > 1e-12 {
+			if std > 1e-12 {
 
 				z := (xs[i] - mean) / std
 
 				az := math.Abs(z)
-if az >= th {
+				if az >= th {
 
 					out = append(out, Anomaly{
 
@@ -505,7 +503,7 @@ func detectRollingMAD(ts []string, xs []float64, cfg AnomalyConfig) []Anomaly {
 	th := cfg.Threshold
 
 	out := make([]Anomaly, 0)
-for i := 0; i < len(xs); i++ {
+	for i := 0; i < len(xs); i++ {
 
 		start := i - w
 
@@ -522,8 +520,8 @@ for i := 0; i < len(xs); i++ {
 
 		}
 		med := median(seg)
-mad := medianAbsDev(seg, med)
-if mad <= 1e-12 {
+		mad := medianAbsDev(seg, med)
+		if mad <= 1e-12 {
 
 			continue
 
@@ -534,7 +532,7 @@ if mad <= 1e-12 {
 		rz := 0.6745 * (xs[i] - med) / mad
 
 		arz := math.Abs(rz)
-if arz >= th {
+		if arz >= th {
 
 			out = append(out, Anomaly{
 
@@ -577,7 +575,7 @@ func detectRollingIQR(ts []string, xs []float64, cfg AnomalyConfig) []Anomaly {
 	w := cfg.Window
 
 	out := make([]Anomaly, 0)
-for i := 0; i < len(xs); i++ {
+	for i := 0; i < len(xs); i++ {
 
 		start := i - w
 
@@ -594,7 +592,7 @@ for i := 0; i < len(xs); i++ {
 
 		}
 		q1, q3 := quartilesTukey(seg)
-iqr := q3 - q1
+		iqr := q3 - q1
 
 		low := q1 - 1.5*iqr
 
@@ -611,12 +609,12 @@ iqr := q3 - q1
 			if x < low {
 
 				score = (low - x) / maxFloat(1e-12, iqr)
-dir = "low"
+				dir = "low"
 
 			} else {
 
 				score = (x - high) / maxFloat(1e-12, iqr)
-dir = "high"
+				dir = "high"
 
 			}
 			out = append(out, Anomaly{
@@ -684,22 +682,22 @@ func detectSeasonalResidual(ts []string, xs []float64, cfg AnomalyConfig) ([]Ano
 	// baseline for each phase: mean of prior values with same phase
 
 	out := make([]Anomaly, 0)
-resid := make([]float64, len(xs))
-phaseSum := make([]float64, p)
-phaseCnt := make([]int, p)
-for i := 0; i < len(xs); i++ {
+	resid := make([]float64, len(xs))
+	phaseSum := make([]float64, p)
+	phaseCnt := make([]int, p)
+	for i := 0; i < len(xs); i++ {
 
 		ph := i % p
 
 		if phaseCnt[ph] > 0 {
 
 			base := phaseSum[ph] / float64(phaseCnt[ph])
-r := xs[i] - base
+			r := xs[i] - base
 
 			resid[i] = r
 
 			// compute rolling std of residuals over last w residuals (excluding current)
-start := i - w
+			start := i - w
 
 			if start < 0 {
 
@@ -711,13 +709,13 @@ start := i - w
 			if len(seg) >= 8 {
 
 				m := mean(seg)
-s := stddev(seg, m)
-if s > 1e-12 {
+				s := stddev(seg, m)
+				if s > 1e-12 {
 
 					z := r / s
 
 					az := math.Abs(z)
-if az >= th {
+					if az >= th {
 
 						out = append(out, Anomaly{
 
@@ -792,8 +790,8 @@ func detectCUSUM(ts []string, xs []float64, cfg AnomalyConfig) ([]Anomaly, map[s
 	base := xs[:warm]
 
 	mu := mean(base)
-sd := stddev(base, mu)
-if sd < 1e-12 {
+	sd := stddev(base, mu)
+	if sd < 1e-12 {
 
 		notes["skipped"] = "warmup stddev ~ 0"
 
@@ -817,13 +815,13 @@ if sd < 1e-12 {
 	var pos, neg float64
 
 	out := make([]Anomaly, 0)
-for i := warm; i < len(xs); i++ {
+	for i := warm; i < len(xs); i++ {
 
 		x := xs[i]
 
 		pos = math.Max(0, pos+(x-mu-k))
-neg = math.Min(0, neg+(x-mu+k))
-if pos > h {
+		neg = math.Min(0, neg+(x-mu+k))
+		if pos > h {
 
 			out = append(out, Anomaly{
 
@@ -852,7 +850,7 @@ if pos > h {
 					"h": fmt.Sprintf("%.6f", h),
 				},
 			})
-pos = 0
+			pos = 0
 
 		}
 		if -neg > h {
@@ -884,16 +882,16 @@ pos = 0
 					"h": fmt.Sprintf("%.6f", h),
 				},
 			})
-neg = 0
+			neg = 0
 
 		}
 
 	}
 	notes["warmup_mean"] = fmt.Sprintf("%.6f", mu)
-notes["warmup_std"] = fmt.Sprintf("%.6f", sd)
-notes["k"] = fmt.Sprintf("%.6f", k)
-notes["h"] = fmt.Sprintf("%.6f", h)
-// return out, notes
+	notes["warmup_std"] = fmt.Sprintf("%.6f", sd)
+	notes["k"] = fmt.Sprintf("%.6f", k)
+	notes["h"] = fmt.Sprintf("%.6f", h)
+	return out, notes
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -920,8 +918,8 @@ func detectEWMA(ts []string, xs []float64, cfg AnomalyConfig) ([]Anomaly, map[st
 	base := xs[:warm]
 
 	mu := mean(base)
-sd := stddev(base, mu)
-if sd < 1e-12 {
+	sd := stddev(base, mu)
+	if sd < 1e-12 {
 
 		notes["skipped"] = "warmup stddev ~ 0"
 
@@ -935,20 +933,19 @@ if sd < 1e-12 {
 	// steady-state sigma for EWMA
 
 	sigmaZ := sd * math.Sqrt(alpha/(2.0-alpha))
-limit := L * sigmaZ
+	limit := L * sigmaZ
 
 	z := base[len(base)-1] // initialize from last warmup point
 
 	out := make([]Anomaly, 0)
-for i := warm; i < len(xs); i++ {
+	for i := warm; i < len(xs); i++ {
 
-		z = alpha*xs[i] + (1-alpha)
-*z
+		z = alpha*xs[i] + (1-alpha)*z
 
 		d := z - mu
 
 		ad := math.Abs(d)
-if ad > limit {
+		if ad > limit {
 
 			dir := "change"
 
@@ -999,10 +996,10 @@ if ad > limit {
 
 	}
 	notes["warmup_mean"] = fmt.Sprintf("%.6f", mu)
-notes["warmup_std"] = fmt.Sprintf("%.6f", sd)
-notes["alpha"] = fmt.Sprintf("%.6f", alpha)
-notes["L"] = fmt.Sprintf("%.6f", L)
-// return out, notes
+	notes["warmup_std"] = fmt.Sprintf("%.6f", sd)
+	notes["alpha"] = fmt.Sprintf("%.6f", alpha)
+	notes["L"] = fmt.Sprintf("%.6f", L)
+	return out, notes
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1030,8 +1027,8 @@ func detectPageHinkley(ts []string, xs []float64, cfg AnomalyConfig) []Anomaly {
 		// update mean
 
 		mean = mean + (xs[i]-mean)/float64(i+1)
-cum += (xs[i] - mean - delta)
-if cum < minCum {
+		cum += (xs[i] - mean - delta)
+		if cum < minCum {
 
 			minCum = cum
 
@@ -1112,16 +1109,16 @@ func detectAuto(ts []string, xs []float64, cfg AnomalyConfig) ([]Anomaly, map[st
 		case "rolling_zscore":
 
 			anoms = detectRollingZ(ts, xs, sub)
-case "rolling_mad":
+		case "rolling_mad":
 
 			anoms = detectRollingMAD(ts, xs, sub)
-case "rolling_iqr":
+		case "rolling_iqr":
 
 			anoms = detectRollingIQR(ts, xs, sub)
-case "seasonal_residual":
+		case "seasonal_residual":
 
 			a, n := detectSeasonalResidual(ts, xs, sub)
-anoms = a
+			anoms = a
 
 			if s := n["skipped"]; s != "" {
 
@@ -1131,7 +1128,7 @@ anoms = a
 		case "cusum":
 
 			a, n := detectCUSUM(ts, xs, sub)
-anoms = a
+			anoms = a
 
 			if s := n["skipped"]; s != "" {
 
@@ -1141,19 +1138,19 @@ anoms = a
 		case "ewma_control":
 
 			a, n := detectEWMA(ts, xs, sub)
-anoms = a
+			anoms = a
 
 			if s := n["skipped"]; s != "" {
 
 				notes["ewma_control"] = "skipped: " + s
 
 			}
-		case "page_hinkley":
+	case "page_hinkley":
 
-			anoms = detectPageHinkley(ts, xs, sub)
+		anoms = detectPageHinkley(ts, xs, sub)
 
 		}
-		for _, a := range anoms {
+	for _, a := range anoms {
 
 			cur := merged[a.Index]
 
@@ -1190,7 +1187,7 @@ anoms = a
 
 				}
 				cur.Meta["methods"] = mergeMethods(cur.Meta["methods"], m)
-cur.Reason = "flagged by: " + cur.Meta["methods"]
+				cur.Reason = "flagged by: " + cur.Meta["methods"]
 
 			}
 
@@ -1198,7 +1195,7 @@ cur.Reason = "flagged by: " + cur.Meta["methods"]
 
 	}
 	out := make([]Anomaly, 0, len(merged))
-for _, a := range merged {
+	for _, a := range merged {
 
 		out = append(out, *a)
 
@@ -1213,18 +1210,18 @@ for _, a := range merged {
 		return out[i].Index < out[j].Index
 
 	})
-notes["candidates"] = strings.Join(candidates, ",")
-// return out, notes
+	notes["candidates"] = strings.Join(candidates, ",")
+	return out, notes
 }
 func mergeMethods(existing string, add string) string {
 
 	parts := make([]string, 0)
-if strings.TrimSpace(existing) != "" {
+	if strings.TrimSpace(existing) != "" {
 
 		for _, p := range strings.Split(existing, ",") {
 
 			p = strings.TrimSpace(p)
-if p != "" {
+			if p != "" {
 
 				parts = append(parts, p)
 
@@ -1234,17 +1231,17 @@ if p != "" {
 
 	}
 	parts = append(parts, strings.TrimSpace(add))
-parts = dedupeAndSort(parts)
-return strings.Join(parts, ",")
+	parts = dedupeAndSort(parts)
+	return strings.Join(parts, ",")
 }
 func dedupeAndSort(in []string) []string {
 
 	set := make(map[string]struct{}, len(in))
-out := make([]string, 0, len(in))
-for _, s := range in {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
 
 		s = strings.TrimSpace(s)
-if s == "" {
+		if s == "" {
 
 			continue
 
@@ -1259,7 +1256,7 @@ if s == "" {
 
 	}
 	sort.Strings(out)
-// return out
+	return out
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1292,10 +1289,10 @@ func median(xs []float64) float64 {
 
 	}
 	cp := make([]float64, len(xs))
-copy(cp, xs)
-sort.Float64s(cp)
-n := len(cp)
-if n%2 == 1 {
+	copy(cp, xs)
+	sort.Float64s(cp)
+	n := len(cp)
+	if n%2 == 1 {
 
 		return cp[n/2]
 
@@ -1310,7 +1307,7 @@ func medianAbsDev(xs []float64, med float64) float64 {
 
 	}
 	cp := make([]float64, len(xs))
-for i := range xs {
+	for i := range xs {
 
 		cp[i] = math.Abs(xs[i] - med)
 
@@ -1327,10 +1324,10 @@ func quartilesTukey(xs []float64) (q1, q3 float64) {
 
 	}
 	cp := make([]float64, len(xs))
-copy(cp, xs)
-sort.Float64s(cp)
-n := len(cp)
-if n < 2 {
+	copy(cp, xs)
+	sort.Float64s(cp)
+	n := len(cp)
+	if n < 2 {
 
 		return cp[0], cp[0]
 
@@ -1376,7 +1373,7 @@ func capAnomalies(in []Anomaly, maxN int) []Anomaly {
 	if len(in) <= maxN {
 
 		// stable sort by index asc, then method asc (deterministic)
-sort.SliceStable(in, func(i, j int) bool {
+		sort.SliceStable(in, func(i, j int) bool {
 
 			if in[i].Index == in[j].Index {
 
@@ -1386,14 +1383,14 @@ sort.SliceStable(in, func(i, j int) bool {
 			return in[i].Index < in[j].Index
 
 		})
-// return in
+		return in
 
 	}
 
 	// select top maxN by Score desc (stable deterministic tie-breakers)
-cp := make([]Anomaly, len(in))
-copy(cp, in)
-sort.SliceStable(cp, func(i, j int) bool {
+	cp := make([]Anomaly, len(in))
+	copy(cp, in)
+	sort.SliceStable(cp, func(i, j int) bool {
 
 		if cp[i].Score == cp[j].Score {
 
@@ -1408,7 +1405,7 @@ sort.SliceStable(cp, func(i, j int) bool {
 		return cp[i].Score > cp[j].Score
 
 	})
-cp = cp[:maxN]
+	cp = cp[:maxN]
 
 	// final stable ordering by index asc
 
@@ -1422,7 +1419,7 @@ cp = cp[:maxN]
 		return cp[i].Index < cp[j].Index
 
 	})
-// return cp
+	return cp
 }
 func maxInt(a, b int) int {
 
