@@ -62,7 +62,7 @@ func (c *InMemoryCatalog) Remove(id string) error {
 		return ErrMetaMissing
 	}
 	delete(c.m, id)
-	// return nil
+	return nil
 }
 func (c *InMemoryCatalog) List(ctx context.Context) ([]ConnectorMeta, error) {
 	_ = ctx
@@ -74,7 +74,7 @@ func (c *InMemoryCatalog) List(ctx context.Context) ([]ConnectorMeta, error) {
 		out = append(out, v)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
-	// return out, nil
+	return out, nil
 }
 func (c *InMemoryCatalog) Get(ctx context.Context, id string) (ConnectorMeta, bool, error) {
 	_ = ctx
@@ -99,5 +99,5 @@ func normalizeCaps(in []string) []string {
 		out = append(out, k)
 	}
 	sort.Strings(out)
-	// return out
+	return out
 }
