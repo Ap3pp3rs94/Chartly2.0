@@ -1,0 +1,12 @@
+id: census-population
+name: US Census Population Data
+version: 1.0.0
+description: State population data from 2020 Census
+source:
+  type: http_rest
+  url: https://api.census.gov/data/2020/dec/pl?get=NAME,P1_001N&for=state:*
+  auth: none
+mapping:
+  NAME: location.name
+  P1_001N: population.total
+  state: location.state_code

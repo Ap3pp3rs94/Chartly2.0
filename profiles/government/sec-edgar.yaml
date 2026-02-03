@@ -1,0 +1,12 @@
+id: sec-edgar
+name: SEC EDGAR Company Filings
+version: 1.0.0
+description: Public company SEC filings (Microsoft example)
+source:
+  type: http_rest
+  url: https://data.sec.gov/submissions/CIK0000789019.json
+  auth: none
+mapping:
+  name: company.name
+  cik: company.cik
+  sicDescription: company.industry
