@@ -199,7 +199,7 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 				"attempt":     env.Job.Attempt,
 				"duration_ms": dur,
 			})
-			// return
+			return
 		}
 		nextAttempt := env.Job.Attempt + 1
 		delay, ok, reason := time.Duration(0), false, "no_retry_policy"
@@ -219,8 +219,7 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 				"error":       err.Error(),
 				"reason":      reason,
 			})
-			// TODO: future: route to DLQ/backing queue with terminal status.
-			// return
+			return
 		}
 		c.logger("warn", "job_retry_scheduled", map[string]any{
 			"event":       "retry_scheduled",
@@ -243,8 +242,7 @@ func (c *Consumer) handleWithRetry(ctx context.Context, workerID int, env Envelo
 			return
 		}
 
-		// TODO: future: re-enqueue to backing queue with incremented attempt and visibility delay.
-		// For now: local re-dispatch.
+		// Local re-dispatch (in-memory): increment attempt and continue.
 		env.Job.Attempt = nextAttempt
 	}
 }
