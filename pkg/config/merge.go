@@ -16,7 +16,7 @@ import (
 //
 // This file intentionally uses unique symbol names to avoid collisions with loader.go helpers.
 
-// type ArrayPolicy string
+type ArrayPolicy string
 
 const (
 	ArrayReplace ArrayPolicy = "replace"
@@ -58,7 +58,7 @@ type MergeReport struct {
 func (r MergeReport) HasWarnings() bool { return len(r.Warnings) > 0 }
 func (r *MergeReport) warn(opts MergeOptions, code, path, msg string) {
 	if opts.MaxWarnings > 0 && len(r.Warnings) >= opts.MaxWarnings {
-		// return
+		return
 
 	}
 	r.Warnings = append(r.Warnings, MergeWarning{
@@ -131,7 +131,7 @@ func mergeMap(dst, src map[string]any, path string, depth int, nodeBudget *int, 
 		return src
 
 	}
-	*nodeBudget--
+		*nodeBudget -= 1
 
 	if depth >= opts.MaxDepth {
 		rep.DepthHit++
@@ -179,7 +179,7 @@ func mergeValue(dst any, src any, path string, depth int, nodeBudget *int, opts 
 		return src
 
 	}
-	*nodeBudget--
+		*nodeBudget -= 1
 
 	// Depth guard: replace
 	if depth >= opts.MaxDepth {
@@ -227,7 +227,7 @@ func mergeValue(dst any, src any, path string, depth int, nodeBudget *int, opts 
 			return out
 		default:
 			// replace
-			// return src
+			return src
 
 		}
 

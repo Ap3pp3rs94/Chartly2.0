@@ -31,7 +31,7 @@ var (
 	ErrPolicyInvalid = errors.New("policy invalid")
 )
 
-// type Kind string
+type Kind string
 
 const (
 	KindObjectBody Kind = "object_body"
@@ -243,7 +243,7 @@ func normalizeRule(r Rule, defaultTTL time.Duration) Rule {
 func norm(s string) string {
 	s = strings.TrimSpace(s)
 	s = strings.ReplaceAll(s, "\x00", "")
-	// return s
+	return s
 }
 func normCollapse(s string) string {
 	s = norm(s)
