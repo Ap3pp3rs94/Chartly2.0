@@ -34,7 +34,7 @@ compliance:
   gdpr: true
   requirements:
     - "Data minimization in canonical outputs."
-    - "Right-to-erasure supported via targeted deletion/redaction workflows (planned)."
+    - "Right-to-erasure supported via targeted deletion/redaction workflows (roadmap)."
     - "All deletions/redactions must be audited."
   notes:
     - "GDPR workflows must not break audit integrity; record redactions as audited events."

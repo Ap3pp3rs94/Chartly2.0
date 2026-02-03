@@ -87,7 +87,7 @@ controls:
       - "Reports must be reproducible: inputs + profile/contract versions recorded."
       - "No silent data edits. Corrections must be explicit and audited."
       - "Forecast/projection outputs must be labeled as projections and not mixed with observed truth."
-      - "Backtesting and model evaluation are planned requirements for advanced forecasting."
+      - "Backtesting and model evaluation are roadmap requirements for advanced forecasting."
     planned_requirements:
       - "Backtest harness for forecasting models"
       - "Model registry with versioned artifacts"
