@@ -130,7 +130,7 @@ func CORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 			// Always respond 204 to preflight; CORS headers are set only when origin allowed.
 			w.WriteHeader(http.StatusNoContent)
-			// return
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

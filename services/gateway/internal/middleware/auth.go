@@ -162,22 +162,22 @@ func Auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !authEnabled() {
 			next.ServeHTTP(w, r)
-			// return
+			return
 		}
 		authz := strings.TrimSpace(r.Header.Get("Authorization"))
 		if authz == "" || !strings.HasPrefix(strings.ToLower(authz), "bearer ") {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
-			// return
+			return
 		}
 		token := strings.TrimSpace(authz[len("bearer "):])
 		if token == "" {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", "missing bearer token")
-			// return
+			return
 		}
 		tenantID, ok, msg := verifyJWT(token)
 		if !ok {
 			writeErr(w, http.StatusUnauthorized, "unauthorized", msg)
-			// return
+			return
 		}
 
 		// Enforce tenant header consistency
@@ -186,7 +186,7 @@ func Auth(next http.Handler) http.Handler {
 			r.Header.Set("X-Tenant-Id", tenantID)
 		} else if existing != tenantID {
 			writeErr(w, http.StatusForbidden, "unauthorized", "tenant mismatch")
-			// return
+			return
 		}
 		next.ServeHTTP(w, r)
 	})
