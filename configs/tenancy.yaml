@@ -85,4 +85,4 @@ policy:
   enforcement_notes:
     - "Quotas should be enforced at gateway (request shaping) and orchestrator (dispatch shaping)."
     - "Connector-hub enforces per-domain concurrency and rpm caps."
-    - "Storage retention is enforced by lifecycle jobs (planned)."
+    - "Storage retention is enforced by lifecycle jobs (roadmap)."
