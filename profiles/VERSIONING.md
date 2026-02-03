@@ -59,7 +59,7 @@ Recommended promotion steps:
 - Update `profile.yaml:version`.
 
 2) **Validate**
-- Run profile lint rules (planned in `profiles/tests/` and `tools/profiler/`).
+- Run profile lint rules (in `profiles/tests/` and `tools/profiler/`).
 - Validate mappings against sample payload fixtures (recommended).
 
 3) **Controlled ingest**
@@ -97,7 +97,7 @@ Pinning rules (recommended):
 
 ---
 
-## Validation requirements (planned tooling)
+## Validation requirements (tooling)
 
 Minimum validation expectations:
 - Profile YAML must be syntactically valid.
@@ -128,6 +128,6 @@ Profile changes require:
 - PR review by CODEOWNERS
 - a version bump
 - documentation of behavior changes for breaking versions
-- audit trail for production rollouts (planned)
+- audit trail for production rollouts (roadmap)
 
 Profiles are part of the systems law; treat them as such.

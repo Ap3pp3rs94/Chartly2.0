@@ -110,7 +110,7 @@ Profiles are versioned. Every canonical record and quarantine entry should inclu
    - `profiles/templates/new_mapping_template.yaml`
 2) Implement `profile.yaml` metadata and declare PII/PHI handling.
 3) Define mappings and rules.
-4) Validate locally using profile tooling (planned in `tools/profiler/`).
+4) Validate locally using profile tooling (in `tools/profiler/`).
 5) Run a controlled ingest against fixtures or a small source set.
 6) Promote to staging via PR review.
 7) Promote to production via tagged release.
@@ -144,7 +144,7 @@ Retention should be explicit per domain and environment. Typical patterns:
 - canonical records: longer retention (analytics/history)
 - audit: longest retention (compliance)
 
-Retention should be implemented as lifecycle jobs controlled by orchestrator (planned).
+Retention should be implemented as lifecycle jobs controlled by orchestrator (roadmap).
 
 ---
 
