@@ -2,7 +2,7 @@ registry_version: "1.0"
 default_connector: "http_rest"
 
 discovery:
-  planned: true
+  status: "roadmap"
   strategies:
     - "openapi_probe"
     - "rss_autodiscovery"
@@ -89,7 +89,7 @@ connector_types:
   - id: "database"
     kind: "db"
     protocol: "database"
-    capabilities: ["query", "incremental", "cdc_planned"]
+    capabilities: ["query", "incremental", "cdc"]
     auth_modes: ["none", "basic"]
     required_config_keys: ["dsn_env", "query"]
     optional_config_keys: ["timeout_seconds", "incremental_key", "batch_size"]
