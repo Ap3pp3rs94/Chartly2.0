@@ -23,7 +23,7 @@ dedupe_engine:
       - "first_seen_at"
   consistency_model:
     # Choose a model; implementations must honor it for correctness.
-    mode: "at_least_once_with_idempotency"   # at_least_once_with_idempotency|exactly_once (planned)
+    mode: "at_least_once_with_idempotency"   # at_least_once_with_idempotency|exactly_once (roadmap)
     notes:
       - "At-least-once delivery is expected; idempotency ensures canonical writes are not duplicated."
       - "Conflicts are quarantined to prevent silent corruption."
