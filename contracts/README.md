@@ -43,8 +43,8 @@ Chartly is **contracts-first**:
 - `contracts/validators/fixtures/`  
   Example payloads used for contract tests. Fixtures are expected to validate against the schemas they represent.
 
-- `contracts/codegen/`  
-  Type generation scripts (planned/iterative) for:
+-- `contracts/codegen/`  
+  Type generation scripts (iterative) for:
   - Go structs
   - TypeScript types
   - Python models
@@ -111,7 +111,7 @@ Recommended workflow:
 
 ---
 
-## Code generation (planned)
+## Code generation (iterative)
 
 The long-term goal is to generate consistent SDK types from contracts:
 - Go models for services and shared `pkg/` types

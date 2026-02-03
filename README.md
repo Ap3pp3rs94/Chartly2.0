@@ -1,6 +1,6 @@
 # Chartly 2.0
 
-Chartly 2.0 is a contracts-first data ingestion, normalization, and analytics platform designed to turn heterogeneous inputs into validated canonical records and publish charts, reports, and projections with a complete audit trail. This repository currently contains the full planned structure and empty files; implementation will be added incrementally and should follow the expectations defined here.
+Chartly 2.0 is a contracts-first data ingestion, normalization, and analytics platform designed to turn heterogeneous inputs into validated canonical records and publish charts, reports, and projections with a complete audit trail. This repository contains the full structure and incremental implementations; remaining work is tracked via roadmap markers and scaffolding notes.
 
 ## Core concepts
 - Contracts-first: JSON Schemas in `contracts/` define canonical entities, events, metrics, and reports that every service must validate against.
@@ -23,7 +23,7 @@ Chartly 2.0 is a contracts-first data ingestion, normalization, and analytics pl
 - Web: UI for operations, analytics, reports, and configuration.
 
 ## Repository layout
-- `.github/`: CI workflows (planned).
+- `.github/`: CI workflows.
 - `configs/`: environment-specific configuration files.
 - `contracts/`: canonical schemas, validators, and code generation.
 - `profiles/`: base and domain profiles for mappings and rules.
@@ -81,7 +81,7 @@ go run .\services\gateway\cmd\gateway
 - `configs/*.yaml` are the authoritative per-environment configuration sources.
 - `.env.example` documents environment variables used by Docker Compose and services.
 - Expected precedence (highest to lowest): environment variables > service config file (`configs/*.yaml`) > defaults in code.
-- Configuration merging and validation are planned to live in `pkg/config` and service startup logic.
+- Configuration merging and validation are intended to live in `pkg/config` and service startup logic.
 
 ## Contracts & versioning
 - Schemas live under `contracts/v1/` and are versioned by directory.
@@ -91,12 +91,12 @@ go run .\services\gateway\cmd\gateway
 ## Profiles
 - Profiles live in `profiles/` and define domain behavior: mapping, cleansing, deduplication, enrichment, retention, and alerts.
 - Base profiles in `profiles/core/base/` provide defaults; domain profiles override and extend them.
-- Authoring flow (planned): update profile YAMLs → lint/validate → run normalizer against fixtures → promote to staging/production.
+- Authoring flow (roadmap): update profile YAMLs → lint/validate → run normalizer against fixtures → promote to staging/production.
 
 ## Observability
 - Logs: services are expected to emit structured logs (JSON) with request and trace identifiers.
-- Metrics: Prometheus-compatible metrics are planned via the observer service.
-- Tracing: OpenTelemetry-compatible spans are planned and should be propagated by gateway and downstream services.
+- Metrics: Prometheus-compatible metrics are defined via the observer service.
+- Tracing: OpenTelemetry-compatible spans should be propagated by gateway and downstream services.
 - The observability implementation is scaffolded but not yet wired end-to-end.
 
 ## Security & compliance
