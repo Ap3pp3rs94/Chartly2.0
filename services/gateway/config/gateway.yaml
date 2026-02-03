@@ -34,7 +34,7 @@ middleware:
 
   auth:
     enabled: false
-    mode: "jwt"                  # jwt|oauth2 (planned)
+    mode: "jwt"                  # jwt|oauth2 (roadmap)
     jwt:
       issuer: "${ENV:AUTH_JWT_ISSUER}"
       audience: "${ENV:AUTH_JWT_AUDIENCE}"
