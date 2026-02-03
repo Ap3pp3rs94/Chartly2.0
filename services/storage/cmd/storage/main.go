@@ -139,14 +139,14 @@ func loadConfig() config {
 	return c
 }
 
-// type ctxKey string
+type ctxKey string
 
 const (
 	ctxRequestID ctxKey = "request_id"
 
 	ctxTenantID ctxKey = "tenant_id"
 )
-// var reqCounter uint64
+var reqCounter uint64
 
 func main() {
 
@@ -291,7 +291,7 @@ func (a *api) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 
 		writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-// return
+		return
 
 	}
 	resp := map[string]any{
@@ -311,7 +311,7 @@ func (a *api) handleReady(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 
 		writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-// return
+		return
 
 	}
 
@@ -342,15 +342,19 @@ func (a *api) handleObjects(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPut:
 
 		a.handlePutObject(w, r)
-// case http.MethodGet:
+		return
+	case http.MethodGet:
 
 		a.handleGetObject(w, r, false)
-// case http.MethodHead:
+		return
+	case http.MethodHead:
 
 		a.handleGetObject(w, r, true)
-// case http.MethodDelete:
+		return
+	case http.MethodDelete:
 
 		a.handleDeleteObject(w, r)
+		return
 default:
 
 		writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
@@ -362,7 +366,7 @@ func (a *api) handleObjectsMeta(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 
 		writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-// return
+		return
 
 	}
 	tenant := tenantIDFromCtx(r.Context())
@@ -370,14 +374,14 @@ key := strings.TrimSpace(r.URL.Query().Get("key"))
 if key == "" {
 
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "missing key query param")
-// return
+		return
 
 	}
 	meta, ok := a.store.getMeta(tenant, key)
 if !ok {
 
 		writeError(w, r, http.StatusNotFound, "not_found", "object not found")
-// return
+		return
 
 	}
 	writeJSON(w, r, http.StatusOK, meta)
@@ -387,7 +391,7 @@ func (a *api) handleStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 
 		writeError(w, r, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-// return
+		return
 
 	}
 	resp := a.store.stats()
@@ -400,13 +404,13 @@ key := strings.TrimSpace(r.URL.Query().Get("key"))
 if key == "" {
 
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "missing key query param")
-// return
+		return
 
 	}
 	if strings.Contains(key, "\x00") {
 
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "invalid key")
-// return
+		return
 
 	}
 
@@ -429,7 +433,7 @@ if err != nil {
 		// MaxBytesReader returns a specific error string; keep it simple.
 
 		writeError(w, r, http.StatusRequestEntityTooLarge, "too_large", "request body too large or unreadable")
-// return
+		return
 
 	}
 	sum := sha256.Sum256(b)
@@ -480,14 +484,14 @@ key := strings.TrimSpace(r.URL.Query().Get("key"))
 if key == "" {
 
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "missing key query param")
-// return
+		return
 
 	}
 	obj, ok := a.store.get(tenant, key)
 if !ok {
 
 		writeError(w, r, http.StatusNotFound, "not_found", "object not found")
-// return
+		return
 
 	}
 
@@ -498,7 +502,7 @@ if !ok {
 		w.Header().Set("ETag", obj.meta.ETag)
 w.Header().Set("Content-Type", obj.meta.ContentType)
 w.WriteHeader(http.StatusNotModified)
-// return
+		return
 
 	}
 	w.Header().Set("Content-Type", obj.meta.ContentType)
@@ -507,7 +511,7 @@ w.Header().Set("Content-Length", strconv.FormatInt(obj.meta.SizeBytes, 10))
 if headOnly {
 
 		w.WriteHeader(http.StatusOK)
-// return
+		return
 
 	}
 
@@ -523,14 +527,14 @@ key := strings.TrimSpace(r.URL.Query().Get("key"))
 if key == "" {
 
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "missing key query param")
-// return
+		return
 
 	}
 	ok := a.store.del(tenant, key)
 if !ok {
 
 		writeError(w, r, http.StatusNotFound, "not_found", "object not found")
-// return
+		return
 
 	}
 	writeJSON(w, r, http.StatusOK, map[string]any{"deleted": true})
@@ -806,7 +810,7 @@ if tenant == "" {
 					if cfg.RequireTenant {
 
 						writeError(w, r, http.StatusBadRequest, "missing_tenant", "missing X-Tenant-Id")
-// return
+						return
 
 					}
 					tenant = "local"
@@ -814,7 +818,7 @@ if tenant == "" {
 				}
 				ctx := context.WithValue(r.Context(), ctxTenantID, tenant)
 next.ServeHTTP(w, r.WithContext(ctx))
-// return
+				return
 
 			}
 			next.ServeHTTP(w, r)
@@ -879,7 +883,7 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 
 	n, err := w.ResponseWriter.Write(p)
 w.bytes += int64(n)
-// return n, err
+	return n, err
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1031,13 +1035,13 @@ if kk == "" {
 
 	jl.mu.Lock()
 defer jl.mu.Unlock()
-b, err := json.Marshal(m)
+	b, err := json.Marshal(m)
 if err != nil {
 
 		// best-effort fallback
 
 		jl.l.Printf(`{"level":"%s","msg":"%s","service":"%s","error":"marshal_failed"}`+"\n", level, escapeForLog(msg), serviceName)
-// return
+		return
 
 	}
 	jl.l.Print(string(b))
@@ -1047,7 +1051,7 @@ func escapeForLog(s string) string {
 	s = strings.ReplaceAll(s, `"`, `'`)
 s = strings.ReplaceAll(s, "\n", " ")
 s = strings.ReplaceAll(s, "\r", " ")
-// return s
+	return s
 }
 
 ////////////////////////////////////////////////////////////////////////////////
