@@ -48,15 +48,6 @@ type profileEnvelope struct {
 	Content string `json:"content"`
 }
 
-// Profile is a minimal, provider-neutral contract for the drone processor.
-// It intentionally supports only stable, deterministic fields.
-type Profile struct {
-	ID      string                 `yaml:"id" json:"id"`
-	Version string                 `yaml:"version" json:"version"`
-	Params  map[string]any         `yaml:"params,omitempty" json:"params,omitempty"`
-	Inputs  map[string]interface{} `yaml:"inputs,omitempty" json:"inputs,omitempty"`
-}
-
 func main() {
 	controlPlane := strings.TrimSpace(os.Getenv("CONTROL_PLANE"))
 	if controlPlane == "" {
@@ -277,21 +268,4 @@ func joinErr(a, b error) error {
 		return a
 	}
 	return errors.Join(a, b)
-}
-
-// ProcessProfile produces deterministic results for the given profile.
-// This is intentionally minimal and avoids timestamps or randomness.
-func ProcessProfile(p Profile) (map[string]any, error) {
-	out := map[string]any{
-		"profile_id": p.ID,
-		"version":    p.Version,
-		"result":     "ok",
-	}
-	if len(p.Params) > 0 {
-		out["params_count"] = len(p.Params)
-	}
-	if len(p.Inputs) > 0 {
-		out["inputs_count"] = len(p.Inputs)
-	}
-	return out, nil
 }
