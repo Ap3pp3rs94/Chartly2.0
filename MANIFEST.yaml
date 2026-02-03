@@ -141,7 +141,7 @@ service_graph:
       folder: "services/connector-hub"
       required: true
       responsibilities:
-        - "Connector registry and discovery (planned)"
+        - "Connector registry and discovery (roadmap)"
         - "High concurrency upstream fetch"
         - "Per-domain limits, rate limiting, circuit breakers"
         - "Write raw payloads to raw plane"
@@ -174,7 +174,7 @@ service_graph:
     analytics:
       folder: "services/analytics"
       required: false
-      planned: true
+      status: "roadmap"
       responsibilities:
         - "Aggregations and chart building"
         - "Reports/exports"
@@ -185,7 +185,7 @@ service_graph:
     audit:
       folder: "services/audit"
       required: false
-      planned: true
+      status: "roadmap"
       responsibilities:
         - "Append-only audit ledger"
         - "Hash chain verification"
@@ -194,7 +194,7 @@ service_graph:
     auth:
       folder: "services/auth"
       required: false
-      planned: true
+      status: "roadmap"
       responsibilities:
         - "Authentication and RBAC policy decisions"
       inbound: ["HTTP"]
@@ -202,7 +202,7 @@ service_graph:
     observer:
       folder: "services/observer"
       required: false
-      planned: true
+      status: "roadmap"
       responsibilities:
         - "Metrics/tracing/log collection and export"
       inbound: ["telemetry"]
@@ -218,7 +218,7 @@ data_planes:
     required: true
     storage:
       v0: ["Postgres (metadata and minimal canonical)"]
-      planned: ["ClickHouse/TimescaleDB for high-scale time-series"]
+      roadmap: ["ClickHouse/TimescaleDB for high-scale time-series"]
     rule: "All canonical records MUST validate against contracts and include raw_ref."
   audit_plane:
     required: true
@@ -228,8 +228,8 @@ data_planes:
 queue_and_backpressure_policy:
   required: true
   queue_backends:
-    v0: ["redis streams (planned implementation)"]
-    planned: ["nats jetstream", "kafka"]
+    v0: ["redis streams (implementation pending)"]
+    roadmap: ["nats jetstream", "kafka"]
   required_mechanisms:
     - "per-source rate limiting"
     - "per-domain concurrency limits"
@@ -260,7 +260,7 @@ security_and_compliance_baseline:
       - "Profiles declare PII/PHI handling constraints."
       - "Normalizer quarantines policy violations."
   compliance_hooks:
-    planned: true
+    status: "roadmap"
     frameworks: ["GDPR", "HIPAA", "SOX"]
 
 observability_baseline:
