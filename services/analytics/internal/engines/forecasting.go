@@ -27,7 +27,7 @@ func ParseRFC3339(ts string) (time.Time, error) {
 
 	}
 	t, err := time.Parse(time.RFC3339, ts)
-if err != nil {
+	if err != nil {
 
 		return time.Time{}, err
 
@@ -44,10 +44,10 @@ func CleanSeries(points []SeriesPoint) ([]time.Time, []float64, error) {
 		v float64
 	}
 	tmp := make([]kv, 0, len(points))
-for _, p := range points {
+	for _, p := range points {
 
 		t, err := ParseRFC3339(strings.TrimSpace(p.Ts))
-if err != nil {
+		if err != nil {
 
 			continue
 
@@ -65,8 +65,8 @@ if err != nil {
 	// collapse duplicates by exact timestamp
 
 	outT := make([]time.Time, 0, len(tmp))
-outV := make([]float64, 0, len(tmp))
-i := 0
+	outV := make([]float64, 0, len(tmp))
+	i := 0
 
 	for i < len(tmp) {
 
@@ -88,8 +88,8 @@ i := 0
 
 		}
 		outT = append(outT, t)
-outV = append(outV, sum/float64(cnt))
-i = j
+		outV = append(outV, sum/float64(cnt))
+		i = j
 
 	}
 	if len(outT) < 3 {
@@ -115,7 +115,7 @@ func Resample(times []time.Time, values []float64, interval time.Duration, metho
 
 	}
 	method = strings.ToLower(strings.TrimSpace(method))
-if method == "" {
+	if method == "" {
 
 		method = "last"
 
@@ -126,8 +126,8 @@ if method == "" {
 
 	}
 	start := alignDown(times[0], interval)
-end := alignDown(times[len(times)-1], interval)
-if end.Before(start) {
+	end := alignDown(times[len(times)-1], interval)
+	if end.Before(start) {
 
 		return nil, nil, errors.New("invalid bounds")
 
@@ -145,11 +145,11 @@ if end.Before(start) {
 		lastV float64
 	}
 	bm := make(map[int64]*bucket)
-for i := range times {
+	for i := range times {
 
 		bt := alignDown(times[i], interval)
-k := bt.Unix()
-b := bm[k]
+		k := bt.Unix()
+		b := bm[k]
 
 		if b == nil {
 
@@ -183,17 +183,17 @@ b := bm[k]
 
 	}
 	gridV := make([]float64, len(gridT))
-for i := range gridT {
+	for i := range gridT {
 
 		k := gridT[i].Unix()
-if b := bm[k]; b != nil {
+		if b := bm[k]; b != nil {
 
 			switch method {
 
 			case "mean":
 
 				gridV[i] = b.sum / float64(b.cnt)
-default: // last/linear initial fill uses last
+			default: // last/linear initial fill uses last
 
 				gridV[i] = b.lastV
 
@@ -216,7 +216,7 @@ default: // last/linear initial fill uses last
 		// carry-forward
 
 		last := math.NaN()
-for i := range gridV {
+		for i := range gridV {
 
 			if !math.IsNaN(gridV[i]) {
 
@@ -236,7 +236,7 @@ for i := range gridV {
 		// backfill head if still NaN
 
 		first := math.NaN()
-for i := range gridV {
+		for i := range gridV {
 
 			if !math.IsNaN(gridV[i]) {
 
@@ -268,8 +268,8 @@ for i := range gridV {
 	case "linear":
 
 		// first pass: carry-forward to handle leading NaNs (for endpoints)
-last := math.NaN()
-for i := range gridV {
+		last := math.NaN()
+		for i := range gridV {
 
 			if !math.IsNaN(gridV[i]) {
 
@@ -289,7 +289,7 @@ for i := range gridV {
 		// second pass: backward carry to handle trailing NaNs
 
 		next := math.NaN()
-for i := len(gridV) - 1; i >= 0; i-- {
+		for i := len(gridV) - 1; i >= 0; i-- {
 
 			if !math.IsNaN(gridV[i]) {
 
@@ -311,7 +311,7 @@ for i := len(gridV) - 1; i >= 0; i-- {
 		// We reconstruct NaN positions from bm to identify missing buckets.
 
 		miss := make([]bool, len(gridV))
-for i := range gridT {
+		for i := range gridT {
 
 			if bm[gridT[i].Unix()] == nil {
 
@@ -360,7 +360,7 @@ for i := range gridT {
 			y1 := gridV[rightIdx]
 
 			steps := float64(rightIdx - leftIdx)
-for k := i; k < j; k++ {
+		for k := i; k < j; k++ {
 
 				f := float64(k-leftIdx) / steps
 
@@ -377,14 +377,14 @@ for k := i; k < j; k++ {
 func alignDown(t time.Time, interval time.Duration) time.Time {
 
 	sec := t.Unix()
-step := int64(interval.Seconds())
-if step <= 0 {
+	step := int64(interval.Seconds())
+	if step <= 0 {
 
 		return t.UTC()
 
 	}
 	b := (sec / step)
-* step
+		* step
 
 	return time.Unix(b, 0).UTC()
 }
@@ -398,12 +398,12 @@ func RollingMean(xs []float64, window int) []float64 {
 	if window <= 1 || len(xs) == 0 {
 
 		cp := make([]float64, len(xs))
-copy(cp, xs)
-// return cp
+		copy(cp, xs)
+		return cp
 
 	}
 	out := make([]float64, len(xs))
-// var sum float64
+	var sum float64
 
 	for i := 0; i < len(xs); i++ {
 
@@ -434,7 +434,7 @@ func RollingStd(xs []float64, window int) []float64 {
 
 	}
 	out := make([]float64, len(xs))
-for i := 0; i < len(xs); i++ {
+	for i := 0; i < len(xs); i++ {
 
 		start := i - window + 1
 
@@ -446,7 +446,7 @@ for i := 0; i < len(xs); i++ {
 		seg := xs[start : i+1]
 
 		m := mean(seg)
-// var ss float64
+		var ss float64
 
 		for _, v := range seg {
 
@@ -496,12 +496,12 @@ func EWMA(xs []float64, alpha float64) []float64 {
 
 	}
 	out := make([]float64, len(xs))
-out[0] = xs[0]
+	out[0] = xs[0]
 
 	for i := 1; i < len(xs); i++ {
 
 		out[i] = alpha*xs[i] + (1-alpha)
-*out[i-1]
+			* out[i-1]
 
 	}
 	return out
@@ -535,7 +535,7 @@ func ModelNaive(train []float64, h int) []float64 {
 
 	}
 	out := make([]float64, h)
-last := train[len(train)-1]
+	last := train[len(train)-1]
 
 	for i := range out {
 
@@ -557,7 +557,7 @@ func ModelSeasonalNaive(train []float64, h int, p int) ([]float64, error) {
 
 	}
 	out := make([]float64, h)
-for i := 0; i < h; i++ {
+	for i := 0; i < h; i++ {
 
 		out[i] = train[len(train)-p+(i%p)]
 
@@ -572,7 +572,7 @@ func ModelDrift(train []float64, h int) []float64 {
 
 	}
 	out := make([]float64, h)
-if len(train) < 2 {
+	if len(train) < 2 {
 
 		return ModelNaive(train, h)
 
@@ -615,7 +615,7 @@ fitted[0] = level
 
 	}
 	out := make([]float64, h)
-for i := range out {
+	for i := range out {
 
 		out[i] = level
 
@@ -664,10 +664,10 @@ trend = beta*(level-prevLevel) + (1-beta)
 
 	}
 	out := make([]float64, h)
-for i := 1; i <= h; i++ {
+	for i := 1; i <= h; i++ {
 
 		out[i-1] = level + float64(i)
-*trend
+			* trend
 
 	}
 	return out, fitted
@@ -713,13 +713,13 @@ func ModelHoltWintersAdd(train []float64, h int, p int, alpha, beta, gamma float
 	// init seasonals as first season - level
 
 	season := make([]float64, p)
-for i := 0; i < p; i++ {
+	for i := 0; i < p; i++ {
 
 		season[i] = train[i] - level
 
 	}
 	fitted := make([]float64, len(train))
-for i := 0; i < len(train); i++ {
+	for i := 0; i < len(train); i++ {
 
 		si := i % p
 
@@ -729,22 +729,22 @@ for i := 0; i < len(train); i++ {
 
 		prevSeason := season[si]
 
-		level = alpha*(train[i]-prevSeason) + (1-alpha)
-*(level+trend)
-trend = beta*(level-prevLevel) + (1-beta)
-*trend
+		level = alpha*(train[i]-prevSeason) + (1-alpha)*
+			(level+trend)
+		trend = beta*(level-prevLevel) + (1-beta)*
+			trend
 
-		season[si] = gamma*(train[i]-level) + (1-gamma)
-*prevSeason
+		season[si] = gamma*(train[i]-level) + (1-gamma)*
+			prevSeason
 
 	}
 	out := make([]float64, h)
-for i := 1; i <= h; i++ {
+	for i := 1; i <= h; i++ {
 
 		si := (len(train) + i - 1) % p
 
-		out[i-1] = level + float64(i)
-*trend + season[si]
+		out[i-1] = level + float64(i)*
+			trend + season[si]
 
 	}
 	return out, fitted, nil
@@ -760,7 +760,7 @@ func ModelTimeRegression(train []float64, h int, lambda float64) ([]float64, err
 
 	}
 	n := len(train)
-if n < 2 {
+	if n < 2 {
 
 		return ModelNaive(train, h), nil
 
@@ -786,7 +786,7 @@ if n < 2 {
 	for i := 0; i < n; i++ {
 
 		x := float64(i)
-y := train[i]
+		y := train[i]
 
 		sumx += x
 
@@ -821,10 +821,10 @@ y := train[i]
 	b := (A00*B1 - A10*B0) / det
 
 	out := make([]float64, h)
-for i := 0; i < h; i++ {
+	for i := 0; i < h; i++ {
 
 		x := float64(n + i)
-out[i] = a + b*x
+		out[i] = a + b*x
 
 	}
 	return out, nil
@@ -837,7 +837,7 @@ out[i] = a + b*x
 func MAE(y, yhat []float64) float64 {
 
 	n := min(len(y), len(yhat))
-if n == 0 {
+	if n == 0 {
 
 		return math.NaN()
 
@@ -854,7 +854,7 @@ if n == 0 {
 func RMSE(y, yhat []float64) float64 {
 
 	n := min(len(y), len(yhat))
-if n == 0 {
+	if n == 0 {
 
 		return math.NaN()
 
@@ -875,7 +875,7 @@ if n == 0 {
 func MAPE(y, yhat []float64) float64 {
 
 	n := min(len(y), len(yhat))
-if n == 0 {
+	if n == 0 {
 
 		return math.NaN()
 
@@ -887,13 +887,13 @@ if n == 0 {
 	for i := 0; i < n; i++ {
 
 		den := math.Abs(y[i])
-if den < 1e-9 {
+		if den < 1e-9 {
 
 			continue
 
 		}
 		s += math.Abs((y[i] - yhat[i]) / den)
-cnt++
+		cnt++
 
 	}
 	if cnt == 0 {
@@ -902,7 +902,7 @@ cnt++
 
 	}
 	return (s / float64(cnt))
-* 100.0
+		* 100.0
 }
 func Backtest(xs []float64, horizon int, minTrain int, model func(train []float64, horizon int) ([]float64, error)) (preds [][]float64, actuals [][]float64) {
 
@@ -918,13 +918,13 @@ func Backtest(xs []float64, horizon int, minTrain int, model func(train []float6
 		test := xs[start : start+horizon]
 
 		fc, err := model(train, horizon)
-if err != nil || len(fc) != horizon {
+		if err != nil || len(fc) != horizon {
 
 			continue
 
 		}
 		preds = append(preds, fc)
-actuals = append(actuals, test)
+		actuals = append(actuals, test)
 
 	}
 	return preds, actuals
@@ -994,7 +994,7 @@ func ForecastAuto(points []SeriesPoint, cfg ForecastConfig) ([]ForecastResult, e
 
 	}
 	times, values, err := CleanSeries(points)
-if err != nil {
+	if err != nil {
 
 		return nil, err
 
@@ -1005,10 +1005,10 @@ if err != nil {
 	if cfg.IntervalSeconds > 0 {
 
 		iv := time.Duration(cfg.IntervalSeconds)
-* time.Second
+			* time.Second
 
 		rt, rv, err := Resample(times, values, iv, cfg.Method)
-if err == nil && len(rv) >= 3 {
+		if err == nil && len(rv) >= 3 {
 
 			_ = rt
 
@@ -1029,7 +1029,7 @@ if err == nil && len(rv) >= 3 {
 	eval := func(name string, fit []float64, modelFn func(train []float64, horizon int) ([]float64, error)) map[string]float64 {
 
 		preds, acts := Backtest(values, cfg.Horizon, cfg.MinTrain, modelFn)
-if len(preds) == 0 {
+		if len(preds) == 0 {
 
 			return map[string]float64{
 
@@ -1051,9 +1051,9 @@ if len(preds) == 0 {
 		for i := range preds {
 
 			maeSum += MAE(acts[i], preds[i])
-rmseSum += RMSE(acts[i], preds[i])
-mapeSum += MAPE(acts[i], preds[i])
-cnt++
+			rmseSum += RMSE(acts[i], preds[i])
+			mapeSum += MAPE(acts[i], preds[i])
+			cnt++
 
 		}
 		return map[string]float64{
@@ -1082,7 +1082,7 @@ cnt++
 
 				Notes: map[string]string{"skipped": note},
 			})
-// return
+			return
 
 		}
 		m := eval(name, fit, func(train []float64, h int) ([]float64, error) {
@@ -1096,29 +1096,29 @@ cnt++
 			case "seasonal_naive":
 
 				return ModelSeasonalNaive(train, h, cfg.SeasonLength)
-case "drift":
+			case "drift":
 
 				return ModelDrift(train, h), nil
 
 			case "ses":
 
 				fc, _ := ModelSES(train, h, cfg.Alpha)
-// return fc, nil
+				return fc, nil
 
 			case "holt":
 
 				fc, _ := ModelHolt(train, h, cfg.Alpha, cfg.Beta)
-// return fc, nil
+				return fc, nil
 
 			case "holt_winters_add":
 
 				fc, _, err := ModelHoltWintersAdd(train, h, cfg.SeasonLength, cfg.Alpha, cfg.Beta, cfg.Gamma)
-// return fc, err
+				return fc, err
 
 			case "ridge_time_regression":
 
 				return ModelTimeRegression(train, h, cfg.RidgeLambda)
-default:
+			default:
 
 				return nil, errors.New("unknown model")
 
@@ -1151,7 +1151,7 @@ results = append(results, ForecastResult{
 	if cfg.SeasonLength > 0 {
 
 		fc, err := ModelSeasonalNaive(lastTrain, cfg.Horizon, cfg.SeasonLength)
-run("seasonal_naive", fc, nil, errString(err), err == nil)
+		run("seasonal_naive", fc, nil, errString(err), err == nil)
 
 	} else {
 
@@ -1166,19 +1166,19 @@ run("seasonal_naive", fc, nil, errString(err), err == nil)
 	// ses
 
 	fcSES, fitSES := ModelSES(lastTrain, cfg.Horizon, cfg.Alpha)
-run("ses", fcSES, fitSES, "", true)
+	run("ses", fcSES, fitSES, "", true)
 
 	// holt
 
 	fcH, fitH := ModelHolt(lastTrain, cfg.Horizon, cfg.Alpha, cfg.Beta)
-run("holt", fcH, fitH, "", true)
+	run("holt", fcH, fitH, "", true)
 
 	// holt-winters
 
 	if cfg.SeasonLength > 0 {
 
 		fcHW, fitHW, err := ModelHoltWintersAdd(lastTrain, cfg.Horizon, cfg.SeasonLength, cfg.Alpha, cfg.Beta, cfg.Gamma)
-run("holt_winters_add", fcHW, fitHW, errString(err), err == nil)
+		run("holt_winters_add", fcHW, fitHW, errString(err), err == nil)
 
 	} else {
 
@@ -1189,7 +1189,7 @@ run("holt_winters_add", fcHW, fitHW, errString(err), err == nil)
 	// ridge time regression
 
 	fcR, err := ModelTimeRegression(lastTrain, cfg.Horizon, cfg.RidgeLambda)
-run("ridge_time_regression", fcR, nil, errString(err), err == nil)
+	run("ridge_time_regression", fcR, nil, errString(err), err == nil)
 
 	// sort by MAE ascending (NaN goes last); stable by model name
 
@@ -1200,8 +1200,8 @@ run("ridge_time_regression", fcR, nil, errString(err), err == nil)
 		aj := results[j].Metrics["mae"]
 
 		ni := math.IsNaN(ai)
-nj := math.IsNaN(aj)
-if ni && nj {
+		nj := math.IsNaN(aj)
+		if ni && nj {
 
 			return results[i].Model < results[j].Model
 
