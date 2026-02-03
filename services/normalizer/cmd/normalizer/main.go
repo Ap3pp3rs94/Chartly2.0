@@ -117,38 +117,38 @@ func main() {
 
 	})
 
-	// POST /normalize (stub)
+	// POST /normalize (placeholder)
 	mux.HandleFunc("/normalize", func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != http.MethodPost {
 
 			rid := requestIDFromCtx(r.Context())
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		rid := requestIDFromCtx(r.Context())
 		tid := tenantIDFromCtx(r.Context())
-		// var req normalizeRequest
+		var req normalizeRequest
 
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
 
 			writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.JobID) == "" {
 
 			writeError(w, http.StatusBadRequest, "validation_error", "job_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.SourceID) == "" {
 
 			writeError(w, http.StatusBadRequest, "validation_error", "source_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.TenantID) == "" {
@@ -156,9 +156,9 @@ func main() {
 			req.TenantID = tid
 
 		}
-		logJSON(logger, c, "info", "normalize_stub", map[string]any{
+		logJSON(logger, c, "info", "normalize_request", map[string]any{
 
-			"event": "normalize_stub",
+			"event": "normalize_request",
 
 			"tenant_id": req.TenantID,
 
@@ -345,7 +345,7 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				// return
+				return
 
 			}
 
@@ -366,7 +366,7 @@ func withLocalCORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 
 			w.WriteHeader(http.StatusNoContent)
-			// return
+			return
 
 		}
 		next.ServeHTTP(w, r)

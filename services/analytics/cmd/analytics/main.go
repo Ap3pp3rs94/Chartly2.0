@@ -117,38 +117,38 @@ func main() {
 
 	})
 
-	// POST /analyze (stub)
+	// POST /analyze (placeholder)
 	mux.HandleFunc("/analyze", func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != http.MethodPost {
 
 			rid := requestIDFromCtx(r.Context())
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		rid := requestIDFromCtx(r.Context())
 		tid := tenantIDFromCtx(r.Context())
-		// var req analyzeRequest
+		var req analyzeRequest
 
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
 
 			writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.JobID) == "" {
 
 			writeError(w, http.StatusBadRequest, "validation_error", "job_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.SourceID) == "" {
 
 			writeError(w, http.StatusBadRequest, "validation_error", "source_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
 		if strings.TrimSpace(req.TenantID) == "" {
@@ -156,9 +156,9 @@ func main() {
 			req.TenantID = tid
 
 		}
-		logJSON(logger, c, "info", "analyze_stub", map[string]any{
+		logJSON(logger, c, "info", "analyze_request", map[string]any{
 
-			"event": "analyze_stub",
+			"event": "analyze_request",
 
 			"tenant_id": req.TenantID,
 
@@ -179,18 +179,19 @@ func main() {
 
 	})
 
-	// GET /metrics (stub)
+	// GET /metrics (placeholder)
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 
 		if r.Method != http.MethodGet {
 
 			rid := requestIDFromCtx(r.Context())
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
-			// return
+			return
 
 		}
-		rid := requestIDFromCtx(r.Context())
-		writeError(w, http.StatusNotImplemented, "not_implemented", "metrics endpoint not implemented yet", rid, c.RequestIDHeader)
+		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("chartly_analytics_up 1\n"))
 
 	})
 	var handler http.Handler = mux
@@ -360,7 +361,7 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				// return
+				return
 
 			}
 
@@ -381,7 +382,7 @@ func withLocalCORS(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 
 			w.WriteHeader(http.StatusNoContent)
-			// return
+			return
 
 		}
 		next.ServeHTTP(w, r)
