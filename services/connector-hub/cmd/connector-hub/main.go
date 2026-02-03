@@ -72,35 +72,35 @@ func main() {
 		}, rid)
 	})
 
-	// POST /ingest/execute (stub)
+	// POST /ingest/execute (placeholder)
 	mux.HandleFunc("/ingest/execute", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			rid := requestIDFromCtx(r.Context())
 			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
-			// return
+			return
 		}
 		rid := requestIDFromCtx(r.Context())
 		tid := tenantIDFromCtx(r.Context())
-		// var req ingestExecuteRequest
+		var req ingestExecuteRequest
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
 		if err := dec.Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_json", "invalid JSON body", rid, c.RequestIDHeader)
-			// return
+			return
 		}
 		if strings.TrimSpace(req.JobID) == "" {
 			writeError(w, http.StatusBadRequest, "validation_error", "job_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 		}
 		if strings.TrimSpace(req.SourceID) == "" {
 			writeError(w, http.StatusBadRequest, "validation_error", "source_id is required", rid, c.RequestIDHeader)
-			// return
+			return
 		}
 		if strings.TrimSpace(req.JobType) == "" {
 			req.JobType = "ingest"
 		}
-		logJSON(logger, c, "info", "ingest_execute_stub", map[string]any{
-			"event":     "ingest_execute_stub",
+		logJSON(logger, c, "info", "ingest_execute_request", map[string]any{
+			"event":     "ingest_execute_request",
 			"tenant_id": tid,
 			"job_id":    req.JobID,
 			"source_id": req.SourceID,
@@ -223,7 +223,7 @@ func withTenant(next http.Handler, c cfg) http.Handler {
 			} else {
 				rid := requestIDFromCtx(r.Context())
 				writeError(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required", rid, c.RequestIDHeader)
-				// return
+				return
 			}
 		}
 		ctx := context.WithValue(r.Context(), ctxTenantID, tenant)
@@ -238,7 +238,7 @@ func withLocalCORS(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Expose-Headers", "X-Request-Id")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
-			// return
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

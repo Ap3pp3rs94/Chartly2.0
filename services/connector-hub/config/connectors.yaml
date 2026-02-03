@@ -22,7 +22,7 @@ connectors:
     name: "Data.gov Catalog"
     kind: api
     enabled: false
-    capabilities: ["discover", "ingest", "query_stub"]
+    capabilities: ["discover", "ingest", "query_placeholder"]
     endpoints:
       - base_url: "https://catalog.data.gov/api/3/action/"
         notes: "CKAN API base URL (placeholder)."
@@ -38,7 +38,7 @@ connectors:
     name: "USAspending API"
     kind: api
     enabled: false
-    capabilities: ["ingest", "sync", "query_stub"]
+    capabilities: ["ingest", "sync", "query_placeholder"]
     endpoints:
       - base_url: "https://api.usaspending.gov/api/v2/"
         notes: "Public API base URL (placeholder)."
@@ -54,7 +54,7 @@ connectors:
     name: "BLS CPI API"
     kind: api
     enabled: false
-    capabilities: ["ingest", "sync", "query_stub"]
+    capabilities: ["ingest", "sync", "query_placeholder"]
     endpoints:
       - base_url: "https://api.bls.gov/publicAPI/v2/"
         notes: "Public API base URL (placeholder)."
