@@ -1,0 +1,54 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: gateway
+            dockerfile: services/gateway/Dockerfile
+          - name: orchestrator
+            dockerfile: services/orchestrator/Dockerfile
+          - name: connector-hub
+            dockerfile: services/connector-hub/Dockerfile
+          - name: normalizer
+            dockerfile: services/normalizer/Dockerfile
+          - name: analytics
+            dockerfile: services/analytics/Dockerfile
+          - name: storage
+            dockerfile: services/storage/Dockerfile
+          - name: auth
+            dockerfile: services/auth/Dockerfile
+          - name: audit
+            dockerfile: services/audit/Dockerfile
+          - name: observer
+            dockerfile: services/observer/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Dockerfile
+        id: check
+        run: |
+          if [ -f "${{ matrix.dockerfile }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Found ${{ matrix.dockerfile }}"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Missing ${{ matrix.dockerfile }} (skipping)"
+          fi
+
+      - name: Docker build
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          docker build -f "${{ matrix.dockerfile }}" -t "chartly-${{ matrix.name }}:ci" .
