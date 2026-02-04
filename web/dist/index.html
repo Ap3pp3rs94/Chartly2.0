@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Chartly Control Plane</title>
+  <link rel="icon" href="/favicon.svg" />
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <a class="brand" href="/" data-link>
+        <span class="mark" aria-hidden="true"></span>
+        <span class="brandText">
+          <span class="brandTitle">Chartly Control Plane</span>
+          <span class="brandSub">UI  <span id="gwBadge" class="badge">unknown</span></span>
+        </span>
+      </a>
+
+      <nav id="nav" class="nav"></nav>
+
+      <div class="topActions">
+        <button id="btnRefresh" class="btn">Refresh</button>
+        <a class="btn ghost" href="/settings" data-link>Settings</a>
+      </div>
+    </header>
+
+    <div class="shell">
+      <aside class="side">
+        <section class="panel">
+          <div class="panelTitle">Quick Status</div>
+          <div class="kv">
+            <div class="k">Registry</div><div id="svcRegistry" class="v"></div>
+            <div class="k">Aggregator</div><div id="svcAggregator" class="v"></div>
+            <div class="k">Coordinator</div><div id="svcCoordinator" class="v"></div>
+            <div class="k">Reporter</div><div id="svcReporter" class="v"></div>
+          </div>
+          <div class="hr"></div>
+          <div class="kv">
+            <div class="k">Profiles</div><div id="countProfiles" class="v"></div>
+            <div class="k">Drones</div><div id="countDrones" class="v"></div>
+            <div class="k">Results</div><div id="countResults" class="v"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panelTitle">Last Request</div>
+          <div class="small mono" id="lastReqId"></div>
+          <div class="small muted" id="lastReqInfo">No requests yet</div>
+        </section>
+
+        <section class="panel">
+          <div class="panelTitle">Operator Notes</div>
+          <div class="small muted">
+            <div> Uses same-origin <code>/api/*</code>.</div>
+            <div> API key stored in <code>sessionStorage</code> only.</div>
+            <div> If a service endpoint is not implemented, UI shows a planned notice (no silent failures).</div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="main">
+        <div id="page" class="page"></div>
+      </main>
+    </div>
+
+    <footer class="footer small muted">
+      <span>Static SPA</span><span class="dot"></span>
+      <span>no-build</span><span class="dot"></span>
+      <span class="mono" id="buildTag">ui-1</span>
+    </footer>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
