@@ -16,8 +16,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	_ "github.com/lib/pq"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -62,7 +64,8 @@ type serviceDetail struct {
 }
 
 type server struct {
-	db *sql.DB
+	db       *sql.DB
+	dbDriver string
 }
 
 func main() {
@@ -71,17 +74,40 @@ func main() {
 		os.Exit(1)
 	}
 
-	dsn := fmt.Sprintf("file:%s?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=ON", dbPath)
-	db, err := sql.Open("sqlite3", dsn)
+	dbDriver := strings.ToLower(strings.TrimSpace(os.Getenv("DB_DRIVER")))
+	if dbDriver == "" {
+		dbDriver = "sqlite"
+	}
+
+	var dsn string
+	switch dbDriver {
+	case "postgres":
+		dsn = strings.TrimSpace(os.Getenv("DB_DSN"))
+		if dsn == "" {
+			logLine("ERROR", "db_dsn_missing", "driver=%s", dbDriver)
+			os.Exit(1)
+		}
+	case "sqlite":
+		dsn = fmt.Sprintf("file:%s?_busy_timeout=5000&_journal_mode=WAL&_foreign_keys=ON", dbPath)
+	default:
+		logLine("ERROR", "db_driver_invalid", "driver=%s", dbDriver)
+		os.Exit(1)
+	}
+
+	db, err := sql.Open(dbDriver, dsn)
 	if err != nil {
 		logLine("ERROR", "db_open_failed", "err=%s", err.Error())
 		os.Exit(1)
 	}
 	defer db.Close()
 
-	db.SetMaxOpenConns(1)
+	if dbDriver == "sqlite" {
+		db.SetMaxOpenConns(1)
+	} else {
+		db.SetMaxOpenConns(5)
+	}
 
-	s := &server{db: db}
+	s := &server{db: db, dbDriver: dbDriver}
 	if err := s.initSchema(); err != nil {
 		logLine("ERROR", "schema_init_failed", "err=%s", err.Error())
 		os.Exit(1)
@@ -89,6 +115,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/results", s.handleResults)
 	mux.HandleFunc("/results/summary", s.handleSummary)
 	mux.HandleFunc("/records", s.handleRecords)
@@ -111,8 +138,51 @@ func main() {
 }
 
 func (s *server) initSchema() error {
-	stmts := []string{
-		`CREATE TABLE IF NOT EXISTS results (
+	stmts := []string{}
+	if s.dbDriver == "postgres" {
+		stmts = []string{
+			`CREATE TABLE IF NOT EXISTS results (
+	id TEXT PRIMARY KEY,
+	drone_id TEXT NOT NULL,
+	profile_id TEXT NOT NULL,
+	run_id TEXT,
+	timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+	data TEXT NOT NULL
+	);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_drone ON results(drone_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_profile ON results(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);`,
+
+			`CREATE TABLE IF NOT EXISTS records (
+	record_id TEXT NOT NULL,
+	profile_id TEXT NOT NULL,
+	run_id TEXT NOT NULL,
+	timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+	data TEXT NOT NULL,
+	PRIMARY KEY(record_id, profile_id)
+	);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_profile ON records(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_run ON records(run_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_ts ON records(timestamp);`,
+
+			`CREATE TABLE IF NOT EXISTS runs (
+	run_id TEXT PRIMARY KEY,
+	drone_id TEXT NOT NULL,
+	profile_id TEXT NOT NULL,
+	started_at TIMESTAMPTZ NOT NULL,
+	finished_at TIMESTAMPTZ,
+	status TEXT NOT NULL,
+	rows_out INTEGER NOT NULL,
+	duration_ms INTEGER NOT NULL,
+	error TEXT
+	);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_profile ON runs(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_drone ON runs(drone_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);`,
+		}
+	} else {
+		stmts = []string{
+			`CREATE TABLE IF NOT EXISTS results (
 	id TEXT PRIMARY KEY,
 	drone_id TEXT NOT NULL,
 	profile_id TEXT NOT NULL,
@@ -120,11 +190,11 @@ func (s *server) initSchema() error {
 	timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
 	data TEXT NOT NULL
 	);`,
-		`CREATE INDEX IF NOT EXISTS idx_results_drone ON results(drone_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_results_profile ON results(profile_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_drone ON results(drone_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_profile ON results(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);`,
 
-		`CREATE TABLE IF NOT EXISTS records (
+			`CREATE TABLE IF NOT EXISTS records (
 	record_id TEXT NOT NULL,
 	profile_id TEXT NOT NULL,
 	run_id TEXT NOT NULL,
@@ -132,11 +202,11 @@ func (s *server) initSchema() error {
 	data TEXT NOT NULL,
 	PRIMARY KEY(record_id, profile_id)
 	);`,
-		`CREATE INDEX IF NOT EXISTS idx_records_profile ON records(profile_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_records_run ON records(run_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_records_ts ON records(timestamp);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_profile ON records(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_run ON records(run_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_records_ts ON records(timestamp);`,
 
-		`CREATE TABLE IF NOT EXISTS runs (
+			`CREATE TABLE IF NOT EXISTS runs (
 	run_id TEXT PRIMARY KEY,
 	drone_id TEXT NOT NULL,
 	profile_id TEXT NOT NULL,
@@ -147,9 +217,10 @@ func (s *server) initSchema() error {
 	duration_ms INTEGER NOT NULL,
 	error TEXT
 	);`,
-		`CREATE INDEX IF NOT EXISTS idx_runs_profile ON runs(profile_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_runs_drone ON runs(drone_id);`,
-		`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_profile ON runs(profile_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_drone ON runs(drone_id);`,
+			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);`,
+		}
 	}
 
 	for _, q := range stmts {
@@ -192,6 +263,18 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"total_records": totalRecords,
 		"total_runs":    totalRuns,
 	})
+}
+
+func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, metricsSnapshot())
 }
 
 func (s *server) handleResults(w http.ResponseWriter, r *http.Request) {
@@ -237,7 +320,7 @@ func (s *server) handleResultsPost(w http.ResponseWriter, r *http.Request) {
 
 		recordID := recordIDFromJSON(canon)
 		// insert into records (dedupe)
-		res, err := s.db.Exec(`INSERT OR IGNORE INTO records(record_id, profile_id, run_id, data) VALUES(?,?,?,?)`,
+		res, err := s.db.Exec(s.insertRecordSQL(),
 			recordID, in.ProfileID, in.RunID, string(canon))
 		if err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
@@ -256,7 +339,7 @@ func (s *server) handleResultsPost(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "uuid_failed"})
 			return
 		}
-		if _, err := s.db.Exec(`INSERT INTO results(id, drone_id, profile_id, run_id, data) VALUES(?,?,?,?,?)`,
+		if _, err := s.db.Exec(s.insertResultSQL(),
 			id, in.DroneID, in.ProfileID, in.RunID, string(canon)); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
 			return
@@ -276,7 +359,7 @@ func (s *server) handleResultsGet(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit := parseLimit(q.Get("limit"))
 
-	sqlq := `SELECT id, drone_id, profile_id, run_id, timestamp, data FROM results ORDER BY timestamp DESC, id ASC LIMIT ?`
+	sqlq := fmt.Sprintf(`SELECT id, drone_id, profile_id, run_id, timestamp, data FROM results ORDER BY timestamp DESC, id ASC LIMIT %s`, s.ph(1))
 	rows, err := s.db.Query(sqlq, limit)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
@@ -326,18 +409,21 @@ func (s *server) handleRecords(w http.ResponseWriter, r *http.Request) {
 	sqlq := `SELECT data, timestamp, record_id FROM records`
 	conds := make([]string, 0, 2)
 	args := make([]any, 0, 3)
+	idx := 1
 	if profileID != "" {
-		conds = append(conds, "profile_id = ?")
+		conds = append(conds, "profile_id = "+s.ph(idx))
 		args = append(args, profileID)
+		idx++
 	}
 	if runID != "" {
-		conds = append(conds, "run_id = ?")
+		conds = append(conds, "run_id = "+s.ph(idx))
 		args = append(args, runID)
+		idx++
 	}
 	if len(conds) > 0 {
 		sqlq += " WHERE " + strings.Join(conds, " AND ")
 	}
-	sqlq += " ORDER BY timestamp DESC, record_id ASC LIMIT ?"
+	sqlq += " ORDER BY timestamp DESC, record_id ASC LIMIT " + s.ph(idx)
 	args = append(args, limit)
 
 	rows, err := s.db.Query(sqlq, args...)
@@ -406,8 +492,7 @@ func (s *server) handleRunsPost(w http.ResponseWriter, r *http.Request) {
 
 	in.Error = sanitizeError(in.Error)
 
-	_, err := s.db.Exec(`INSERT OR REPLACE INTO runs(run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error)
-	VALUES(?,?,?,?,?,?,?,?,?)`,
+	_, err := s.db.Exec(s.upsertRunSQL(),
 		in.RunID, in.DroneID, in.ProfileID, in.StartedAt, emptyToNull(in.FinishedAt), in.Status, in.RowsOut, in.DurationMs, emptyToNull(in.Error))
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
@@ -438,18 +523,21 @@ func (s *server) handleRunsGet(w http.ResponseWriter, r *http.Request) {
 	sqlq := `SELECT run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error FROM runs`
 	conds := make([]string, 0, 2)
 	args := make([]any, 0, 3)
+	idx := 1
 	if droneID != "" {
-		conds = append(conds, "drone_id = ?")
+		conds = append(conds, "drone_id = "+s.ph(idx))
 		args = append(args, droneID)
+		idx++
 	}
 	if profileID != "" {
-		conds = append(conds, "profile_id = ?")
+		conds = append(conds, "profile_id = "+s.ph(idx))
 		args = append(args, profileID)
+		idx++
 	}
 	if len(conds) > 0 {
 		sqlq += " WHERE " + strings.Join(conds, " AND ")
 	}
-	sqlq += " ORDER BY started_at DESC, run_id ASC LIMIT ?"
+	sqlq += " ORDER BY started_at DESC, run_id ASC LIMIT " + s.ph(idx)
 	args = append(args, limit)
 
 	rows, err := s.db.Query(sqlq, args...)
@@ -500,7 +588,8 @@ func (s *server) handleRunGet(w http.ResponseWriter, r *http.Request) {
 	var rr runRow
 	var finished sql.NullString
 	var errStr sql.NullString
-	row := s.db.QueryRow(`SELECT run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error FROM runs WHERE run_id = ?`, runID)
+	sqlq := fmt.Sprintf(`SELECT run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error FROM runs WHERE run_id = %s`, s.ph(1))
+	row := s.db.QueryRow(sqlq, runID)
 	if err := row.Scan(&rr.RunID, &rr.DroneID, &rr.ProfileID, &rr.StartedAt, &finished, &rr.Status, &rr.RowsOut, &rr.DurationMs, &errStr); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
@@ -577,6 +666,38 @@ func (s *server) count(table string) (int, error) {
 		return 0, err
 	}
 	return total, nil
+}
+
+func (s *server) insertRecordSQL() string {
+	if s.dbDriver == "postgres" {
+		return `INSERT INTO records(record_id, profile_id, run_id, data) VALUES($1,$2,$3,$4) ON CONFLICT (record_id, profile_id) DO NOTHING`
+	}
+	return `INSERT OR IGNORE INTO records(record_id, profile_id, run_id, data) VALUES(?,?,?,?)`
+}
+
+func (s *server) insertResultSQL() string {
+	if s.dbDriver == "postgres" {
+		return `INSERT INTO results(id, drone_id, profile_id, run_id, data) VALUES($1,$2,$3,$4,$5)`
+	}
+	return `INSERT INTO results(id, drone_id, profile_id, run_id, data) VALUES(?,?,?,?,?)`
+}
+
+func (s *server) upsertRunSQL() string {
+	if s.dbDriver == "postgres" {
+		return `INSERT INTO runs(run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error)
+	VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+	ON CONFLICT (run_id) DO UPDATE SET
+	drone_id=EXCLUDED.drone_id,
+	profile_id=EXCLUDED.profile_id,
+	started_at=EXCLUDED.started_at,
+	finished_at=EXCLUDED.finished_at,
+	status=EXCLUDED.status,
+	rows_out=EXCLUDED.rows_out,
+	duration_ms=EXCLUDED.duration_ms,
+	error=EXCLUDED.error`
+	}
+	return `INSERT OR REPLACE INTO runs(run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error)
+	VALUES(?,?,?,?,?,?,?,?,?)`
 }
 
 func decodeJSONStrict(r *http.Request, v any) error {
@@ -660,6 +781,13 @@ func parseLimit(v string) int {
 	return limit
 }
 
+func (s *server) ph(i int) string {
+	if s.dbDriver == "postgres" {
+		return "$" + strconv.Itoa(i)
+	}
+	return "?"
+}
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -687,7 +815,7 @@ func withAuth(next http.Handler) http.Handler {
 	required := envBool("AUTH_REQUIRED", false)
 	tenantRequired := envBool("AUTH_TENANT_REQUIRED", false)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/health" {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -730,6 +858,7 @@ func withRequestLogging(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 
 		dur := time.Since(start).Milliseconds()
+		metricsRecord(rec.status, dur)
 		level := "INFO"
 		if rec.status >= 500 {
 			level = "ERROR"
@@ -763,4 +892,35 @@ func logLine(level, msg, format string, args ...any) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 	line := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stdout, "%s %s %s %s\n", ts, level, msg, line)
+}
+
+// --- minimal metrics ---
+
+var metricsMu sync.Mutex
+var metricsReq int64
+var metricsErr int64
+var metricsDurMs int64
+
+func metricsRecord(status int, durMs int64) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	metricsReq++
+	if status >= 400 {
+		metricsErr++
+	}
+	metricsDurMs += durMs
+}
+
+func metricsSnapshot() map[string]any {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	avg := int64(0)
+	if metricsReq > 0 {
+		avg = metricsDurMs / metricsReq
+	}
+	return map[string]any{
+		"requests_total":  metricsReq,
+		"errors_total":    metricsErr,
+		"avg_duration_ms": avg,
+	}
 }
