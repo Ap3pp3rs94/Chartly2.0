@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONTROL_PLANE="${1:-http://localhost}"
+CONTROL_PLANE="${1:-http://localhost:8090}"
 CONTROL_PLANE="${CONTROL_PLANE%/}"
 
 if ! command -v curl >/dev/null 2>&1; then
@@ -30,6 +30,14 @@ curl -fsS "$CONTROL_PLANE/api/drones/stats" | sed 's/^/  /' || true
 echo ""
 echo "GET /api/results/summary"
 curl -fsS "$CONTROL_PLANE/api/results/summary" | sed 's/^/  /' || true
+
+echo ""
+echo "GET /api/runs (first 1)"
+curl -fsS "$CONTROL_PLANE/api/runs?limit=1" | sed 's/^/  /' || true
+
+echo ""
+echo "GET /api/records (first 1)"
+curl -fsS "$CONTROL_PLANE/api/records?limit=1" | sed 's/^/  /' || true
 
 echo ""
 echo "Done."

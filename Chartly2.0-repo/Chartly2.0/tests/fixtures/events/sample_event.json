@@ -1,6 +1,0 @@
-{
-  "kind": "fixture_event",
-  "msg": "hello from tests/fixtures",
-  "nonce": "fixture-0001",
-  "ts_unix": 0
-}

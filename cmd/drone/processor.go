@@ -10,6 +10,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -30,22 +32,29 @@ type SourceConfig struct {
 }
 
 func ProcessProfile(profile Profile) ([]map[string]interface{}, error) {
-	if strings.TrimSpace(profile.Source.URL) == "" {
+	rawURL := strings.TrimSpace(profile.Source.URL)
+	if rawURL == "" {
 		logProc("missing_source_url profile_id=%s", profile.ID)
 		return []map[string]interface{}{}, fmt.Errorf("missing_source_url")
 	}
 
+	expandedURL, err := ExpandEnvPlaceholders(rawURL)
+	if err != nil {
+		logProc("missing_env_var profile_id=%s err=%s", profile.ID, err.Error())
+		return []map[string]interface{}{}, err
+	}
+
 	client := &http.Client{Timeout: 30 * time.Second}
 
-	raw, err := fetchSource(client, profile.Source.URL)
+	raw, err := fetchSource(client, expandedURL)
 	if err != nil {
-		logProc("fetch_failed url=%s err=%s", profile.Source.URL, err.Error())
+		logProc("fetch_failed host=%s err=%s", safeHost(expandedURL), err.Error())
 		return []map[string]interface{}{}, err
 	}
 
 	var parsed any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
-		logProc("json_parse_failed url=%s err=%s", profile.Source.URL, err.Error())
+		logProc("json_parse_failed host=%s err=%s", safeHost(expandedURL), err.Error())
 		return []map[string]interface{}{}, err
 	}
 
@@ -93,6 +102,33 @@ func ProcessProfile(profile Profile) ([]map[string]interface{}, error) {
 	return out, nil
 }
 
+func ExpandEnvPlaceholders(s string) (string, error) {
+	re := regexp.MustCompile(`\$\{([A-Z0-9_]+)\}`)
+	matches := re.FindAllStringSubmatchIndex(s, -1)
+	if len(matches) == 0 {
+		return s, nil
+	}
+
+	var buf strings.Builder
+	last := 0
+	for _, m := range matches {
+		start := m[0]
+		end := m[1]
+		nameStart := m[2]
+		nameEnd := m[3]
+		name := s[nameStart:nameEnd]
+		val := strings.TrimSpace(os.Getenv(name))
+		if val == "" {
+			return "", fmt.Errorf("missing env var %s", name)
+		}
+		buf.WriteString(s[last:start])
+		buf.WriteString(val)
+		last = end
+	}
+	buf.WriteString(s[last:])
+	return buf.String(), nil
+}
+
 func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -103,6 +139,8 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 		return nil, fmt.Errorf("blocked_host")
 	}
 
+	ua := userAgent()
+
 	// Liberty: BLS timeseries endpoint requires POST; profiles may specify only URL.
 	if strings.EqualFold(u.Host, "api.bls.gov") && strings.Contains(u.Path, "/publicAPI/v2/timeseries/data/") {
 		payload := map[string]any{
@@ -111,7 +149,7 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 		b, _ := json.Marshal(payload)
 		req, _ := http.NewRequest(http.MethodPost, rawURL, bytes.NewReader(b))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("User-Agent", "Chartly-Drone/1.0")
+		req.Header.Set("User-Agent", ua)
 		resp, err := client.Do(req)
 		if err != nil {
 			return nil, err
@@ -125,7 +163,7 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 	}
 
 	req, _ := http.NewRequest(http.MethodGet, rawURL, nil)
-	req.Header.Set("User-Agent", "Chartly-Drone/1.0")
+	req.Header.Set("User-Agent", ua)
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -136,6 +174,26 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 		return nil, fmt.Errorf("http_status_%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+}
+
+func userAgent() string {
+	ua := strings.TrimSpace(os.Getenv("CHARTLY_USER_AGENT"))
+	if ua == "" {
+		return "Chartly-Drone/1.0"
+	}
+	return ua
+}
+
+func safeHost(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "unknown"
+	}
+	h := strings.TrimSpace(u.Hostname())
+	if h == "" {
+		return "unknown"
+	}
+	return h
 }
 
 func isBlockedHost(host string) bool {

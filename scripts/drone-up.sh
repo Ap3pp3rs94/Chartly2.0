@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-CONTROL_PLANE="${CONTROL_PLANE:-http://host.docker.internal}"
+CONTROL_PLANE="${CONTROL_PLANE:-http://host.docker.internal:8090}"
 PROCESS_INTERVAL="${PROCESS_INTERVAL:-5m}"
 DRONE_ID="${DRONE_ID:-}"
 COUNT="${COUNT:-1}"
@@ -16,7 +16,7 @@ Usage:
 
 Notes:
   - Uses docker compose -p to isolate multiple drones.
-  - CONTROL_PLANE defaults to http://host.docker.internal (works with extra_hosts host-gateway).
+  - CONTROL_PLANE defaults to http://host.docker.internal:8090 (works with extra_hosts host-gateway).
 EOF
 }
 

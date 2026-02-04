@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -73,6 +74,7 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/reports", s.handleReports)
 	mux.HandleFunc("/reports/", s.handleReportGet)
 
@@ -97,6 +99,18 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"status": "healthy"})
+}
+
+func (s *server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, metricsSnapshot())
 }
 
 func (s *server) handleReports(w http.ResponseWriter, r *http.Request) {
@@ -475,7 +489,7 @@ func withAuth(next http.Handler) http.Handler {
 	required := envBool("AUTH_REQUIRED", false)
 	tenantRequired := envBool("AUTH_TENANT_REQUIRED", false)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/health" {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -517,6 +531,7 @@ func withRequestLogging(next http.Handler) http.Handler {
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
 		dur := time.Since(start).Milliseconds()
+		metricsRecord(rec.status, dur)
 		level := "INFO"
 		if rec.status >= 500 {
 			level = "ERROR"
@@ -567,4 +582,35 @@ func logLine(level, msg, format string, args ...any) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 	line := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stdout, "%s %s %s %s\n", ts, level, msg, line)
+}
+
+// --- minimal metrics ---
+
+var metricsMu sync.Mutex
+var metricsReq int64
+var metricsErr int64
+var metricsDurMs int64
+
+func metricsRecord(status int, durMs int64) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	metricsReq++
+	if status >= 400 {
+		metricsErr++
+	}
+	metricsDurMs += durMs
+}
+
+func metricsSnapshot() map[string]any {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	avg := int64(0)
+	if metricsReq > 0 {
+		avg = metricsDurMs / metricsReq
+	}
+	return map[string]any{
+		"requests_total":  metricsReq,
+		"errors_total":    metricsErr,
+		"avg_duration_ms": avg,
+	}
 }

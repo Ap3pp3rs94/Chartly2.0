@@ -93,6 +93,7 @@ func main() {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
+	r.HandleFunc("/metrics", s.handleMetrics).Methods(http.MethodGet, http.MethodOptions)
 
 	r.HandleFunc("/profiles", s.handleProfilesList).Methods(http.MethodGet, http.MethodOptions)
 	r.HandleFunc("/profiles", s.handleProfilesCreate).Methods(http.MethodPost, http.MethodOptions)
@@ -103,7 +104,7 @@ func main() {
 	r.HandleFunc("/profiles/{id}:resume", s.handleProfileResume).Methods(http.MethodPost, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}:setSchedule", s.handleProfileSetSchedule).Methods(http.MethodPost, http.MethodOptions)
 
-	handler := withRequestLogging(withCORS(withAuth(r)))
+	handler := requestLoggingMiddleware(withCORS(withAuth(r)))
 
 	addr := ":" + defaultPort
 	server := &http.Server{
@@ -278,6 +279,18 @@ func (s *store) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":         "healthy",
 		"profiles_count": n,
 	})
+}
+
+func (s *store) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, metricsSnapshot())
 }
 
 func (s *store) handleProfilesList(w http.ResponseWriter, r *http.Request) {
@@ -679,7 +692,7 @@ func withAuth(next http.Handler) http.Handler {
 	required := envBool("AUTH_REQUIRED", false)
 	tenantRequired := envBool("AUTH_TENANT_REQUIRED", false)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions || r.URL.Path == "/health" {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" || r.URL.Path == "/metrics" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -723,6 +736,7 @@ func requestLoggingMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 
 		dur := time.Since(start).Milliseconds()
+		metricsRecord(rec.status, dur)
 		level := "INFO"
 		if rec.status >= 500 {
 			level = "ERROR"
@@ -754,4 +768,35 @@ func logLine(level, msg, format string, args ...any) {
 	ts := time.Now().UTC().Format(time.RFC3339)
 	line := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stdout, "%s %s %s %s\n", ts, level, msg, line)
+}
+
+// --- minimal metrics ---
+
+var metricsMu sync.Mutex
+var metricsReq int64
+var metricsErr int64
+var metricsDurMs int64
+
+func metricsRecord(status int, durMs int64) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	metricsReq++
+	if status >= 400 {
+		metricsErr++
+	}
+	metricsDurMs += durMs
+}
+
+func metricsSnapshot() map[string]any {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	avg := int64(0)
+	if metricsReq > 0 {
+		avg = metricsDurMs / metricsReq
+	}
+	return map[string]any{
+		"requests_total":  metricsReq,
+		"errors_total":    metricsErr,
+		"avg_duration_ms": avg,
+	}
 }

@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 RUN apk add --no-cache gcc musl-dev
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -13,3 +13,4 @@ RUN mkdir -p /app/data
 COPY --from=builder /app/aggregator /app/aggregator
 EXPOSE 8082
 CMD ["/app/aggregator"]
+

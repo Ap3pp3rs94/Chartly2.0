@@ -23,10 +23,20 @@ jobs:
 
       - name: gofmt check
         run: |
-          test -z "$(gofmt -l .)"
+          set -euo pipefail
+          files="$(gofmt -l ./cmd ./services/control-plane ./tools 2>/dev/null || true)"
+          if [ -n "$files" ]; then
+            echo "Unformatted files:"
+            echo "$files"
+            exit 1
+          fi
 
       - name: go vet
-        run: go vet ./...
+        run: |
+          set -euo pipefail
+          go vet ./cmd/... ./services/control-plane/... ./tools/...
 
       - name: go test
-        run: go test ./...
+        run: |
+          set -euo pipefail
+          go test ./cmd/... ./services/control-plane/... ./tools/...

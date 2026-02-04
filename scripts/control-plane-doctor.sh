@@ -7,9 +7,9 @@ fail=0
 warn=0
 
 say() { printf "%s\n" "$*"; }
-pass() { say " $*"; }
-w() { warn=$((warn+1)); say " $*"; }
-f() { fail=$((fail+1)); say " $*"; }
+pass() { say "[OK] $*"; }
+w() { warn=$((warn+1)); say "[WARN] $*"; }
+f() { fail=$((fail+1)); say "[FAIL] $*"; }
 
 cd "$ROOT"
 say "Chartly Control-Plane Doctor (bash)"
@@ -76,7 +76,7 @@ check_port() {
 }
 
 # Default expected ports from compose examples. Adjust if you changed docker-compose.control.yml.
-for p in 80 8081 8082 8083; do
+for p in 8090 8091 8092 8093 8094; do
   check_port "$p"
 done
 

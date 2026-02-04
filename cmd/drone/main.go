@@ -13,6 +13,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -21,7 +24,6 @@ import (
 )
 
 const (
-	userAgent        = "Chartly-Drone/1.0"
 	httpTimeout      = 30 * time.Second
 	maxBodyBytes     = 8 << 20
 	defaultInterval  = 5 * time.Minute
@@ -68,6 +70,52 @@ type runReport struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type sourceSpec struct {
+	ID           string            `json:"id"`
+	Name         string            `json:"name"`
+	Version      string            `json:"version"`
+	Description  string            `json:"description"`
+	Source       SourceConfig      `json:"source"`
+	Schedule     *scheduleSpec     `json:"schedule,omitempty"`
+	Limits       *limitsSpec       `json:"limits,omitempty"`
+	MappingHints map[string]string `json:"mapping_hints,omitempty"`
+}
+
+type scheduleSpec struct {
+	Enabled  *bool  `json:"enabled,omitempty"`
+	Interval string `json:"interval,omitempty"`
+	Jitter   string `json:"jitter,omitempty"`
+}
+
+type limitsSpec struct {
+	MaxRecords *int `json:"max_records,omitempty"`
+	MaxPages   *int `json:"max_pages,omitempty"`
+	MaxBytes   *int `json:"max_bytes,omitempty"`
+}
+
+type profileOut struct {
+	ID          string            `yaml:"id"`
+	Name        string            `yaml:"name"`
+	Version     string            `yaml:"version"`
+	Description string            `yaml:"description,omitempty"`
+	Source      SourceConfig      `yaml:"source"`
+	Schedule    *scheduleOut      `yaml:"schedule,omitempty"`
+	Limits      *limitsOut        `yaml:"limits,omitempty"`
+	Mapping     map[string]string `yaml:"mapping"`
+}
+
+type scheduleOut struct {
+	Enabled  bool   `yaml:"enabled"`
+	Interval string `yaml:"interval"`
+	Jitter   string `yaml:"jitter"`
+}
+
+type limitsOut struct {
+	MaxRecords int `yaml:"max_records"`
+	MaxPages   int `yaml:"max_pages"`
+	MaxBytes   int `yaml:"max_bytes"`
+}
+
 func main() {
 	controlPlane := strings.TrimSpace(os.Getenv("CONTROL_PLANE"))
 	if controlPlane == "" {
@@ -110,6 +158,11 @@ func main() {
 
 	assigned := regResp.AssignedProfiles
 	logLine("INFO", droneID, "registered profiles_assigned=%d", len(assigned))
+
+	// Advanced profile generator + auto-mapper (best quality). Runs once on startup.
+	if err := buildProfiles(ctx, client, controlPlane, droneID); err != nil {
+		logLine("WARN", droneID, "profile_build_failed err=%s", err.Error())
+	}
 
 	lastRun := make(map[string]time.Time)
 
@@ -214,6 +267,437 @@ func iteration(ctx context.Context, client *http.Client, cp, droneID string, ass
 	return iterErr
 }
 
+func buildProfiles(ctx context.Context, client *http.Client, cp, droneID string) error {
+	sources, err := loadSourceSpecs()
+	if err != nil {
+		return err
+	}
+	if len(sources) == 0 {
+		return nil
+	}
+
+	apiKey := strings.TrimSpace(os.Getenv("CHARTLY_REGISTRY_API_KEY"))
+	allowOverwrite := strings.EqualFold(strings.TrimSpace(os.Getenv("CHARTLY_PROFILE_OVERWRITE")), "1")
+
+	for _, spec := range sources {
+		id := strings.TrimSpace(spec.ID)
+		if id == "" || strings.Contains(id, "..") || strings.ContainsAny(id, "\\/") {
+			logLine("WARN", droneID, "profile_source_invalid_id id=%s", id)
+			continue
+		}
+
+		if !allowOverwrite {
+			if exists := profileExists(ctx, client, cp, id); exists {
+				continue
+			}
+		}
+
+		if strings.TrimSpace(spec.Source.URL) == "" {
+			logLine("WARN", droneID, "profile_source_missing_url id=%s", id)
+			continue
+		}
+
+		expandedURL, err := ExpandEnvPlaceholders(spec.Source.URL)
+		if err != nil {
+			logLine("WARN", droneID, "profile_source_env_missing id=%s err=%s", id, err.Error())
+			continue
+		}
+
+		raw, err := fetchSource(client, expandedURL)
+		if err != nil {
+			logLine("WARN", droneID, "profile_source_fetch_failed id=%s host=%s err=%s", id, safeHost(expandedURL), err.Error())
+			continue
+		}
+
+		var parsed any
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			logLine("WARN", droneID, "profile_source_invalid_json id=%s err=%s", id, err.Error())
+			continue
+		}
+
+		records := normalizeToRecords(parsed)
+		mapping := autoMap(records, spec.MappingHints)
+		if len(mapping) == 0 {
+			logLine("WARN", droneID, "profile_mapping_empty id=%s", id)
+			continue
+		}
+
+		p := profileOut{
+			ID:          id,
+			Name:        firstNonEmpty(spec.Name, id),
+			Version:     firstNonEmpty(spec.Version, "1.0.0"),
+			Description: strings.TrimSpace(spec.Description),
+			Source:      spec.Source,
+			Schedule:    defaultSchedule(spec.Schedule),
+			Limits:      defaultLimits(spec.Limits),
+			Mapping:     mapping,
+		}
+
+		yamlBytes, err := buildProfileYAML(p)
+		if err != nil {
+			logLine("WARN", droneID, "profile_yaml_build_failed id=%s err=%s", id, err.Error())
+			continue
+		}
+
+		if apiKey == "" {
+			logLine("WARN", droneID, "profile_post_skipped_missing_api_key id=%s", id)
+			continue
+		}
+
+		req := map[string]any{
+			"id":      p.ID,
+			"name":    p.Name,
+			"version": p.Version,
+			"content": string(yamlBytes),
+		}
+
+		if err := postProfile(ctx, client, cp, apiKey, req); err != nil {
+			logLine("WARN", droneID, "profile_post_failed id=%s err=%s", id, err.Error())
+			continue
+		}
+	}
+
+	return nil
+}
+
+func loadSourceSpecs() ([]sourceSpec, error) {
+	if s := strings.TrimSpace(os.Getenv("CHARTLY_PROFILE_SOURCES")); s != "" {
+		return parseSourceSpecs([]byte(s))
+	}
+
+	path := strings.TrimSpace(os.Getenv("CHARTLY_PROFILE_SOURCES_FILE"))
+	if path == "" {
+		path = "/app/profiles/sources.json"
+	}
+
+	candidates := []string{path, "./profiles/sources.json"}
+	for _, p := range candidates {
+		if !fileExists(p) {
+			continue
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		return parseSourceSpecs(b)
+	}
+	return nil, nil
+}
+
+func parseSourceSpecs(b []byte) ([]sourceSpec, error) {
+	var out []sourceSpec
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func fileExists(p string) bool {
+	if p == "" {
+		return false
+	}
+	if !filepath.IsAbs(p) {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+		return false
+	}
+	_, err := os.Stat(p)
+	return err == nil
+}
+
+func profileExists(ctx context.Context, client *http.Client, cp, id string) bool {
+	var out any
+	err := doJSON(ctx, client, http.MethodGet, cp+"/api/profiles/"+id, nil, &out)
+	return err == nil
+}
+
+func postProfile(ctx context.Context, client *http.Client, cp, apiKey string, payload any) error {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cp+"/api/profiles", bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Key", apiKey)
+	req.Header.Set("User-Agent", userAgent())
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return fmt.Errorf("http_error status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	return nil
+}
+
+func defaultSchedule(in *scheduleSpec) *scheduleOut {
+	out := &scheduleOut{
+		Enabled:  true,
+		Interval: "6h",
+		Jitter:   "30s",
+	}
+	if in == nil {
+		return out
+	}
+	if in.Enabled != nil {
+		out.Enabled = *in.Enabled
+	}
+	if strings.TrimSpace(in.Interval) != "" {
+		out.Interval = in.Interval
+	}
+	if strings.TrimSpace(in.Jitter) != "" {
+		out.Jitter = in.Jitter
+	}
+	return out
+}
+
+func defaultLimits(in *limitsSpec) *limitsOut {
+	out := &limitsOut{MaxRecords: 5000, MaxPages: 50, MaxBytes: 1048576}
+	if in == nil {
+		return out
+	}
+	if in.MaxRecords != nil && *in.MaxRecords > 0 {
+		out.MaxRecords = *in.MaxRecords
+	}
+	if in.MaxPages != nil && *in.MaxPages > 0 {
+		out.MaxPages = *in.MaxPages
+	}
+	if in.MaxBytes != nil && *in.MaxBytes > 0 {
+		out.MaxBytes = *in.MaxBytes
+	}
+	return out
+}
+
+func autoMap(records []any, hints map[string]string) map[string]string {
+	flat := make(map[string]any)
+	for _, r := range records {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		flattenRecord(m, "", flat)
+		if len(flat) > 0 {
+			break
+		}
+	}
+
+	mapping := make(map[string]string)
+	keys := make([]string, 0, len(flat))
+	for k := range flat {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		if hints != nil {
+			if v, ok := hints[k]; ok && strings.TrimSpace(v) != "" {
+				mapping[k] = v
+				continue
+			}
+		}
+		val := flat[k]
+		dest := autoDestPath(k, val)
+		if dest == "" {
+			continue
+		}
+		mapping[k] = dest
+	}
+	return mapping
+}
+
+func flattenRecord(v any, prefix string, out map[string]any) {
+	switch t := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(t))
+		for k := range t {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			next := k
+			if prefix != "" {
+				next = prefix + "." + k
+			}
+			flattenRecord(t[k], next, out)
+		}
+	case []any:
+		if len(t) == 0 {
+			return
+		}
+		// sample first element for mapping
+		flattenRecord(t[0], prefix+"[0]", out)
+	default:
+		if prefix != "" {
+			out[prefix] = t
+		}
+	}
+}
+
+func autoDestPath(src string, val any) string {
+	p := normalizePath(src)
+	if p == "" {
+		return ""
+	}
+
+	lp := strings.ToLower(p)
+	if strings.Contains(lp, "year") && isNumberish(val) {
+		return "dims.time.year"
+	}
+	if strings.Contains(lp, "date") || strings.Contains(lp, "timestamp") || strings.Contains(lp, "occurred") {
+		return "dims.time.occurred_at"
+	}
+
+	if isNumberish(val) {
+		return "measures." + p
+	}
+	return "dims." + p
+}
+
+func normalizePath(src string) string {
+	// convert [0] to .0, then normalize to safe tokens
+	s := strings.ReplaceAll(src, "[", ".")
+	s = strings.ReplaceAll(s, "]", "")
+	s = strings.Trim(s, ".")
+	s = strings.ToLower(s)
+
+	parts := strings.Split(s, ".")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		p = sanitizeToken(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, ".")
+}
+
+func sanitizeToken(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+			continue
+		}
+		if r == '-' || r == ' ' {
+			b.WriteRune('_')
+		}
+	}
+	out := b.String()
+	out = strings.Trim(out, "_")
+	return out
+}
+
+func isNumberish(v any) bool {
+	switch t := v.(type) {
+	case float64, float32, int, int64, int32, uint64, uint32, uint:
+		return true
+	case string:
+		if t == "" {
+			return false
+		}
+		_, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		return err == nil
+	default:
+		return false
+	}
+}
+
+func buildProfileYAML(p profileOut) ([]byte, error) {
+	root := &yaml.Node{Kind: yaml.MappingNode}
+	addKV := func(k string, v *yaml.Node) {
+		root.Content = append(root.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: k}, v)
+	}
+
+	addKV("id", &yaml.Node{Kind: yaml.ScalarNode, Value: p.ID})
+	addKV("name", &yaml.Node{Kind: yaml.ScalarNode, Value: p.Name})
+	addKV("version", &yaml.Node{Kind: yaml.ScalarNode, Value: p.Version})
+	if strings.TrimSpace(p.Description) != "" {
+		addKV("description", &yaml.Node{Kind: yaml.ScalarNode, Value: p.Description})
+	}
+
+	// source
+	source := &yaml.Node{Kind: yaml.MappingNode}
+	source.Content = append(source.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "type"}, &yaml.Node{Kind: yaml.ScalarNode, Value: p.Source.Type},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "url"}, &yaml.Node{Kind: yaml.ScalarNode, Value: p.Source.URL},
+		&yaml.Node{Kind: yaml.ScalarNode, Value: "auth"}, &yaml.Node{Kind: yaml.ScalarNode, Value: p.Source.Auth},
+	)
+	addKV("source", source)
+
+	// schedule
+	if p.Schedule != nil {
+		s := &yaml.Node{Kind: yaml.MappingNode}
+		s.Content = append(s.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "enabled"}, &yaml.Node{Kind: yaml.ScalarNode, Value: strconv.FormatBool(p.Schedule.Enabled)},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "interval"}, &yaml.Node{Kind: yaml.ScalarNode, Value: p.Schedule.Interval},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "jitter"}, &yaml.Node{Kind: yaml.ScalarNode, Value: p.Schedule.Jitter},
+		)
+		addKV("schedule", s)
+	}
+
+	// limits
+	if p.Limits != nil {
+		l := &yaml.Node{Kind: yaml.MappingNode}
+		l.Content = append(l.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "max_records"}, &yaml.Node{Kind: yaml.ScalarNode, Value: strconv.Itoa(p.Limits.MaxRecords)},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "max_pages"}, &yaml.Node{Kind: yaml.ScalarNode, Value: strconv.Itoa(p.Limits.MaxPages)},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: "max_bytes"}, &yaml.Node{Kind: yaml.ScalarNode, Value: strconv.Itoa(p.Limits.MaxBytes)},
+		)
+		addKV("limits", l)
+	}
+
+	// mapping (sorted)
+	mapping := &yaml.Node{Kind: yaml.MappingNode}
+	keys := make([]string, 0, len(p.Mapping))
+	for k := range p.Mapping {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		mapping.Content = append(mapping.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Value: k},
+			&yaml.Node{Kind: yaml.ScalarNode, Value: p.Mapping[k]},
+		)
+	}
+	addKV("mapping", mapping)
+
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	enc.SetIndent(2)
+	if err := enc.Encode(root); err != nil {
+		_ = enc.Close()
+		return nil, err
+	}
+	_ = enc.Close()
+
+	out := buf.Bytes()
+	if len(out) == 0 || out[len(out)-1] != '\n' {
+		out = append(out, '\n')
+	}
+	return out, nil
+}
+
+func firstNonEmpty(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
+}
+
 func fetchWorkQueue(ctx context.Context, client *http.Client, cp, droneID string) map[string]bool {
 	out := make(map[string]bool)
 	var wr workResponse
@@ -316,7 +800,7 @@ func doJSON(ctx context.Context, client *http.Client, method, url string, body a
 		if err != nil {
 			return err
 		}
-		req.Header.Set("User-Agent", userAgent)
+		req.Header.Set("User-Agent", userAgent())
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

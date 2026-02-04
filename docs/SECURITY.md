@@ -63,6 +63,14 @@ Chartly integrates with external identity systems that issue verifiable credenti
 - Tokens MUST be time-bound
 - Token validation failures MUST fail closed
 
+### Starter auth controls (implementation)
+The control plane supports simple, provider-neutral auth gates:
+- `AUTH_REQUIRED=true` enforces `X-Principal` on all non-health endpoints
+- `AUTH_TENANT_REQUIRED=true` enforces `X-Tenant-ID` alongside `X-Principal`
+- Gateway supports API key files and JWT HS256 secret file (see `docs/DEPLOYMENT.md`)
+
+These are **starter controls** and should be replaced by a real IdP + RBAC in production.
+
 ---
 
 ## Authorization & RBAC

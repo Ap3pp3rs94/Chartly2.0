@@ -1,23 +1,22 @@
 # Deployment
 
-This document covers how to deploy the **Chartly hybrid control-plane + drone** architecture in a governed, repeatable way.
+This document covers how to deploy the **Chartly control plane + drones** in a governed, repeatable way.
 
-> Provider-neutral principle: the system should run on any Docker host and on any Kubernetes distribution.
-> Where cloud providers are mentioned (AWS/GCP/Azure), they are **options**, not assumptions.
+Provider-neutral principle: the system should run on any Docker host and on any Kubernetes distribution. Cloud providers (AWS/GCP/Azure) are **options**, not assumptions.
 
 ---
 
 ## Components
 
-**Control plane (Docker Compose example):**
-- **gateway**: public entrypoint, reverse-proxies internal services and serves the UI (if built)
-- **registry**: stores/serves profiles (YAML) for drones to consume
-- **aggregator**: stores results (SQLite in the starter implementation)
-- **coordinator**: tracks drones and assigns profiles
-- **reporter**: builds reports by joining records (table + correlation)
+**Control plane:**
+- **gateway**: public entrypoint, reverse-proxy to internal services, optional UI hosting
+- **registry**: profile storage/serving (YAML) for drones
+- **aggregator**: results + records + runs (SQLite or Postgres)
+- **coordinator**: drone registry, work queue, profile assignment
+- **reporter**: ad-hoc reports (joins/correlation)
 
 **Drones:**
-- edge workers that periodically fetch sources described by profiles and post normalized results back to the control plane.
+- edge workers that fetch external sources and post normalized records to the control plane
 
 ---
 
@@ -27,134 +26,133 @@ This document covers how to deploy the **Chartly hybrid control-plane + drone** 
 Best for:
 - local validation
 - demos
-- initial integration work
+- integration work
 
-Expected files:
+Required files:
 - `docker-compose.control.yml`
 - `docker-compose.drone.yml`
 - `profiles/government/*.yaml`
 
-Run (Windows PowerShell):
+Windows:
 ```powershell
 cd C:\Chartly2.0
+.\scripts\control-plane-doctor.ps1
 .\scripts\deploy-control.ps1
 .\scripts\start-drone.ps1 -ControlPlane http://localhost:8090
 ```
 
-Run (macOS/Linux bash):
+Mac/Linux:
 ```bash
 cd /path/to/Chartly2.0
+chmod +x scripts/*.sh
+./scripts/control-plane-doctor.sh
 ./scripts/control-plane-up.sh
-./scripts/drone-up.sh --control-plane http://localhost:8090
+./scripts/drone-up.sh --control-plane http://localhost:8090 --count 1
 ```
 
-Verify:
-- `http://localhost:8090/health`
-- `http://localhost:8090/api/status`
-- `http://localhost:8090/api/profiles`
-- `http://localhost:8090/api/results/summary`
-
-Stop:
-```powershell
-.\scripts\stop-all.ps1
-```
-```bash
-./scripts/stop-all.sh
-```
-
-Reset data (dry-run by default):
-```powershell
-.\scripts\reset-data.ps1
-```
-```bash
-./scripts/reset-data.sh
-```
-
----
-
-### 2) Single Host (Docker Engine)
+### 2) Single-host staging (Docker Compose)
 Best for:
-- on‑prem single-node deployments
-- labs
-- edge gateways
+- a small team
+- a single VM or bare-metal host
 
-Guidance:
-- Use the compose files directly or convert them into systemd services.
-- Keep `/app/data` mounted on persistent storage.
+Recommendations:
+- pin image tags (avoid `latest`)
+- mount persistent volumes for `profiles/` and `data/`
+- expose only the gateway publicly
+- put the gateway behind a TLS terminator (reverse proxy)
 
----
-
-### 3) Kubernetes (recommended for production)
+### 3) Kubernetes (Production-style)
 Best for:
 - HA control plane
-- rolling upgrades
-- multi-tenant environments
+- independent scaling of services and drones
+- integration with centralized ingress/observability
 
-Recommended approach:
-- use Helm charts (`infra/helm/chartly`) for the platform
-- use `values-<env>.yaml` per environment
-- use per-namespace installs
+Provider-neutral approach:
+- Deploy each service as a Deployment + Service
+- Use a PersistentVolumeClaim for aggregator persistence
+- Use Ingress or Gateway API for the gateway
 
-Kubernetes runtime options (provider-neutral):
-- managed Kubernetes (AWS EKS / GCP GKE / Azure AKS) — optional
-- self-managed Kubernetes (k3s, kubeadm, OpenShift) — optional
-
----
-
-## Environment layers
-
-A minimal layering model:
-
-1. **Base chart / manifests** (provider-neutral defaults)
-2. **Environment overlays** (`dev`, `staging`, `prod`)
-3. **Project overlays** (tenant-specific)
+Cloud options:
+- AWS: EKS
+- GCP: GKE
+- Azure: AKS
+- Also valid: k3s, kind, OpenShift, on-prem Kubernetes
 
 ---
 
-## Ports (defaults)
+## Configuration
 
-Control plane (Docker example):
-- gateway: `8090`
-- registry: `8091`
-- aggregator: `8092`
-- coordinator: `8093`
-- reporter: `8094`
+### Environment variables (common)
 
----
+Gateway:
+- `REGISTRY_URL` (default `http://registry:8081`)
+- `AGGREGATOR_URL` (default `http://aggregator:8082`)
+- `COORDINATOR_URL` (default `http://coordinator:8083`)
+- `REPORTER_URL` (default `http://reporter:8084`)
 
-## Upgrade strategy
+Coordinator:
+- `REGISTRY_URL` (default `http://registry:8081`)
 
-Safe upgrades require:
-- immutable images
-- deterministic config
-- schema evolution discipline
+Registry:
+- `PROFILES_DIR` (default `/app/profiles/government`)
 
-Recommended flow:
-1. Build + tag immutable images
-2. Deploy to `dev`
-3. Promote to `staging`
-4. Promote to `prod`
+Aggregator:
+- `DB_DRIVER` (`sqlite` or `postgres`)
+- `DB_DSN` (Postgres connection string when `DB_DRIVER=postgres`)
 
----
+Drones:
+- `CONTROL_PLANE` (required)
+- `DRONE_ID` (optional; generated if blank)
+- `PROCESS_INTERVAL` (optional; default `5m`)
 
-## Data retention
+### Auth (optional)
+Control-plane services can enforce auth with:
+- `AUTH_REQUIRED=true`
+- `AUTH_TENANT_REQUIRED=true` (enforces `X-Tenant-ID`)
 
-- Results are stored in SQLite by default.
-- In production, migrate to a managed database or a persistent volume.
-- Back up `/app/data/results.db` regularly.
-
----
-
-## Security baseline
-
-- Control plane services run as non-root.
-- No secrets embedded in the chart or docs.
-- API write endpoints are gated via `X-API-Key` + `REGISTRY_API_KEY`.
+Gateway supports:
+- `AUTH_JWT_HS256_SECRET_FILE=/path/to/secret`
+- `AUTH_API_KEYS_FILE=/path/to/api_keys.json`
+- `AUTH_API_KEYS_TTL_SECONDS=30`
 
 ---
 
-## Next steps
+## Persistence
 
-- Add Helm-based production manifests
-- Add CI to validate compose + profiles
-- Add multi-node drone scheduling
+### Local Compose
+- `./profiles` mounted into registry
+- `./data/control-plane` mounted into aggregator
+
+### Production recommendation
+SQLite is fine for dev and demos. For production:
+- use Postgres or another managed DB
+- move profile delivery to GitOps and publish into the registry
+- consider persistent report storage
+
+---
+
+## Security considerations
+
+- No secrets in profiles or code
+- Gate profile writes with API keys (starter), replace with real auth in production
+- Enforce least privilege on drones and services
+- Restrict egress for drones in production
+- Use TLS at the gateway/ingress
+
+---
+
+## Scaling guidance
+
+- Drones scale horizontally
+- Coordinator is stateful in-memory (production should externalize state)
+- Aggregator becomes the bottleneck (move to Postgres before scaling)
+
+---
+
+## Operational checklist
+
+- gateway `/health` returns healthy or degraded
+- registry reports profiles loaded
+- drones register and heartbeat
+- results are arriving in aggregator
+- data volume persists across restarts

@@ -5,7 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 TIMEOUT_SEC="${TIMEOUT_SEC:-90}"
-CONTROL_PLANE="${CONTROL_PLANE:-http://localhost}"
+CONTROL_PLANE="${CONTROL_PLANE:-http://localhost:8090}"
 
 printf "%s\n" "Running doctor..."
 "$ROOT/scripts/control-plane-doctor.sh"

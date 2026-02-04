@@ -1,126 +1,133 @@
 # Troubleshooting
 
-This document lists common issues and deterministic fixes for the Chartly control plane + drone system.
+This guide covers common failure modes for the control plane + drones.
 
 ---
 
-## Quick checks
+## Quick triage
 
-### 1) Is Docker reachable?
+Control plane containers:
 ```bash
-docker info
+docker compose -f docker-compose.control.yml ps
 ```
-If this fails, Docker Desktop (or engine) is not running.
 
-### 2) Is the control plane healthy?
-```bash
-curl -fsS http://localhost:8090/health
+Tail logs (Windows):
+```powershell
+.\scripts\logs.ps1
+.\scripts\logs.ps1 gateway
 ```
-If this fails, check service logs:
+
+Tail logs (Mac/Linux):
 ```bash
 ./scripts/logs.sh
+./scripts/logs.sh gateway
 ```
 
-### 3) Are profiles present?
+List drone containers:
 ```bash
-curl -fsS http://localhost:8090/api/profiles
-```
-If empty, verify `profiles/government/*.yaml` exists.
-
----
-
-## Common issues
-
-### Docker is not reachable
-**Symptom:** `docker info` fails
-
-**Fix:**
-- Start Docker Desktop (Windows/macOS) or the Docker daemon (Linux)
-- Re-run `scripts/control-plane-doctor` for validation
-
----
-
-### Port already in use
-**Symptom:** `bind: address already in use`
-
-**Fix:**
-- Stop the conflicting service
-- Or change the port mapping in `docker-compose.control.yml`
-
----
-
-### Registry returns 403 on POST
-**Symptom:** `{"error":"forbidden"}` or `{"error":"api_key_not_configured"}`
-
-**Fix:**
-- Ensure `REGISTRY_API_KEY` is set in the registry container
-- Use `X-API-Key` header for POST requests
-
----
-
-### Profiles list is empty
-**Symptom:** `GET /api/profiles` returns `[]`
-
-**Fix:**
-- Ensure `profiles/government/*.yaml` exists on the host
-- Ensure the registry container has a volume mount to `profiles/`
-
----
-
-### Results not appearing
-**Symptom:** `GET /api/results/summary` shows `total_results = 0`
-
-**Fix:**
-- Verify drone is running: `GET /api/drones`
-- Check drone logs: `./scripts/logs.sh --drone <project>`
-- Check aggregator logs: `./scripts/logs.sh aggregator`
-
----
-
-### Reporter returns empty output
-**Symptom:** `/api/reports` returns empty result table
-
-**Fix:**
-- Ensure records exist for the input profile_id
-- Check `/api/records?profile_id=...&limit=10`
-
----
-
-### Coordinator shows no active drones
-**Symptom:** `/api/drones/stats` shows `active=0`
-
-**Fix:**
-- Ensure drone process is running
-- Verify heartbeat endpoint: `POST /api/drones/heartbeat`
-
----
-
-### Health shows degraded
-**Symptom:** `/health` or `/api/status` returns `degraded`
-
-**Fix:**
-- Identify which service is down in `/api/status`
-- Restart that service: `docker compose -f docker-compose.control.yml up -d <service>`
-
----
-
-## Reset and recovery
-
-### Reset data (dry-run default)
-```bash
-./scripts/reset-data.sh
-```
-
-### Reset data (destructive)
-```bash
-./scripts/reset-data.sh --apply
+docker ps --filter "name=chartly-drone-" --format "{{.Names}}"
 ```
 
 ---
 
-## Support artifacts
+## 1) Docker compose fails
 
-When filing an issue or requesting help, include:
-- output of `./scripts/control-plane-doctor.sh`
-- recent logs: `./scripts/logs.sh --no-follow --tail 200`
-- `/api/status` response
+Symptoms:
+- `docker: command not found`
+- `docker compose: not a docker command`
+
+Fix:
+- Install/upgrade Docker Desktop (Windows/Mac)
+- Install Docker Engine + Compose v2 (Linux)
+
+---
+
+## 2) Ports already in use
+
+Symptoms:
+- compose fails to start
+- gateway unreachable at `http://localhost:8090`
+
+Fix:
+- stop the conflicting service
+- or change port mappings in `docker-compose.control.yml`
+
+---
+
+## 3) Gateway /health is degraded
+
+Meaning: gateway is up, but one or more downstream services are unhealthy.
+
+Fix:
+- inspect `/api/status`
+- check service logs
+
+---
+
+## 4) Profiles not loading
+
+Symptoms:
+- registry `/health` shows `profiles_count=0`
+- drones register with zero profiles
+
+Fix:
+- confirm `profiles/government/*.yaml` exist
+- verify volume mount `./profiles:/app/profiles`
+- check registry logs
+
+---
+
+## 5) POST /profiles returns 403
+
+Cause:
+- `REGISTRY_API_KEY` not configured, or missing `X-API-Key`
+
+Fix:
+- set `REGISTRY_API_KEY` and include header in requests
+
+---
+
+## 6) Drone cannot reach control plane
+
+Symptoms:
+- connection refused or DNS errors in drone logs
+
+Fix:
+- if drone runs in Docker, use `http://host.docker.internal:8090`
+- verify gateway port mapping in compose
+
+---
+
+## 7) Upstream APIs return 403 or 429
+
+Public APIs often enforce quotas or strict user-agent policies.
+
+Fix:
+- increase interval (`PROCESS_INTERVAL`)
+- reduce concurrent drones
+- verify endpoint supports GET (some require POST)
+
+---
+
+## 8) Aggregator database errors
+
+Symptoms:
+- `database locked` (SQLite)
+- write permission errors
+
+Fix:
+- ensure `./data/control-plane` is writable
+- do not run multiple aggregator replicas with SQLite
+- switch to Postgres for production
+
+---
+
+## 9) No results even with active drones
+
+Checklist:
+- drones registered? (`/api/drones`)
+- profiles visible? (`/api/profiles`)
+- upstream source returns JSON
+- mapping matches returned JSON shape
+
+Tip: start with a single known-good profile and one drone.

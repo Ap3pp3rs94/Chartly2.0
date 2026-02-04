@@ -1,4 +1,4 @@
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -12,3 +12,4 @@ COPY --from=builder /app/gateway /app/gateway
 COPY web/dist /app/web/dist
 EXPOSE 8080
 CMD ["/app/gateway"]
+
