@@ -1,6 +1,6 @@
 FROM golang:1.22-alpine AS builder
 WORKDIR /src
-COPY services/analytics/go.mod services/analytics/go.sum ./
+COPY services/analytics/go.mod ./
 RUN go mod download
 COPY services/analytics ./
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/analytics ./cmd/analytics
