@@ -100,5 +100,8 @@ func NewRouter() http.Handler {
 	// Analytics correlate
 	mux.HandleFunc("/api/analytics/correlate", methodOnly(http.MethodPost, requireJSON(handlers.Correlate)))
 	mux.HandleFunc("/api/analytics/correlate/export", methodOnly(http.MethodGet, handlers.CorrelateExport))
+
+	// Profile builder
+	mux.HandleFunc("/api/profile-builder/generate", methodOnly(http.MethodPost, requireJSON(handlers.ProfileBuilderGenerate)))
 	return recoverer(mux)
 }

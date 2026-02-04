@@ -17,13 +17,27 @@ services:
       context: .
       dockerfile: services/control-plane/aggregator/Dockerfile
     ports: ["8092:8082"]
+    environment:
+      DB_DRIVER: postgres
+      DB_DSN: ${CHARTLY_DB_DSN:-postgres://chartly:chartly@postgres:5432/chartly?sslmode=disable}
     volumes: ["./data/control-plane:/app/data"]
+    depends_on: [postgres]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${CHARTLY_DB_USER:-chartly}
+      POSTGRES_PASSWORD: ${CHARTLY_DB_PASSWORD:-chartly}
+      POSTGRES_DB: ${CHARTLY_DB_NAME:-chartly}
+    ports: ["5432:5432"]
+    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    restart: unless-stopped
 
   coordinator:
     build:
@@ -55,6 +69,18 @@ services:
       timeout: 5s
       retries: 3
 
+  profile-builder:
+    build:
+      context: .
+      dockerfile: services/profile-builder/Dockerfile
+    ports: ["8095:8085"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   gateway:
     build:
       context: .
@@ -65,7 +91,8 @@ services:
       AGGREGATOR_URL: http://aggregator:8082
       COORDINATOR_URL: http://coordinator:8083
       REPORTER_URL: http://reporter:8084
-    depends_on: [registry, aggregator, coordinator, reporter]
+      PROFILE_BUILDER_URL: http://profile-builder:8085
+    depends_on: [registry, aggregator, coordinator, reporter, profile-builder]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
