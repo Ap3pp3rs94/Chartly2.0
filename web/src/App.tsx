@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, Route, Routes, useLocation } from "react-router-dom";
+import Correlate from "@/pages/Correlate";
 
 type HealthState = "unknown" | "ok" | "error";
 
@@ -154,7 +155,8 @@ const navItems = [
   { to: "/storage", label: "Storage" },
   { to: "/audit", label: "Audit" },
   { to: "/auth", label: "Auth" },
-  { to: "/observer", label: "Observer" }
+  { to: "/observer", label: "Observer" },
+  { to: "/correlate", label: "Correlate" }
 ];
 
 export default function App() {
@@ -194,6 +196,7 @@ export default function App() {
           <Route path="/audit" element={<Audit />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/observer" element={<Observer />} />
+          <Route path="/correlate" element={<Correlate />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </main>

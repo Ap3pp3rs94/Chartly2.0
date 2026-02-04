@@ -92,5 +92,13 @@ func NewRouter() http.Handler {
 
 	// Reports (placeholder)
 	mux.HandleFunc("/reports", methodOnly(http.MethodPost, requireJSON(handlers.Reports)))
+
+	// Profiles (schema introspection)
+	mux.HandleFunc("/api/profiles", methodOnly(http.MethodGet, handlers.ListProfiles))
+	mux.HandleFunc("/api/profiles/", methodOnly(http.MethodGet, handlers.GetProfileSchema))
+
+	// Analytics correlate
+	mux.HandleFunc("/api/analytics/correlate", methodOnly(http.MethodPost, requireJSON(handlers.Correlate)))
+	mux.HandleFunc("/api/analytics/correlate/export", methodOnly(http.MethodGet, handlers.CorrelateExport))
 	return recoverer(mux)
 }

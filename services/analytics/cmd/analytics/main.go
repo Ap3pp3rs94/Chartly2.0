@@ -32,6 +32,8 @@ import (
 	"syscall"
 
 	"time"
+
+	"github.com/Ap3pp3rs94/Chartly2.0/services/analytics/api/handlers"
 )
 
 const serviceName = "analytics"
@@ -177,6 +179,24 @@ func main() {
 			"request_id": rid,
 		}, rid)
 
+	})
+
+	// Correlate (joins + Pearson)
+	mux.HandleFunc("/api/analytics/correlate", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			rid := requestIDFromCtx(r.Context())
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
+			return
+		}
+		handlers.Correlate(w, r)
+	})
+	mux.HandleFunc("/api/analytics/correlate/export", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			rid := requestIDFromCtx(r.Context())
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", rid, c.RequestIDHeader)
+			return
+		}
+		handlers.CorrelateExport(w, r)
 	})
 
 	// GET /metrics (placeholder)
