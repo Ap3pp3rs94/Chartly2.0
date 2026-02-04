@@ -150,8 +150,9 @@ func main() {
 	mux.Handle("/api/reports/", stripPrefixProxy("/api", repProxy))
 	mux.Handle("/api/reports", stripPrefixProxy("/api", repProxy))
 
-	mux.Handle("/api/analytics/", stripPrefixProxy("/api", anaProxy))
-	mux.Handle("/api/analytics", stripPrefixProxy("/api", anaProxy))
+	// Analytics service expects /api/analytics/* paths (do not strip /api)
+	mux.Handle("/api/analytics/", anaProxy)
+	mux.Handle("/api/analytics", anaProxy)
 
 	// Static + SPA fallback (everything else)
 	mux.HandleFunc("/", serveSPA(distDir))
