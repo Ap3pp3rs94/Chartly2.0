@@ -1,0 +1,17 @@
+id: data-moco-retail
+name: Montgomery County Retail Sales
+version: 1.0.0
+description: Montgomery County warehouse and retail sales
+schedule:
+  enabled: true
+  interval: 6h
+  jitter: 30s
+limits:
+  max_records: 5000
+  max_pages: 50
+  max_bytes: 1048576
+source:
+  type: http_rest
+  url: https://data.montgomerycountymd.gov/resource/v76h-r7br.json?=1000
+  auth: none
+mapping: {}

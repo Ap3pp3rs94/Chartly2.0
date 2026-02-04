@@ -1,0 +1,17 @@
+id: data-wa-ev-population
+name: WA EV Population
+version: 1.0.0
+description: Washington State electric vehicle population
+schedule:
+  enabled: true
+  interval: 6h
+  jitter: 30s
+limits:
+  max_records: 5000
+  max_pages: 50
+  max_bytes: 1048576
+source:
+  type: http_rest
+  url: https://data.wa.gov/resource/f6w7-q2d2.json?=1000
+  auth: none
+mapping: {}
