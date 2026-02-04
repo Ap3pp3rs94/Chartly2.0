@@ -1,3 +1,0 @@
-./e2e_ingestion_test.go
-./multi_tenant_test.go
-./report_gen_test.go

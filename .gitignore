@@ -158,3 +158,5 @@ tmp/
 minio-data/
 pgdata/
 redis-data/
+
+.gocache
