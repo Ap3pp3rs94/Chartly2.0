@@ -33,6 +33,7 @@ const (
 	defaultAggregatorURL  = "http://aggregator:8082"
 	defaultCoordinatorURL = "http://coordinator:8083"
 	defaultReporterURL    = "http://reporter:8084"
+	defaultAnalyticsURL   = "http://analytics:8086"
 
 	defaultRateLimitRPS   = 10
 	defaultRateLimitBurst = 20
@@ -63,11 +64,13 @@ func main() {
 	aggregatorURL := envOr("AGGREGATOR_URL", defaultAggregatorURL)
 	coordinatorURL := envOr("COORDINATOR_URL", defaultCoordinatorURL)
 	reporterURL := envOr("REPORTER_URL", defaultReporterURL)
+	analyticsURL := envOr("ANALYTICS_URL", defaultAnalyticsURL)
 
 	regProxy := mustProxy(registryURL)
 	aggProxy := mustProxy(aggregatorURL)
 	cooProxy := mustProxy(coordinatorURL)
 	repProxy := mustProxy(reporterURL)
+	anaProxy := mustProxy(analyticsURL)
 
 	mux := http.NewServeMux()
 
@@ -81,16 +84,29 @@ func main() {
 			return
 		}
 
-		sum := checkAll(registryURL, aggregatorURL, coordinatorURL, reporterURL)
+		sum := checkAll(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
 		status := "healthy"
 		if sum["services"].(map[string]string)["registry"] != "up" ||
 			sum["services"].(map[string]string)["aggregator"] != "up" ||
 			sum["services"].(map[string]string)["coordinator"] != "up" ||
-			sum["services"].(map[string]string)["reporter"] != "up" {
+			sum["services"].(map[string]string)["reporter"] != "up" ||
+			sum["services"].(map[string]string)["analytics"] != "up" {
 			status = "degraded"
 		}
 		sum["status"] = status
 		writeJSON(w, http.StatusOK, sum)
+	})
+
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, metricsSnapshot())
 	})
 
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +119,7 @@ func main() {
 			return
 		}
 
-		out := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL)
+		out := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
 		status := "healthy"
 		for _, v := range out.Services {
 			if v.Status != "up" {
@@ -134,6 +150,9 @@ func main() {
 	mux.Handle("/api/reports/", stripPrefixProxy("/api", repProxy))
 	mux.Handle("/api/reports", stripPrefixProxy("/api", repProxy))
 
+	mux.Handle("/api/analytics/", stripPrefixProxy("/api", anaProxy))
+	mux.Handle("/api/analytics", stripPrefixProxy("/api", anaProxy))
+
 	// Static + SPA fallback (everything else)
 	mux.HandleFunc("/", serveSPA(distDir))
 
@@ -145,8 +164,8 @@ func main() {
 
 	// Middleware order: X-Request-ID -> Logging -> CORS -> Auth -> RateLimit
 	var handler http.Handler = mux
-	handler = withRateLimit(rateLimiter)
-	handler = withAuth(authCfg)
+	handler = withRateLimit(rateLimiter)(handler)
+	handler = withAuth(authCfg)(handler)
 	handler = withCORS(handler)
 	handler = withLogging(handler)
 	handler = withRequestID(handler)
@@ -158,7 +177,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	logLine("INFO", "starting", "addr=%s registry=%s aggregator=%s coordinator=%s reporter=%s", addr, registryURL, aggregatorURL, coordinatorURL, reporterURL)
+	logLine("INFO", "starting", "addr=%s registry=%s aggregator=%s coordinator=%s reporter=%s analytics=%s", addr, registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logLine("ERROR", "listen_failed", "err=%s", err.Error())
 		os.Exit(1)
@@ -198,6 +217,9 @@ func mustProxy(target string) *httputil.ReverseProxy {
 		}
 		if principal := principalFromContext(r.Context()); principal != "" {
 			r.Header.Set("X-Principal", principal)
+		}
+		if tenant := tenantFromContext(r.Context()); tenant != "" {
+			r.Header.Set("X-Tenant-ID", tenant)
 		}
 	}
 	p.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
@@ -245,12 +267,13 @@ func serveSPA(root string) http.HandlerFunc {
 	}
 }
 
-func checkAll(reg, agg, coo, rep string) map[string]any {
+func checkAll(reg, agg, coo, rep, ana string) map[string]any {
 	svcs := map[string]string{
 		"registry":    upOrDown(reg + "/health"),
 		"aggregator":  upOrDown(agg + "/health"),
 		"coordinator": upOrDown(coo + "/health"),
 		"reporter":    upOrDown(rep + "/health"),
+		"analytics":   upOrDown(ana + "/health"),
 	}
 	return map[string]any{
 		"status":   "healthy",
@@ -258,7 +281,7 @@ func checkAll(reg, agg, coo, rep string) map[string]any {
 	}
 }
 
-func checkAllDetailed(reg, agg, coo, rep string) statusDetailed {
+func checkAllDetailed(reg, agg, coo, rep, ana string) statusDetailed {
 	return statusDetailed{
 		Status: "healthy",
 		Services: map[string]serviceDetail{
@@ -266,6 +289,7 @@ func checkAllDetailed(reg, agg, coo, rep string) statusDetailed {
 			"aggregator":  upOrDownDetailed(agg + "/health"),
 			"coordinator": upOrDownDetailed(coo + "/health"),
 			"reporter":    upOrDownDetailed(rep + "/health"),
+			"analytics":   upOrDownDetailed(ana + "/health"),
 		},
 	}
 }
@@ -305,8 +329,11 @@ type authConfig struct {
 	Audience         []string
 	JWKSURL          string
 	HS256Secret      string
+	HS256SecretFile  string
 	LeewaySeconds    int64
 	APIKeys          map[string]struct{}
+	APIKeysFile      string
+	APIKeysTTL       time.Duration
 	AllowAnonymous   map[string]struct{}
 	JWKSCacheTTL     time.Duration
 	RequireAuthPaths []string
@@ -320,9 +347,11 @@ func loadAuthConfig() *authConfig {
 	issuer := strings.TrimSpace(os.Getenv("AUTH_JWT_ISSUER"))
 	jwksURL := strings.TrimSpace(os.Getenv("AUTH_JWT_JWKS_URL"))
 	hsecret := strings.TrimSpace(os.Getenv("AUTH_JWT_HS256_SECRET"))
+	hsecretFile := strings.TrimSpace(os.Getenv("AUTH_JWT_HS256_SECRET_FILE"))
 	aud := strings.TrimSpace(os.Getenv("AUTH_JWT_AUDIENCE"))
 	leeway := envInt64("AUTH_JWT_LEEWAY_SECONDS", 60)
 	cacheTTL := time.Duration(envInt64("AUTH_JWT_JWKS_TTL_SECONDS", 600)) * time.Second
+	apiKeysTTL := time.Duration(envInt64("AUTH_API_KEYS_TTL_SECONDS", 60)) * time.Second
 	requireTenant := envBool("AUTH_TENANT_REQUIRED", false)
 	tenantClaim := strings.TrimSpace(os.Getenv("AUTH_TENANT_CLAIM"))
 	if tenantClaim == "" {
@@ -333,18 +362,26 @@ func loadAuthConfig() *authConfig {
 		tenantHeader = "X-Tenant-ID"
 	}
 
+	apiKeysFile := strings.TrimSpace(os.Getenv("AUTH_API_KEYS_FILE"))
 	apiKeys := parseKeySet(os.Getenv("AUTH_API_KEYS"))
+	if hsecret == "" && hsecretFile != "" {
+		hsecret = strings.TrimSpace(readFileString(hsecretFile))
+	}
 
 	cfg := &authConfig{
-		Issuer:        issuer,
-		JWKSURL:       jwksURL,
-		HS256Secret:   hsecret,
-		LeewaySeconds: leeway,
-		Audience:      splitCSV(aud),
-		APIKeys:       apiKeys,
+		Issuer:          issuer,
+		JWKSURL:         jwksURL,
+		HS256Secret:     hsecret,
+		HS256SecretFile: hsecretFile,
+		LeewaySeconds:   leeway,
+		Audience:        splitCSV(aud),
+		APIKeys:         apiKeys,
+		APIKeysFile:     apiKeysFile,
+		APIKeysTTL:      apiKeysTTL,
 		AllowAnonymous: map[string]struct{}{
 			"/health":      {},
 			"/api/status":  {},
+			"/metrics":     {},
 			"/favicon.ico": {},
 		},
 		JWKSCacheTTL:  cacheTTL,
@@ -422,11 +459,15 @@ func authenticateRequest(cfg *authConfig, r *http.Request) (string, string, bool
 }
 
 func apiKeyValid(cfg *authConfig, key string) bool {
-	if len(cfg.APIKeys) == 0 {
+	keySet := cfg.APIKeys
+	if cfg.APIKeysFile != "" {
+		keySet = getAPIKeysFromFile(cfg.APIKeysFile, cfg.APIKeysTTL)
+	}
+	if len(keySet) == 0 {
 		return false
 	}
 	h := sha256Hex([]byte(key))
-	_, ok := cfg.APIKeys[h]
+	_, ok := keySet[h]
 	return ok
 }
 
@@ -775,6 +816,7 @@ func withLogging(next http.Handler) http.Handler {
 		next.ServeHTTP(rec, r)
 		dur := time.Since(start).Milliseconds()
 		ts := time.Now().UTC().Format(time.RFC3339)
+		metricsRecord(rec.status, dur)
 		fmt.Fprintf(os.Stdout, "%s method=%s path=%s status=%d duration_ms=%d\n",
 			ts, r.Method, r.URL.Path, rec.status, dur)
 	})
@@ -784,7 +826,7 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, Authorization, X-Tenant-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {
@@ -838,6 +880,76 @@ func parseKeySet(v string) map[string]struct{} {
 		out[h] = struct{}{}
 	}
 	return out
+}
+
+type apiKeyFileCache struct {
+	mu      sync.RWMutex
+	path    string
+	ttl     time.Duration
+	last    time.Time
+	modTime time.Time
+	keys    map[string]struct{}
+}
+
+var apiKeyCache = &apiKeyFileCache{}
+
+func getAPIKeysFromFile(path string, ttl time.Duration) map[string]struct{} {
+	if path == "" {
+		return map[string]struct{}{}
+	}
+	apiKeyCache.mu.Lock()
+	defer apiKeyCache.mu.Unlock()
+
+	if apiKeyCache.path != path {
+		apiKeyCache.path = path
+		apiKeyCache.keys = nil
+		apiKeyCache.last = time.Time{}
+		apiKeyCache.modTime = time.Time{}
+	}
+
+	if time.Since(apiKeyCache.last) < ttl && apiKeyCache.keys != nil {
+		return apiKeyCache.keys
+	}
+
+	fi, err := os.Stat(path)
+	if err != nil {
+		apiKeyCache.keys = map[string]struct{}{}
+		apiKeyCache.last = time.Now()
+		return apiKeyCache.keys
+	}
+	if apiKeyCache.modTime.Equal(fi.ModTime()) && apiKeyCache.keys != nil {
+		apiKeyCache.last = time.Now()
+		return apiKeyCache.keys
+	}
+
+	b, err := os.ReadFile(path)
+	if err != nil {
+		apiKeyCache.keys = map[string]struct{}{}
+		apiKeyCache.last = time.Now()
+		return apiKeyCache.keys
+	}
+	lines := strings.Split(string(b), "\n")
+	keys := make(map[string]struct{}, len(lines))
+	for _, line := range lines {
+		s := strings.TrimSpace(line)
+		if s == "" || strings.HasPrefix(s, "#") {
+			continue
+		}
+		h := sha256Hex([]byte(s))
+		keys[h] = struct{}{}
+	}
+	apiKeyCache.keys = keys
+	apiKeyCache.last = time.Now()
+	apiKeyCache.modTime = fi.ModTime()
+	return keys
+}
+
+func readFileString(path string) string {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }
 
 func shortKeyHash(k string) string {
@@ -922,4 +1034,36 @@ func tenantFromClaims(cfg *authConfig, claims map[string]any) string {
 		}
 	}
 	return ""
+}
+
+// --- minimal metrics ---
+
+var metricsMu sync.Mutex
+var metricsReq int64
+var metricsErr int64
+var metricsDurMs int64
+
+func metricsRecord(status int, durMs int64) {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	metricsReq++
+	if status >= 400 {
+		metricsErr++
+	}
+	metricsDurMs += durMs
+}
+
+func metricsSnapshot() map[string]any {
+	metricsMu.Lock()
+	defer metricsMu.Unlock()
+	avg := int64(0)
+	if metricsReq > 0 {
+		avg = metricsDurMs / metricsReq
+	}
+	return map[string]any{
+		"requests_total":   metricsReq,
+		"errors_total":     metricsErr,
+		"avg_duration_ms":  avg,
+		"last_updated_utc": time.Now().UTC().Format(time.RFC3339),
+	}
 }

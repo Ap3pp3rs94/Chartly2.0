@@ -69,6 +69,21 @@ services:
       timeout: 5s
       retries: 3
 
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    ports: ["8096:8086"]
+    environment:
+      ANALYTICS_ADDR: ":8086"
+      ANALYTICS_ENV: "local"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   profile-builder:
     build:
       context: .
@@ -91,8 +106,9 @@ services:
       AGGREGATOR_URL: http://aggregator:8082
       COORDINATOR_URL: http://coordinator:8083
       REPORTER_URL: http://reporter:8084
+      ANALYTICS_URL: http://analytics:8086
       PROFILE_BUILDER_URL: http://profile-builder:8085
-    depends_on: [registry, aggregator, coordinator, reporter, profile-builder]
+    depends_on: [registry, aggregator, coordinator, reporter, analytics, profile-builder]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
