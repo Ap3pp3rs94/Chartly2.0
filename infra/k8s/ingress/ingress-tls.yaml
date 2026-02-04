@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chartly-gateway
+  namespace: chartly
+  annotations:
+    # Add your ingress controller annotations here (example: cert-manager)
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - chartly.example.com
+      secretName: chartly-tls
+  rules:
+    - host: chartly.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-gateway
+                port:
+                  number: 8080
