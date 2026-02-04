@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/canonical/metric.schema.json",
+  "title": "Chartly Canonical Metric (v1)",
+  "description": "A canonical Metric is a timestamped numeric observation suitable for time-series storage and analytics. Metrics are scoped by tenant and source and are traceable to raw inputs via raw_ref.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable metric identifier (ULID recommended)."
+    },
+    "metric_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Metric name (e.g., api.latency_ms, price.usd, orders.count)."
+    },
+    "ts": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp for the observation."
+    },
+    "value": {
+      "type": "number",
+      "description": "Numeric metric value."
+    },
+    "dimensions": {
+      "type": "object",
+      "description": "Optional metric dimensions (tags). Keys/values are domain-specific. Avoid high-cardinality values unless necessary.",
+      "maxProperties": 96,
+      "additionalProperties": true
+    },
+    "source_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Source identifier associated with this metric."
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope identifier."
+    },
+    "raw_ref": {
+      "type": "object",
+      "description": "Reference to immutable raw input that supports traceability.",
+      "additionalProperties": false,
+      "properties": {
+        "bucket": { "type": "string", "minLength": 1, "description": "Blob storage bucket." },
+        "key": { "type": "string", "minLength": 1, "description": "Blob storage object key." },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "description": "SHA-256 hex digest of the raw payload."
+        },
+        "content_type": { "type": "string", "minLength": 1, "description": "MIME content type of the raw payload." },
+        "captured_at": { "type": "string", "format": "date-time", "description": "RFC3339 capture time for the raw payload." },
+        "size_bytes": { "type": "integer", "minimum": 0, "description": "Optional raw payload size in bytes." }
+      },
+      "required": ["bucket", "key", "sha256", "content_type", "captured_at"]
+    }
+  },
+  "required": [
+    "id",
+    "metric_name",
+    "ts",
+    "value",
+    "dimensions",
+    "source_id",
+    "tenant_id",
+    "raw_ref"
+  ]
+}

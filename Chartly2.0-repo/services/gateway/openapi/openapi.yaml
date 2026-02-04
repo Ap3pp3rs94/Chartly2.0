@@ -1,0 +1,30 @@
+openapi: 3.0.3
+info:
+  title: Chartly Gateway API
+  version: "0.1.0"
+  description: "Minimal OpenAPI definition for gateway health endpoints."
+servers:
+  - url: http://localhost:8080
+paths:
+  /health:
+    get:
+      summary: Liveness check
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+  /ready:
+    get:
+      summary: Readiness check
+      responses:
+        "200":
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true

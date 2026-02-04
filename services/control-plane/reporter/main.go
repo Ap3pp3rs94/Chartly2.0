@@ -76,7 +76,7 @@ func main() {
 	mux.HandleFunc("/reports", s.handleReports)
 	mux.HandleFunc("/reports/", s.handleReportGet)
 
-	handler := withCORS(withRequestLogging(mux))
+	handler := withRequestLogging(withCORS(withAuth(mux)))
 
 	addr := ":" + defaultPort
 	srv := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
@@ -456,6 +456,49 @@ func canonicalJSONBytes(v any) []byte {
 	return append(b, '\n')
 }
 
+func envBool(key string, def bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return def
+	}
+}
+
+func withAuth(next http.Handler) http.Handler {
+	required := envBool("AUTH_REQUIRED", false)
+	tenantRequired := envBool("AUTH_TENANT_REQUIRED", false)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !required {
+			next.ServeHTTP(w, r)
+			return
+		}
+		principal := strings.TrimSpace(r.Header.Get("X-Principal"))
+		if principal == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			return
+		}
+		if tenantRequired {
+			tenant := strings.TrimSpace(r.Header.Get("X-Tenant-ID"))
+			if tenant == "" {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "tenant_required"})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // --- Middleware ---
 
 type statusRecorder struct {
@@ -490,7 +533,7 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, X-Principal, X-Tenant-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {

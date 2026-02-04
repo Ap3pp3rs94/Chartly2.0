@@ -1,0 +1,84 @@
+version: "1.0"
+
+inherits:
+  base_retention_file: "profiles/core/base/retention.yaml"
+  strategy:
+    - "override: planes.* retention days"
+    - "tighten: audit immutability and legal hold requirements"
+    - "do_not_change: append-only audit semantics"
+
+retention_engine:
+  enforcement: "roadmap"
+  notes:
+    - "Finance domain requires longer retention for audit defensibility."
+    - "Lifecycle jobs must record deletions/compactions as audit records."
+
+planes:
+  raw_plane:
+    enabled: true
+    default_retention_days: 180
+    deletion_policy: "delete_after_retention"
+    compaction_policy: "none"
+    notes:
+      - "Raw retained long enough for replay and audit sampling."
+
+  canonical_plane:
+    enabled: true
+    default_retention_days: 1095     # 3 years
+    deletion_policy: "delete_after_retention"
+    compaction_policy:
+      enabled: true
+      strategy: "time_bucket_compaction"
+      bucket_granularity: "day"
+      downsampling_roadmap: true
+    notes:
+      - "Canonical retained for multi-year reporting and trend analysis."
+
+  audit_plane:
+    enabled: true
+    default_retention_days: 3650     # 10 years
+    immutability: true
+    deletion_policy: "no_delete_by_default"
+    verification_retention:
+      keep_hash_chain_forever: true
+      verification_snapshots_days: 3650
+    notes:
+      - "Audit plane is append-only; do not delete in normal operation."
+
+legal_hold:
+  required: true
+  behavior: "skip_deletion_when_hold_present"
+  notes:
+    - "Legal hold overrides raw/canonical retention deletions."
+    - "Hold actions must be audited."
+
+tenant_overrides:
+  allowed: true
+  minima_enforced: true
+  minima_days:
+    raw_plane: 90
+    canonical_plane: 730
+    audit_plane: 3650
+  notes:
+    - "Tenants may request longer retention but cannot go below minima."
+
+compliance_notes:
+  framework: "SOX-style"
+  guidance:
+    - "Retain audit evidence for multi-year periods."
+    - "Ensure reproducibility: profile/contract versions must be retained alongside data."
+    - "Deletion/compaction must be auditable and reversible where feasible."
+
+llm_assist:
+  enabled: false
+  notes:
+    - "Retention is governance-sensitive; no LLM-driven changes."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Increase raw retention for a regulated data source
+# planes:
+#   raw_plane:
+#     default_retention_days: 365
+# -----------------------------------------------------------------------------

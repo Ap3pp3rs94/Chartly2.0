@@ -1,0 +1,100 @@
+env: local
+name: chartly-local
+
+services:
+  gateway:
+    base_url: "http://localhost:8080"
+  orchestrator:
+    base_url: "http://localhost:8081"
+  connector_hub:
+    base_url: "http://localhost:8082"
+  normalizer:
+    base_url: "http://localhost:8083"
+  analytics:
+    base_url: "http://localhost:8084"
+  storage:
+    base_url: "http://localhost:8085"
+  audit:
+    base_url: "http://localhost:8086"
+  auth:
+    base_url: "http://localhost:8087"
+  observer:
+    base_url: "http://localhost:8088"
+
+storage:
+  postgres:
+    host: "localhost"
+    port: 5432
+    database: "chartly"
+    user: "chartly"
+    password: "chartly"
+    dsn: "postgres://chartly:chartly@localhost:5432/chartly?sslmode=disable"
+  redis:
+    url: "redis://localhost:6379/0"
+  blob:
+    provider: "minio"
+    s3_endpoint: "http://localhost:9000"
+    region: "us-east-1"
+    access_key: "minioadmin"
+    secret_key: "minioadmin"
+    buckets:
+      raw: "chartly-raw"
+      artifacts: "chartly-artifacts"
+
+queue:
+  backend: "redis"
+  redis_streams:
+    prefix: "chartly"
+    maxlen: 100000
+    streams:
+      ingest: "chartly:ingest"
+      normalize: "chartly:normalize"
+      audit: "chartly:audit"
+      events: "chartly:events"
+      dlq: "chartly:dlq"
+
+connector_hub:
+  defaults:
+    max_concurrency: 500
+    per_domain_concurrency: 10
+    default_rpm: 120
+    timeout_seconds: 30
+    retry:
+      max_attempts: 3
+      base_backoff_ms: 500
+      max_backoff_ms: 8000
+    circuit_breaker:
+      failure_threshold: 10
+      open_seconds: 60
+
+normalizer:
+  limits:
+    max_records_per_job: 20000
+    max_dimensions_per_record: 64
+    max_dimension_value_len: 256
+  quarantine:
+    enabled: true
+
+audit:
+  enabled: true
+  hash_algo: "sha256"
+  append_only: true
+
+auth:
+  enabled: false
+  jwt:
+    issuer: "chartly-local"
+    audience: "chartly"
+    signing_key_env: "AUTH_JWT_SIGNING_KEY"
+
+observability:
+  log_level: "info"
+  otel:
+    enabled: false
+    exporter_otlp_endpoint: "http://localhost:4317"
+    protocol: "grpc"
+
+feature_flags:
+  analytics_enabled: false
+  web_enabled: false
+  sdk_codegen_enabled: false

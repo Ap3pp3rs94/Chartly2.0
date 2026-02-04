@@ -1,0 +1,27 @@
+{{/* Chartly TypeScript Types Template (placeholder)
+
+This template is reserved for a future schema->TypeScript generator that uses templates rather than quicktype.
+It is not currently used by the repository scripts.
+
+Intended inputs:
+- schema_title: string
+- type_name: string (PascalCase)
+- fields: array
+  - name: string
+  - type: string
+  - optional: bool
+  - comment: string
+
+Intended output:
+- One .ts file per schema that exports:
+  - interface/type for the schema
+  - supporting types for nested objects
+  - optional runtime validators (future)
+
+Example (illustrative only):
+
+export interface {{type_name}} {
+  {{fields.0.name}}{{if fields.0.optional}}?{{end}}: {{fields.0.type}};
+}
+
+*/}}

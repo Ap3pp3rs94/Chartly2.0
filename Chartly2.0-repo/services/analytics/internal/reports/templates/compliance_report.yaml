@@ -1,0 +1,239 @@
+# Chartly 2.0  Compliance & Governance Report (DATA-ONLY)
+#
+# IMPORTANT:
+# - This YAML file is a TEMPLATE CATALOG ARTIFACT for future loading.
+# - It does NOT create endpoints, persistence, or any compliance guarantees.
+# - Use it as a structured checklist and evidence container when generating reports.
+#
+# Aligns with services/analytics/internal/reports/report_engine.go models.
+
+template:
+  id: "compliance_report_v1"
+  title: "Compliance & Governance Checklist  {{tenant_id}}"
+  subtitle: "Source {{source_id}}  Connector {{connector_id}}  Job {{job_id}}  {{generated_at}}"
+  summary: >
+    Policy-oriented evidence report for data handling controls and boundary checks.
+    This template is a structured checklist and evidence container; it does not assert
+    compliance with any external standard by itself.
+
+  meta:
+    template_family: "compliance"
+    owner: "analytics"
+    version: "v1"
+    stability: "draft"
+    posture: "evidence_container"
+    notes: "Data-only scaffold; requires loader/registry to be used."
+
+  sections:
+    - id: "scope"
+      title: "Scope & Identifiers"
+      kind: "text"
+      text: |-
+        **Tenant:** {{tenant_id}}
+        **Request:** {{request_id}}
+        **Report:** {{report_id}}
+        **Template:** {{template_id}}
+
+        **Pipeline identifiers**
+        - Source ID: {{source_id}}
+        - Connector ID: {{connector_id}}
+        - Job ID: {{job_id}}
+
+        **Scope statement**
+        This report documents the evidence and control checks available in the supplied input payload.
+        It is intended to support internal governance review and operational controls validation.
+
+      meta:
+        role: "scope"
+
+    - id: "policy_statement"
+      title: "Data Handling Policy Checklist"
+      kind: "text"
+      text: |-
+        This section is a POLICY CHECKLIST (not a legal assertion).
+
+        **Control themes (examples)**
+        - Tenant boundary enforcement: all data and actions are scoped to {{tenant_id}}.
+        - Minimization: only required fields are retained for analytics/reporting.
+        - Sensitive data handling: suspected PII is quarantined/redacted based on policy.
+        - Auditability: key events produce traceable identifiers (e.g., request id, job id).
+        - Retention: downstream retention/disposition is policy-driven and environment-specific.
+
+        **Evidence inputs expected**
+        - Quarantine summary: {{quarantine.summary_path}}
+        - Schema validation summary: {{schema.summary_path}}
+        - Audit trail excerpt: {{audit.path}}
+
+      meta:
+        role: "policy_checklist"
+
+    - id: "pii_quarantine"
+      title: "PII / Quarantine Summary"
+      kind: "table"
+      table_key: "quarantine.table"
+      meta:
+        role: "quarantine_table"
+        expectation: "Provide quarantine.table as {columns,rows} or array of row objects."
+        caution: "Avoid embedding raw sensitive values in the report input."
+
+    - id: "pii_quarantine_json"
+      title: "PII / Quarantine Details (Structured)"
+      kind: "json"
+      json_key: "quarantine.details"
+      meta:
+        role: "quarantine_json"
+        expectation: "Provide aggregated counts + reason codes, not raw payloads where possible."
+
+    - id: "schema_conformance"
+      title: "Schema Conformance Summary"
+      kind: "table"
+      table_key: "schema.table"
+      meta:
+        role: "schema_table"
+        expectation: "Provide schema.table as {columns,rows} or array of row objects."
+
+    - id: "schema_conformance_json"
+      title: "Schema Conformance Details (Structured)"
+      kind: "json"
+      json_key: "schema.details"
+      meta:
+        role: "schema_json"
+        expectation: "Include missing required fields, type mismatches, drift indicators (if available)."
+
+    - id: "tenant_boundary"
+      title: "Tenant Boundary & Access Notes"
+      kind: "text"
+      text: |-
+        **Tenant boundary reminder**
+        - Inputs and outputs should remain scoped to tenant {{tenant_id}}.
+        - Any cross-tenant aggregation should be explicitly authorized by policy and configuration.
+
+        **Header/identity evidence (if provided)**
+        - Tenant header: {{headers.tenant}}
+        - Request header: {{headers.request_id}}
+
+        **Notes**
+        This section is informational and depends on what the upstream pipeline provides.
+        If tenant identity is missing in non-local environments, generation should fail in strict mode.
+
+      meta:
+        role: "tenant_boundary"
+
+    - id: "retention"
+      title: "Retention & Disposition Notes"
+      kind: "text"
+      text: |-
+        **Retention (policy-driven)**
+        Retention and disposition are environment and sink dependent. This template does not enforce
+        retention rules; it documents the configured intent and any evidence provided by upstream inputs.
+
+        **Expected evidence paths (optional)**
+        - Retention policy id: {{retention.policy_id}}
+        - Sink type: {{storage.sink_type}}
+        - Disposition mode: {{retention.disposition}}
+
+        **Operational guidance**
+        - Prefer storing aggregated metrics over raw payloads.
+        - If raw payloads are stored, ensure access controls and encryption are configured at the sink layer.
+
+      meta:
+        role: "retention"
+
+    - id: "audit_trail"
+      title: "Audit Trail Excerpt"
+      kind: "json"
+      json_key: "audit.events"
+      meta:
+        role: "audit_json"
+        expectation: "Include structured events (ts, actor, action, ids). Avoid raw secrets."
+
+    - id: "exceptions_signoff"
+      title: "Exceptions & Sign-off"
+      kind: "text"
+      text: |-
+        **Exceptions**
+        - List any deviations from expected controls and the associated risk acceptance rationale.
+        - Example: missing schema validation evidence, missing quarantine rollups, missing tenant identity metadata.
+
+        **Sign-off (template placeholder)**
+        - Reviewed by: {{signoff.reviewer}}
+        - Date: {{signoff.date}}
+        - Decision: {{signoff.decision}} (approve|approve_with_conditions|reject)
+        - Notes: {{signoff.notes}}
+
+        _This is a placeholder section. The report engine only expands placeholders;
+        operational sign-off workflows are outside the scope of this template._
+
+      meta:
+        role: "signoff"
+
+constraints:
+  required_paths:
+    - "quarantine.table"
+    - "schema.table"
+  optional_paths:
+    - "quarantine.details"
+    - "schema.details"
+    - "audit.events"
+    - "retention"
+    - "headers"
+    - "signoff"
+  placeholder_expectations:
+    - "Provide aggregated evidence where possible (counts, codes), not raw sensitive payloads."
+
+example_input:
+  # Illustrative only.
+  tenant_id: "acme"
+  request_id: "req_123"
+  source_id: "src_001"
+  connector_id: "conn_http"
+  job_id: "job_20260130_0001"
+  generated_at: "2026-01-30T12:34:56Z"
+
+  headers:
+    tenant: "X-Tenant-Id"
+    request_id: "X-Request-Id"
+
+  quarantine:
+    summary_path: "quarantine.details"
+    table:
+      columns: ["reason", "code", "count"]
+      rows:
+        - ["pii_detected", "PII_EMAIL", 12]
+        - ["schema_violation", "SCHEMA_TYPE_MISMATCH", 3]
+    details:
+      totals:
+        quarantined: 15
+      by_code:
+        PII_EMAIL: 12
+        SCHEMA_TYPE_MISMATCH: 3
+
+  schema:
+    summary_path: "schema.details"
+    table:
+      columns: ["field", "issue", "count"]
+      rows:
+        - ["email", "type_mismatch", 2]
+        - ["id", "missing_required", 1]
+    details:
+      missing_required: ["id"]
+      type_mismatch:
+        - { field: "email", expected: "string", got: "object" }
+
+  audit:
+    path: "audit.events"
+    events:
+      - { ts: "2026-01-30T12:35:01Z", actor: "system", action: "ingest_started", job_id: "job_20260130_0001" }
+      - { ts: "2026-01-30T12:35:10Z", actor: "system", action: "quarantine_applied", job_id: "job_20260130_0001", quarantined: 15 }
+
+  retention:
+    policy_id: "ret_default_30d"
+    disposition: "aggregate_only"
+  storage:
+    sink_type: "none"
+
+  signoff:
+    reviewer: "unassigned"
+    date: "2026-01-30"
+    decision: "pending"
+    notes: "none"

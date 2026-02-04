@@ -1,362 +1,160 @@
-# Chartly 2.0  Deployment
+# Deployment
 
-## Contract status & trust model
+This document covers how to deploy the **Chartly hybrid control-plane + drone** architecture in a governed, repeatable way.
 
-This document defines **how Chartly is deployed and promoted** across environments in a way that is deterministic, auditable, and provider-neutral.
-
-### Legend
--  **Implemented**  verified in code and/or conformance tests
-- 🛠 **Planned**  desired contract, may not exist yet
-- 🧪 **Experimental**  available but may change without full deprecation guarantees
-
-**Rule:** Anything not explicitly marked  is 🛠.
-
-### Promotion criteria (🛠  )
-A deployment behavior becomes  only when:
-- it is declaratively defined (manifests, charts, or plans),
-- it is repeatable (same inputs  same result),
-- and at least one dry-run or smoke test validates it.
+> Provider-neutral principle: the system should run on any Docker host and on any Kubernetes distribution.
+> Where cloud providers are mentioned (AWS/GCP/Azure), they are **options**, not assumptions.
 
 ---
 
-## Deployment philosophy
+## Components
 
-Chartly follows **contract-first deployment**:
+**Control plane (Docker Compose example):**
+- **gateway**: public entrypoint, reverse-proxies internal services and serves the UI (if built)
+- **registry**: stores/serves profiles (YAML) for drones to consume
+- **aggregator**: stores results (SQLite in the starter implementation)
+- **coordinator**: tracks drones and assigns profiles
+- **reporter**: builds reports by joining records (table + correlation)
 
-- infrastructure defines **where**
-- manifests define **what**
-- profiles define **behavior**
-- workflows define **execution**
-
-Each layer has a single responsibility. No layer may compensate for another.
-
----
-
-## Supported deployment modes
-
-Chartly supports multiple deployment mechanisms. These are **equivalent in intent**, not necessarily in ergonomics.
-
-| Mode | Primary use | Characteristics |
-|------|-------------|----------------|
-| Raw manifests | Learning, debugging | Explicit, low magic |
-| Helm charts | Standard environments | Parameterized, repeatable |
-| Terraform + overlays | Full environments | Contract-driven infra + deploy |
+**Drones:**
+- edge workers that periodically fetch sources described by profiles and post normalized results back to the control plane.
 
 ---
 
-## Environment model
+## Deployment modes
 
-Chartly environments are **explicit and isolated**.
+### 1) Local / Dev (Docker Compose)
+Best for:
+- local validation
+- demos
+- initial integration work
 
-### Canonical environments
-- `dev`  rapid iteration, lowest guardrails
-- `staging`  production-like, pre-release validation
-- `prod`  locked-down, audited
+Expected files:
+- `docker-compose.control.yml`
+- `docker-compose.drone.yml`
+- `profiles/government/*.yaml`
 
-### Environment invariants
-- Separate namespaces / clusters / projects
-- Separate profiles and overlays
-- No shared secrets or mutable state
-- Promotion is forward-only (`dev`  `staging`  `prod`)
+Run (Windows PowerShell):
+```powershell
+cd C:\Chartly2.0
+.\scripts\deploy-control.ps1
+.\scripts\start-drone.ps1 -ControlPlane http://localhost:8090
+```
 
----
+Run (macOS/Linux bash):
+```bash
+cd /path/to/Chartly2.0
+./scripts/control-plane-up.sh
+./scripts/drone-up.sh --control-plane http://localhost:8090
+```
 
-## Control plane vs data plane deployment
+Verify:
+- `http://localhost:8090/health`
+- `http://localhost:8090/api/status`
+- `http://localhost:8090/api/profiles`
+- `http://localhost:8090/api/results/summary`
 
-Chartly components are deployed with strict plane separation.
+Stop:
+```powershell
+.\scripts\stop-all.ps1
+```
+```bash
+./scripts/stop-all.sh
+```
 
-### Control plane
-- Gateway
-- Orchestrator
-- Auth
-- Audit
-- Observer
-
-**Properties**
-- Lower churn
-- Higher security posture
-- Strict RBAC
-- Small blast radius
-
-### Data plane
-- Connector Hub
-- Normalizer
-- Analytics
-- Storage
-
-**Properties**
-- Scales independently
-- Higher throughput
-- Tuned resource profiles
-- Can be rolled independently
-
----
-
-## Deployment security invariants (hard rules)
-
-These invariants apply to **all environments** and **all services**:
-
-- Containers MUST run as non-root
-- Root filesystems MUST be read-only
-- Writable paths MUST be explicitly declared
-- Secrets MUST NOT appear in manifests, charts, or plans
-- Network exposure MUST be explicit (no implicit ingress)
-- Default-deny network posture is RECOMMENDED
-
-Violations invalidate the deployment contract.
+Reset data (dry-run by default):
+```powershell
+.\scripts\reset-data.ps1
+```
+```bash
+./scripts/reset-data.sh
+```
 
 ---
 
-## Base deployment units
+### 2) Single Host (Docker Engine)
+Best for:
+- on‑prem single-node deployments
+- labs
+- edge gateways
 
-Each Chartly service is deployed as:
-
-- Deployment (or equivalent)
-- Service (stable selector)
-- ConfigMap (non-secret config)
-- Optional HPA
-- Optional NetworkPolicy
-
-These units MUST be independently deployable and rollback-safe.
+Guidance:
+- Use the compose files directly or convert them into systemd services.
+- Keep `/app/data` mounted on persistent storage.
 
 ---
 
-## Raw Kubernetes deployment (🛠)
+### 3) Kubernetes (recommended for production)
+Best for:
+- HA control plane
+- rolling upgrades
+- multi-tenant environments
 
-Raw manifests live under:
-~~~text
-infra/k8s/
-  namespaces/
-  services/
-  monitoring/
-~~~
+Recommended approach:
+- use Helm charts (`infra/helm/chartly`) for the platform
+- use `values-<env>.yaml` per environment
+- use per-namespace installs
 
-### Characteristics
-- Fully explicit YAML
-- No templating
-- Best for debugging and learning
-
-### Apply semantics (clarified)
-- In-place mutation is permitted **only** via reviewed manifest changes.
-- Imperative patching (`kubectl edit`, ad-hoc `patch`) is forbidden.
-- The applied state MUST always be derivable from version-controlled manifests.
-
-### Apply flow
-1. Create namespace
-2. Apply base services
-3. Apply monitoring
-4. Verify readiness
-
-### Rollback
-- Re-apply the previous manifest version
-- Or delete applied manifests in reverse order
-- No partial or manual rollback steps
+Kubernetes runtime options (provider-neutral):
+- managed Kubernetes (AWS EKS / GCP GKE / Azure AKS) — optional
+- self-managed Kubernetes (k3s, kubeadm, OpenShift) — optional
 
 ---
 
-## Helm deployment (🛠)
+## Environment layers
 
-Helm packages Chartly for repeatable installs.
+A minimal layering model:
 
-### Chart structure
-~~~text
-infra/helm/chartly/
-  Chart.yaml
-  values.yaml
-  templates/
-    gateway.yaml
-    orchestrator.yaml
-    connector-hub.yaml
-    ...
-~~~
-
-### Helm rules
-- Values files are environment-specific
-- Secrets are never in `values.yaml`
-- Templates MUST be deterministic (no random or time-based functions)
-- `helm template` output SHOULD semantically match raw manifests
-
-### Promotion
-- Same chart version
-- Different values file
-- No template changes during promotion
+1. **Base chart / manifests** (provider-neutral defaults)
+2. **Environment overlays** (`dev`, `staging`, `prod`)
+3. **Project overlays** (tenant-specific)
 
 ---
 
-## Terraform deployment (🛠)
+## Ports (defaults)
 
-Terraform manages **infrastructure contracts**, not runtime behavior.
-
-### Responsibility split
-- Terraform manages:
-  - networks
-  - clusters
-  - storage backends
-  - base namespaces
-- Helm / manifests manage:
-  - Chartly services
-  - runtime configuration
-
-### Contract-first modules
-- Modules expose stable inputs and outputs
-- Providers are an implementation detail
-- Outputs feed deployment automation without manual wiring
+Control plane (Docker example):
+- gateway: `8090`
+- registry: `8091`
+- aggregator: `8092`
+- coordinator: `8093`
+- reporter: `8094`
 
 ---
 
-## Configuration layering
+## Upgrade strategy
 
-Configuration is layered intentionally.
+Safe upgrades require:
+- immutable images
+- deterministic config
+- schema evolution discipline
 
-~~~text
-Base manifests / chart defaults
-        
-Environment overrides
-        
-Project overlays
-        
-Resolved runtime config (immutable)
-~~~
-
-**Rule:** Lower layers MAY override higher layers but MUST NOT remove required fields or weaken security invariants.
+Recommended flow:
+1. Build + tag immutable images
+2. Deploy to `dev`
+3. Promote to `staging`
+4. Promote to `prod`
 
 ---
 
-## Drift detection & reconciliation (🛠)
+## Data retention
 
-No drift is an enforceable rule.
-
-### Drift detection expectations
-- Periodic diff between:
-  - declared manifests/charts
-  - live cluster state
-- Detection of:
-  - unmanaged resources
-  - manual edits
-  - unexpected field mutations
-
-### Response to drift
-- Emit alert
-- Record audit event
-- Require reconciliation via declarative source
-
-Manual correction without updating the source of truth is forbidden.
+- Results are stored in SQLite by default.
+- In production, migrate to a managed database or a persistent volume.
+- Back up `/app/data/results.db` regularly.
 
 ---
 
-## Deployment safety mechanisms
+## Security baseline
 
-### Readiness & health
-- All services expose `/health` and `/ready`
-- Rollouts MUST gate on readiness
-
-### Progressive rollout
-- Rolling updates by default
-- Canary or blue/green MAY be layered later
-- One change dimension per deploy (code OR config)
-
-### Blast radius control
-- Independent services
-- Resource limits enforced
-- Network policies where supported
+- Control plane services run as non-root.
+- No secrets embedded in the chart or docs.
+- API write endpoints are gated via `X-API-Key` + `REGISTRY_API_KEY`.
 
 ---
 
-## Promotion workflow (reference)
+## Next steps
 
-1. **Build**
-   - Build immutable images
-   - Tag with content hash / version
-
-2. **Deploy to dev**
-   - Apply manifests or Helm install
-   - Run smoke tests
-
-3. **Promote to staging**
-   - Same artifacts
-   - Different overlays
-   - Run integration tests
-
-4. **Promote to prod**
-   - Approval required
-   - Audit event emitted
-   - No drift from staged artifacts
-
----
-
-## Rollback strategy
-
-Rollback MUST be deterministic and time-bounded.
-
-### Expectations
-- Rollback SHOULD complete within minutes
-- Rollback MUST NOT require rebuilds
-- Rollback MUST preserve audit logs
-
-### Code rollback
-- Redeploy previous image tag
-
-### Config rollback
-- Reapply previous config version
-- Profiles referenced by version only (never mutable)
-
-### Emergency rollback
-- Disable ingress at Gateway
-- Scale data-plane components to zero if required
-- Preserve system state for postmortem
-
----
-
-## Observability during deployment
-
-Deployments MUST be observable.
-
-### Signals to watch
-- readiness failures
-- error rate spikes
-- latency regressions
-- connector backpressure
-
-### Required artifacts
-- deployment logs
-- version metadata
-- request correlation IDs
-
----
-
-## Audit & compliance
-
-Every deployment SHOULD emit an audit event:
-- who initiated it
-- what changed (version, config)
-- where it was deployed
-- when it completed
-- rollback reference (if any)
-
-Audit logs are immutable and retained per policy.
-
----
-
-## Operator checklist
-
-Before promoting to production:
-- [ ] Images immutable and versioned
-- [ ] Manifests / charts validated
-- [ ] No secrets in deployment artifacts
-- [ ] Security invariants satisfied
-- [ ] Readiness checks verified
-- [ ] Resource limits set
-- [ ] Drift detection enabled
-- [ ] Rollback path tested
-- [ ] Audit logging enabled
-
----
-
-## Next steps (🛠)
-
-- Add deployment conformance tests:
-  - dry-run success
-  - idempotent apply
-  - rollback time-bound verification
-- Add environment diff tooling
-- Add deployment health dashboards
+- Add Helm-based production manifests
+- Add CI to validate compose + profiles
+- Add multi-node drone scheduling

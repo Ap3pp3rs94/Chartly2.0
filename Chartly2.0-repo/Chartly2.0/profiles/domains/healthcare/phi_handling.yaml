@@ -1,0 +1,170 @@
+version: "1.0"
+
+policy:
+  classification: "phi"
+  objectives:
+    - "Prevent PHI from being written into canonical outputs."
+    - "Ensure raw truth is stored securely with restricted access and auditable retrieval."
+    - "Ensure any PHI leakage triggers quarantine and a critical incident case."
+    - "Ensure logs and LLM prompts never contain PHI."
+
+detection:
+  key_patterns_high_signal:
+    # High-signal field names likely to contain PHI/PII.
+    - "(?i)patient"
+    - "(?i)mrn"
+    - "(?i)medical[_-]?record"
+    - "(?i)dob|date[_-]?of[_-]?birth"
+    - "(?i)ssn|social[_-]?security"
+    - "(?i)address"
+    - "(?i)phone"
+    - "(?i)email"
+    - "(?i)diagnosis"
+    - "(?i)icd10|icd-10"
+    - "(?i)notes|clinical[_-]?notes"
+  value_patterns_high_signal:
+    # High-signal patterns. Keep conservative to avoid noise.
+    - "\\b\\d{3}-\\d{2}-\\d{4}\\b"       # SSN-like
+    - "\\b\\d{10}\\b"                   # 10-digit phone-ish (still noisy; treat as signal)
+    - "(?i)@[A-Z0-9._%+-]+\\.[A-Z]{2,}"  # email-like
+  context_rules:
+    - "If key matches high-signal PHI patterns, treat value as PHI even if it looks benign."
+    - "If free-text fields exceed 256 chars and key suggests notes/description, treat as PHI candidate."
+    - "If payload contains both patient-like keys and diagnosis codes, treat as high-confidence PHI."
+
+enforcement:
+  dimension_allowlist:
+    enabled: true
+    allowed:
+      - "facility_id"
+      - "department"
+      - "encounter_type"
+      - "provider_id_hash"
+      - "region"
+      - "interval"
+    on_violation:
+      action: "quarantine"
+      reason_code: "policy.pii_phi_violation"
+      severity: "critical"
+      open_case: true
+
+  payload_allowlist_strategy:
+    default: "deny"
+    allowed_event_payload_keys:
+      # Only safe operational keys should be allowed in canonical Event.payload
+      - "alert_type"
+      - "severity"
+      - "facility_id"
+      - "department"
+      - "region"
+      - "job_id"
+      - "profile"
+      - "profile_version"
+    notes:
+      - "Any non-allowlisted payload keys are dropped; if key is PHI-likely, quarantine."
+
+  redaction:
+    enabled: true
+    redact_value_with: "[REDACTED]"
+    redact_on_key_match: true
+    redact_on_value_pattern_match: true
+    notes:
+      - "Redaction occurs during cleansing for safety, but enforcement is quarantine if PHI is detected in canonical outputs."
+
+  quarantine:
+    enabled: true
+    reason_code: "policy.pii_phi_violation"
+    severity: "critical"
+    open_case: true
+    required_fields:
+      - "raw_ref"
+      - "reason_code"
+      - "validation_errors"
+      - "profile_version"
+    notes:
+      - "When PHI violation is detected, canonical write must be blocked."
+
+storage_controls:
+  raw_plane_access:
+    restricted: true
+    allowed_roles:
+      - "admin"
+      - "auditor"
+      - "operator"   # optional, organization-specific
+    notes:
+      - "Raw payloads may contain PHI; access must be tightly controlled."
+  canonical_plane_minimization:
+    required: true
+    rules:
+      - "Canonical records must not include patient identifiers."
+      - "Only aggregated metrics should be persisted unless explicitly approved."
+  audit_plane_requirements:
+    append_only: true
+    include_phi_violation_events: true
+    notes:
+      - "Audit records should record the fact of violation, not the PHI content."
+
+logging_controls:
+  prohibited_fields:
+    - "patient_name"
+    - "mrn"
+    - "ssn"
+    - "dob"
+    - "address"
+    - "phone"
+    - "email"
+    - "diagnosis"
+    - "clinical_notes"
+    - "raw_payload"
+  prohibited_behaviors:
+    - "log_request_bodies"
+    - "log_raw_payload_previews"
+    - "log_unredacted_event_payloads"
+  notes:
+    - "Logs must contain only identifiers (tenant_id/source_id/job_id) and hashes/raw_ref."
+
+llm_controls:
+  default_deny_phi: true
+  allowed_roles:
+    - "schema_drift_explainer"
+  forbidden:
+    - "llm_receives_raw_phi"
+    - "llm_receives_unredacted_payloads"
+    - "llm_generates_patient_specific_summaries"
+  prompt_sanitization_requirements:
+    - "Remove or redact any PHI fields before sending to LLM."
+    - "Use hashes/opaque IDs instead of identifiers."
+    - "Limit payload samples to structural metadata only (keys/types), not values."
+  audit_fields_required:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+
+incident_response:
+  triggers:
+    - name: "phi_violation_detected"
+      when: "policy.pii_phi_violation"
+      severity: "critical"
+  actions:
+    - "Suspend ingestion for affected source(s) immediately."
+    - "Open a critical case with raw_ref references."
+    - "Review access logs for raw plane retrieval."
+    - "Verify no PHI was written to canonical storage or logs."
+    - "Patch mappings/cleansing/rules and reprocess only after approval."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: PHI key detected in payload -> quarantine
+# payload:
+#   { patient_name: "John Doe", facility_id: "F1", encounter_type: "ED" }
+# -> violation: patient_name key matches PHI patterns => quarantine with policy.pii_phi_violation
+#
+# Example: Non-allowlisted dimension -> quarantine
+# dimensions:
+#   { patient_id: "123", facility_id: "F1" }
+# -> dimension_allowlist violation => quarantine
+# -----------------------------------------------------------------------------

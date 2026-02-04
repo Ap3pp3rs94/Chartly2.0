@@ -1,0 +1,279 @@
+version: "1.0"
+
+enforcement_mode: "strict"   # strict|warn|off (base must be strict)
+
+rule_engine:
+  evaluation_order:
+    # The normalizer should evaluate in this exact order for deterministic outcomes.
+    - "schema_validation"
+    - "secret_detection"
+    - "dimension_limits"
+    - "timestamp_rules"
+    - "numeric_rules"
+    - "canonical_record_requirements"
+    - "idempotency_and_dedupe_rules"
+    - "quarantine_rules"
+  failure_actions:
+    # Default action by category; specific rules may override.
+    schema_validation: "quarantine"
+    secret_detection: "quarantine"
+    dimension_limits: "warn"
+    timestamp_rules: "quarantine"
+    numeric_rules: "quarantine"
+    canonical_record_requirements: "quarantine"
+    idempotency_and_dedupe_rules: "quarantine"
+  reason_codes_reference:
+    # Must align with profiles/core/base/profile.yaml quarantine_policy.reason_code_taxonomy
+    - "schema.validation_failed"
+    - "policy.pii_phi_violation"
+    - "policy.secret_detected"
+    - "mapping.missing_required_field"
+    - "mapping.type_coercion_failed"
+    - "dedupe.collision_conflict"
+    - "enrichment.failed"
+    - "retention.policy_violation"
+    - "upstream.payload_too_large"
+    - "upstream.content_type_unsupported"
+
+schema_validation:
+  enabled: true
+  required_schemas:
+    - "contracts/v1/canonical/source.schema.json"
+    - "contracts/v1/canonical/entity.schema.json"
+    - "contracts/v1/canonical/event.schema.json"
+    - "contracts/v1/canonical/metric.schema.json"
+    - "contracts/v1/canonical/case.schema.json"
+    - "contracts/v1/canonical/artifact.schema.json"
+    - "contracts/v1/canonical/audit_record.schema.json"
+  on_failure:
+    action: "quarantine"
+    reason_code: "schema.validation_failed"
+    severity: "high"
+    open_case: false
+    notes:
+      - "Schema validation failure indicates a contract breach; canonical write must be blocked."
+
+secret_detection:
+  enabled: true
+  # Detect secrets in canonical dimensions/attributes/payload fields where they should never appear.
+  # This is not exhaustive; it targets high-signal keys and patterns.
+  key_patterns:
+    - "(?i)^password$"
+    - "(?i)^secret$"
+    - "(?i)^token$"
+    - "(?i)^api[_-]?key$"
+    - "(?i)^private[_-]?key$"
+    - "(?i)^access[_-]?key$"
+    - "(?i)^secret[_-]?key$"
+  value_patterns:
+    # High-signal patterns only; avoid noisy matches.
+    - "(?i)-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----"
+    - "(?i)AKIA[0-9A-Z]{16}"                 # AWS access key id pattern
+    - "(?i)ghp_[A-Za-z0-9]{36}"              # GitHub token pattern (classic)
+  on_detect:
+    action: "quarantine"
+    reason_code: "policy.secret_detected"
+    severity: "critical"
+    open_case: true
+    notes:
+      - "Secrets must not be stored in canonical outputs. Quarantine and open a case."
+
+dimension_limits:
+  max_dimensions_per_record: 64
+  max_dimension_key_len: 64
+  max_dimension_value_len: 256
+  on_violation:
+    # Base behavior: truncate excess dimensions and oversize values deterministically,
+    # but quarantine if key indicates secrets.
+    oversize_value:
+      action: "warn"
+      behavior: "truncate"
+      truncation: "keep_prefix"
+    too_many_dimensions:
+      action: "warn"
+      behavior: "drop_excess"
+      drop_order: "sorted_key_order"
+    secret_key_dimension:
+      action: "quarantine"
+      reason_code: "policy.secret_detected"
+
+timestamp_rules:
+  allowed_formats:
+    - "rfc3339"
+    - "iso8601"
+    - "unix_seconds"
+    - "unix_millis"
+  max_future_skew_seconds: 300       # 5 minutes
+  max_past_skew_days: 3650           # 10 years (base safe)
+  fallback_to_ctx_captured_at: true
+  on_failure:
+    action: "quarantine"
+    reason_code: "mapping.type_coercion_failed"
+    severity: "medium"
+    open_case: false
+  notes:
+    - "If an input timestamp cannot be parsed, fall back to ctx.captured_at only if fallback_to_ctx_captured_at=true."
+    - "If parsed timestamp is too far in the future, quarantine (clock drift or bad data)."
+
+numeric_rules:
+  disallow_nan_inf: true
+  coercion_from_string: true
+  hard_bounds:
+    enabled: false
+    # Domain overlays may set bounds per metric namespace.
+    rules: []
+  on_failure:
+    action: "quarantine"
+    reason_code: "mapping.type_coercion_failed"
+    severity: "medium"
+    open_case: false
+  notes:
+    - "If numeric coercion fails and a value is required, quarantine."
+    - "If a value is optional (domain overlay), rule may allow null."
+
+canonical_record_requirements:
+  required_common_fields:
+    - "tenant_id"
+    - "source_id"
+    - "raw_ref"
+  raw_ref_requirements:
+    required_fields: ["bucket", "key", "sha256", "content_type", "captured_at"]
+    sha256_pattern: "^[a-fA-F0-9]{64}$"
+  event_requirements:
+    event_type_naming:
+      allowed_pattern: "^[a-z0-9]+(\\.[a-z0-9_-]+)*$"
+      on_violation:
+        action: "quarantine"
+        reason_code: "mapping.missing_required_field"
+    required_fields:
+      - "id"
+      - "event_type"
+      - "ts"
+      - "source_id"
+      - "payload"
+      - "tenant_id"
+      - "raw_ref"
+  metric_requirements:
+    metric_name_naming:
+      allowed_pattern: "^[a-z0-9]+(\\.[a-z0-9_-]+)*$"
+      on_violation:
+        action: "quarantine"
+        reason_code: "mapping.missing_required_field"
+    required_fields:
+      - "id"
+      - "metric_name"
+      - "ts"
+      - "value"
+      - "dimensions"
+      - "source_id"
+      - "tenant_id"
+      - "raw_ref"
+
+quarantine_rules:
+  # Declarative conditions  quarantine behavior. Implementations must map these
+  # to concrete checks during normalization.
+  rules:
+    - name: "schema_failure"
+      when: "schema_validation_failed == true"
+      reason_code: "schema.validation_failed"
+      severity: "high"
+      open_case: false
+
+    - name: "secret_detected"
+      when: "secret_detected == true"
+      reason_code: "policy.secret_detected"
+      severity: "critical"
+      open_case: true
+
+    - name: "missing_required_field"
+      when: "missing_required_field == true"
+      reason_code: "mapping.missing_required_field"
+      severity: "medium"
+      open_case: false
+
+    - name: "timestamp_parse_failed"
+      when: "timestamp_parse_failed == true && timestamp_fallback_used == false"
+      reason_code: "mapping.type_coercion_failed"
+      severity: "medium"
+      open_case: false
+
+    - name: "timestamp_out_of_bounds"
+      when: "timestamp_out_of_bounds == true"
+      reason_code: "mapping.type_coercion_failed"
+      severity: "medium"
+      open_case: false
+
+    - name: "numeric_coercion_failed"
+      when: "numeric_coercion_failed == true"
+      reason_code: "mapping.type_coercion_failed"
+      severity: "medium"
+      open_case: false
+
+    - name: "dedupe_conflict"
+      when: "idempotency_conflict == true"
+      reason_code: "dedupe.collision_conflict"
+      severity: "high"
+      open_case: true
+
+idempotency_and_dedupe_rules:
+  required_key_components:
+    - "tenant_id"
+    - "source_id"
+    - "raw_ref.sha256"
+    - "profile.version"
+    - "canonical.object_type"
+    - "canonical.primary_id_or_composite"
+  on_missing_key_component:
+    action: "quarantine"
+    reason_code: "mapping.missing_required_field"
+    severity: "high"
+    open_case: false
+  collision_policy:
+    on_duplicate:
+      action: "drop"
+      notes:
+        - "Duplicate idempotency keys with identical canonical hash may be dropped deterministically."
+    on_conflict:
+      action: "quarantine"
+      reason_code: "dedupe.collision_conflict"
+      severity: "high"
+      open_case: true
+      notes:
+        - "Same idempotency key but different canonical hash indicates conflict; quarantine and open case."
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["schema_drift_explainer"]
+  forbidden:
+    - "auto_unquarantine"
+    - "auto_allowlist"
+    - "auto_disable_contract_validation"
+    - "auto_change_enforcement_mode"
+  required_audit_fields:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+  notes:
+    - "LLM can explain drift and propose rule/mapping changes, but enforcement remains rule-driven and audited."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Domain overlay adds metric-specific bounds
+# numeric_rules:
+#   hard_bounds:
+#     enabled: true
+#     rules:
+#       - metric_prefix: "price."
+#         min: 0
+#         max: 1000000
+#         on_violation: quarantine
+#
+# Example: Domain overlay tightens timestamp skew
+# timestamp_rules:
+#   max_future_skew_seconds: 60
+#   max_past_skew_days: 365
+# -----------------------------------------------------------------------------

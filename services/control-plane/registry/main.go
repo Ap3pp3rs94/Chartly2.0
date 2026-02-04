@@ -91,7 +91,6 @@ func main() {
 	_ = s.loadAll()
 
 	r := mux.NewRouter()
-	r.Use(requestLoggingMiddleware)
 
 	r.HandleFunc("/health", s.handleHealth).Methods(http.MethodGet, http.MethodOptions)
 
@@ -104,7 +103,7 @@ func main() {
 	r.HandleFunc("/profiles/{id}:resume", s.handleProfileResume).Methods(http.MethodPost, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}:setSchedule", s.handleProfileSetSchedule).Methods(http.MethodPost, http.MethodOptions)
 
-	handler := withCORS(r)
+	handler := withRequestLogging(withCORS(withAuth(r)))
 
 	addr := ":" + defaultPort
 	server := &http.Server{
@@ -661,6 +660,49 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func boolPtr(v bool) *bool { return &v }
 
+func envBool(key string, def bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return def
+	}
+}
+
+func withAuth(next http.Handler) http.Handler {
+	required := envBool("AUTH_REQUIRED", false)
+	tenantRequired := envBool("AUTH_TENANT_REQUIRED", false)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if !required {
+			next.ServeHTTP(w, r)
+			return
+		}
+		principal := strings.TrimSpace(r.Header.Get("X-Principal"))
+		if principal == "" {
+			writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			return
+		}
+		if tenantRequired {
+			tenant := strings.TrimSpace(r.Header.Get("X-Tenant-ID"))
+			if tenant == "" {
+				writeJSON(w, http.StatusUnauthorized, map[string]any{"error": "tenant_required"})
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // --- Middleware ---
 
 type statusRecorder struct {
@@ -697,7 +739,7 @@ func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, X-Principal, X-Tenant-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 
 		if r.Method == http.MethodOptions {

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/telemetry/ingestion_health.schema.json",
+  "title": "Chartly Telemetry IngestionHealth (v1)",
+  "description": "Telemetry describing ingestion pipeline health for a specific tenant/source/job and stage. Used for monitoring, alerting, and audit correlation. Raw references are included when available.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ts": { "type": "string", "format": "date-time", "description": "RFC3339 timestamp when this health record was emitted." },
+    "service": { "type": "string", "minLength": 1, "description": "Service emitting this health record." },
+    "env": { "type": "string", "enum": ["local", "staging", "production"], "description": "Runtime environment." },
+    "tenant_id": { "type": "string", "minLength": 1, "description": "Tenant scope identifier." },
+    "source_id": { "type": "string", "minLength": 1, "description": "Source identifier." },
+    "job_id": { "type": "string", "minLength": 1, "description": "Job identifier correlating the pipeline execution." },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "scheduled",
+        "dispatched",
+        "fetched",
+        "raw_written",
+        "normalized",
+        "canonical_written",
+        "audited",
+        "quarantined",
+        "failed"
+      ],
+      "description": "Pipeline stage."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "warn", "error"],
+      "description": "Health status."
+    },
+    "message": {
+      "type": "string",
+      "maxLength": 2000,
+      "description": "Optional human-readable message."
+    },
+    "raw_ref": {
+      "description": "Optional reference to the raw payload written in the raw plane.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "bucket": { "type": "string", "minLength": 1 },
+            "key": { "type": "string", "minLength": 1 },
+            "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+            "content_type": { "type": "string", "minLength": 1 },
+            "captured_at": { "type": "string", "format": "date-time" },
+            "size_bytes": { "type": "integer", "minimum": 0 }
+          },
+          "required": ["bucket", "key", "sha256", "content_type", "captured_at"]
+        },
+        { "type": "null" }
+      ]
+    },
+    "counters": {
+      "type": "object",
+      "description": "Optional counters (e.g., records_in, records_out, quarantined_count).",
+      "additionalProperties": true
+    },
+    "durations_ms": {
+      "type": "object",
+      "description": "Optional durations in milliseconds by stage or operation (e.g., fetch_ms, normalize_ms).",
+      "additionalProperties": true
+    },
+    "error": {
+      "description": "Optional error detail when status is warn/error.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "code": { "type": "string", "minLength": 1, "description": "Stable error code (service-defined)." },
+            "detail": { "type": "string", "maxLength": 4000, "description": "Error detail (no secrets)." },
+            "retryable": { "type": "boolean", "description": "Whether the operation can be retried safely." }
+          },
+          "required": ["code", "detail", "retryable"]
+        },
+        { "type": "null" }
+      ]
+    }
+  },
+  "required": ["ts", "service", "env", "tenant_id", "source_id", "job_id", "stage", "status"]
+}

@@ -1,0 +1,68 @@
+# Chartly 2.0  Audit Service Configuration (v0)
+#
+# This service is intentionally minimal in v0:
+# - Events are stored IN-MEMORY ONLY (no persistence).
+# - Suitable for local development and early integration tests.
+# - Future versions should wire durable storage (e.g., PostgreSQL via services/storage relational tables)
+#   behind the same HTTP API surface.
+
+audit:
+  # Environment mode:
+  # - local: missing X-Tenant-Id defaults to "local"
+  # - anything else: X-Tenant-Id is required for /v0/* endpoints unless overridden by service logic
+  env:
+    var: AUDIT_ENV
+    default: local
+    allowed: [local, dev, staging, prod]
+
+  server:
+    # Bind address / port
+    addr:
+      var: AUDIT_ADDR
+      default: "0.0.0.0"
+
+    port:
+      var: AUDIT_PORT
+      default: 8084
+
+    # Server timeouts (Go time.ParseDuration format, e.g. "10s", "1m")
+    read_timeout:
+      var: AUDIT_READ_TIMEOUT
+      default: "10s"
+
+    write_timeout:
+      var: AUDIT_WRITE_TIMEOUT
+      default: "10s"
+
+    idle_timeout:
+      var: AUDIT_IDLE_TIMEOUT
+      default: "60s"
+
+    shutdown_timeout:
+      var: AUDIT_SHUTDOWN_TIMEOUT
+      default: "10s"
+
+    # Defensive limits
+    max_body_bytes:
+      var: AUDIT_MAX_BODY_BYTES
+      default: 1048576 # 1 MiB
+    max_header_bytes:
+      var: AUDIT_MAX_HEADER_BYTES
+      default: 32768   # 32 KiB
+
+  tenancy:
+    # Tenant header behavior:
+    # - AUDIT_ENV=local => missing X-Tenant-Id defaults to "local"
+    # - otherwise => X-Tenant-Id required for /v0/*
+    header_name:
+      var: AUDIT_TENANT_HEADER
+      default: "X-Tenant-Id"
+
+    local_default_tenant:
+      var: AUDIT_LOCAL_TENANT
+      default: "local"
+
+  notes:
+    - "v0 uses in-memory storage; restarting the service clears all events."
+    - "Planned: durable backend using PostgreSQL (see services/storage relational migrations)."
+    - "Audit events should be treated as DATA ONLY; enforcement/alerting happens in higher layers."

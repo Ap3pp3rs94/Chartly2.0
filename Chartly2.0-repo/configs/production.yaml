@@ -1,0 +1,97 @@
+env: production
+name: chartly-production
+
+services:
+  gateway:
+    base_url: "http://gateway.chartly.svc.cluster.local:8080"
+  orchestrator:
+    base_url: "http://orchestrator.chartly.svc.cluster.local:8081"
+  connector_hub:
+    base_url: "http://connector-hub.chartly.svc.cluster.local:8082"
+  normalizer:
+    base_url: "http://normalizer.chartly.svc.cluster.local:8083"
+  analytics:
+    base_url: "http://analytics.chartly.svc.cluster.local:8084"
+  storage:
+    base_url: "http://storage.chartly.svc.cluster.local:8085"
+  audit:
+    base_url: "http://audit.chartly.svc.cluster.local:8086"
+  auth:
+    base_url: "http://auth.chartly.svc.cluster.local:8087"
+  observer:
+    base_url: "http://observer.chartly.svc.cluster.local:8088"
+
+storage:
+  postgres:
+    dsn_env: "POSTGRES_DSN"
+  redis:
+    url_env: "REDIS_URL"
+  blob:
+    provider: "s3"
+    s3_endpoint_env: "BLOB_S3_ENDPOINT"     # optional (non-AWS)
+    region_env: "BLOB_S3_REGION"
+    access_key_env: "BLOB_S3_ACCESS_KEY"
+    secret_key_env: "BLOB_S3_SECRET_KEY"
+    buckets:
+      raw_env: "BLOB_S3_BUCKET_RAW"
+      artifacts_env: "BLOB_S3_BUCKET_ARTIFACTS"
+
+queue:
+  backend: "redis"
+  redis_streams:
+    prefix: "chartly"
+    maxlen: 500000
+    streams:
+      ingest: "chartly:ingest"
+      normalize: "chartly:normalize"
+      audit: "chartly:audit"
+      events: "chartly:events"
+      dlq: "chartly:dlq"
+
+connector_hub:
+  defaults:
+    max_concurrency: 1500
+    per_domain_concurrency: 12
+    default_rpm: 120
+    timeout_seconds: 25
+    retry:
+      max_attempts: 3
+      base_backoff_ms: 500
+      max_backoff_ms: 10000
+    circuit_breaker:
+      failure_threshold: 12
+      open_seconds: 60
+
+normalizer:
+  limits:
+    max_records_per_job: 50000
+    max_dimensions_per_record: 96
+    max_dimension_value_len: 256
+  quarantine:
+    enabled: true
+
+audit:
+  enabled: true
+  hash_algo: "sha256"
+  append_only: true
+
+auth:
+  enabled: true
+  jwt:
+    issuer_env: "AUTH_JWT_ISSUER"
+    audience_env: "AUTH_JWT_AUDIENCE"
+    signing_key_env: "AUTH_JWT_SIGNING_KEY"
+  rbac:
+    roles_file: "services/auth/internal/rbac/roles.yaml"
+
+observability:
+  log_level: "info"
+  otel:
+    enabled: true
+    exporter_otlp_endpoint_env: "OTEL_EXPORTER_OTLP_ENDPOINT"
+    protocol: "grpc"
+
+feature_flags:
+  analytics_enabled: false
+  web_enabled: false
+  sdk_codegen_enabled: false

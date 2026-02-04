@@ -1,0 +1,271 @@
+version: "1.0"
+
+alert_engine:
+  enabled: true
+  evaluation_interval_seconds: 60
+  default_severity: "medium"   # low|medium|high|critical
+  suppression_policy:
+    # Prevent alert storms
+    dedupe_key_fields: ["alert_id", "tenant_id", "source_id"]
+    cooldown_seconds: 300
+    max_firings_per_hour: 20
+  notes:
+    - "Base alerts focus on platform health signals, not domain KPI thresholds."
+    - "Routing is symbolic. Actual integrations are implemented later in observer/analytics."
+
+channels:
+  ops:
+    description: "Operations channel for platform health incidents."
+  security:
+    description: "Security channel for secret/PII/PHI signals."
+  compliance:
+    description: "Compliance channel for audit/quarantine escalations."
+
+alerts:
+  - id: "A-001"
+    name: "Quarantine rate high"
+    description: "Quarantine count exceeds threshold within window; indicates mapping/rules drift or upstream changes."
+    input: "telemetry.ingestion_health"
+    condition: "rate(quarantined) > threshold"
+    window_seconds: 900
+    threshold:
+      quarantines_per_minute: 10
+    severity: "high"
+    actions:
+      channels: ["ops"]
+      open_case: true
+      reason_code: "schema.validation_failed"
+    runbook:
+      - "Inspect recent ingestion_health events for reason_code distribution."
+      - "Check upstream changes or schema drift signals."
+      - "Review profiles/mappings and validate against fixtures."
+      - "Pin sources to last known good profile version if needed."
+
+  - id: "A-002"
+    name: "Secret detected (critical)"
+    description: "Secret detection triggered; immediate containment required."
+    input: "telemetry.ingestion_health"
+    condition: "count(reason_code == 'policy.secret_detected') >= threshold"
+    window_seconds: 300
+    threshold:
+      count: 1
+    severity: "critical"
+    actions:
+      channels: ["security", "ops"]
+      open_case: true
+      reason_code: "policy.secret_detected"
+    runbook:
+      - "Disable affected source(s) ingestion immediately."
+      - "Verify no secrets were written to canonical storage or logs."
+      - "Rotate any potentially exposed credentials."
+      - "Add/adjust cleansing + rules to quarantine and redact."
+
+  - id: "A-003"
+    name: "Backpressure active (queue depth)"
+    description: "Queue depth indicates sustained backlog; backpressure should engage."
+    input: "telemetry.queue_stats"
+    condition: "depth > threshold.depth && backpressure == true"
+    window_seconds: 600
+    threshold:
+      depth: 50000
+    severity: "high"
+    actions:
+      channels: ["ops"]
+      open_case: false
+    runbook:
+      - "Check which queue is growing (ingest/normalize/events/dlq)."
+      - "Scale consumers (connector-hub/normalizer) horizontally."
+      - "Verify storage health (postgres/redis/minio)."
+      - "Temporarily reduce orchestrator dispatch rate."
+
+  - id: "A-004"
+    name: "Connector circuit breaker opened frequently"
+    description: "Excessive circuit breaker opens indicate upstream instability or bad configuration."
+    input: "telemetry.system_metrics"
+    condition: "metrics.connector_circuit_breaker_open_rate > threshold"
+    window_seconds: 900
+    threshold:
+      open_rate_per_minute: 5
+    severity: "medium"
+    actions:
+      channels: ["ops"]
+      open_case: false
+    runbook:
+      - "Identify failing domains/sources."
+      - "Inspect connector timeouts/rate limits."
+      - "Confirm upstream availability."
+      - "Adjust per-domain concurrency/rpm if needed."
+
+  - id: "A-005"
+    name: "Schema validation failures spike"
+    description: "Sudden increase in schema validation failures indicates mapping errors or contract drift."
+    input: "telemetry.ingestion_health"
+    condition: "count(reason_code == 'schema.validation_failed') > threshold.count"
+    window_seconds: 900
+    threshold:
+      count: 20
+    severity: "high"
+    actions:
+      channels: ["ops"]
+      open_case: true
+      reason_code: "schema.validation_failed"
+    runbook:
+      - "Review latest profile changes and recent deployments."
+      - "Validate contracts with contracts/validators/validate.py."
+      - "Reproduce with raw payload referenced by raw_ref."
+      - "Patch mappings/rules with controlled PR and redeploy."
+
+  - id: "A-006"
+    name: "Ingestion failures high"
+    description: "Ingestion job failures exceed threshold; suggests upstream failures or internal dependency issues."
+    input: "telemetry.ingestion_health"
+    condition: "rate(failed) > threshold"
+    window_seconds: 900
+    threshold:
+      failures_per_minute: 10
+    severity: "high"
+    actions:
+      channels: ["ops"]
+      open_case: false
+    runbook:
+      - "Check dependency health: postgres/redis/minio."
+      - "Inspect connector-hub logs for timeouts and errors."
+      - "Confirm orchestrator retry/DLQ behavior."
+      - "Reduce ingest concurrency temporarily."
+
+  - id: "A-007"
+    name: "Gateway latency p95 spike"
+    description: "API latency increases; may indicate downstream slowness."
+    input: "telemetry.api_stats"
+    condition: "p95(latency_ms) > threshold"
+    window_seconds: 600
+    threshold:
+      latency_ms: 500
+    severity: "medium"
+    actions:
+      channels: ["ops"]
+      open_case: false
+    runbook:
+      - "Check gateway dependency latencies (orchestrator/storage/auth)."
+      - "Inspect queue depth and backpressure signals."
+      - "Scale gateway or downstream services."
+
+  - id: "A-008"
+    name: "Postgres unhealthy"
+    description: "Postgres dependency unhealthy; impacts metadata and canonical writes."
+    input: "telemetry.system_metrics"
+    condition: "metrics.postgres_healthy == false"
+    window_seconds: 120
+    threshold:
+      count: 1
+    severity: "critical"
+    actions:
+      channels: ["ops"]
+      open_case: true
+      reason_code: "storage.unavailable"
+    runbook:
+      - "Check postgres pod/container status."
+      - "Verify disk space and connections."
+      - "Failover or restart according to environment runbook."
+
+  - id: "A-009"
+    name: "Redis unhealthy"
+    description: "Redis dependency unhealthy; impacts queue/caching/rate limits."
+    input: "telemetry.system_metrics"
+    condition: "metrics.redis_healthy == false"
+    window_seconds: 120
+    threshold:
+      count: 1
+    severity: "critical"
+    actions:
+      channels: ["ops"]
+      open_case: true
+      reason_code: "queue.unavailable"
+    runbook:
+      - "Check redis pod/container status."
+      - "Verify persistence and memory limits."
+      - "Restore service or fail over."
+
+  - id: "A-010"
+    name: "MinIO/S3 unhealthy"
+    description: "Blob storage unhealthy; impacts raw/artifact writes."
+    input: "telemetry.system_metrics"
+    condition: "metrics.blob_store_healthy == false"
+    window_seconds: 120
+    threshold:
+      count: 1
+    severity: "critical"
+    actions:
+      channels: ["ops"]
+      open_case: true
+      reason_code: "blob.unavailable"
+    runbook:
+      - "Check minio/s3 connectivity."
+      - "Verify credentials and bucket access."
+      - "Pause ingestion if raw writes cannot succeed."
+
+  - id: "A-011"
+    name: "DLQ growing"
+    description: "Dead-letter queue increasing; indicates poison jobs not being handled."
+    input: "telemetry.queue_stats"
+    condition: "queue == 'chartly:dlq' && depth > threshold.depth"
+    window_seconds: 3600
+    threshold:
+      depth: 1000
+    severity: "medium"
+    actions:
+      channels: ["ops"]
+      open_case: false
+    runbook:
+      - "Sample DLQ items and categorize root causes."
+      - "Fix profile/mapping or connector config."
+      - "Requeue after patch with idempotency protections."
+
+  - id: "A-012"
+    name: "PII/PHI suspected warnings spike"
+    description: "Cleansing is redacting suspected PII/PHI; domain profile may need explicit classification."
+    input: "telemetry.system_metrics"
+    condition: "metrics.pii_phi_suspected_rate > threshold"
+    window_seconds: 1800
+    threshold:
+      suspected_per_minute: 5
+    severity: "high"
+    actions:
+      channels: ["compliance", "ops"]
+      open_case: true
+      reason_code: "policy.pii_phi_violation"
+    runbook:
+      - "Review affected sources and payload fields."
+      - "Confirm domain classification and policy."
+      - "Tighten rules/mappings to avoid capturing sensitive fields."
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["anomaly_hint_assistant"]
+  approval_gate: "human_required"
+  audit_fields_required:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+  notes:
+    - "LLM may propose threshold adjustments but cannot auto-activate or change severity without approval."
+    - "All alert changes require profile version bump and review."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Domain overlay adds a KPI alert for price drop
+# alerts:
+#   - id: "F-001"
+#     name: "Price drop > 10%"
+#     input: "canonical.metric"
+#     condition: "pct_change(price.usd, 3600) < -0.10"
+#     window_seconds: 3600
+#     severity: "medium"
+#     actions:
+#       channels: ["ops"]
+#       open_case: false
+# -----------------------------------------------------------------------------

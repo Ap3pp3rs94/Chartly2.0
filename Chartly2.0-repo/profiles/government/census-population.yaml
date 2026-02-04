@@ -1,0 +1,20 @@
+id: census-population
+name: US Census Population Data
+version: 1.0.0
+description: State population data from 2020 Census
+schedule:
+  enabled: true
+  interval: 6h
+  jitter: 30s
+limits:
+  max_records: 5000
+  max_pages: 50
+  max_bytes: 1048576
+source:
+  type: http_rest
+  url: https://api.census.gov/data/2020/dec/pl?get=NAME,P1_001N&for=state:*
+  auth: none
+mapping:
+  NAME: dims.geo.name
+  state: dims.geo.state_code
+  P1_001N: measures.population.total

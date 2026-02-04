@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/reports/chart_config.schema.json",
+  "title": "Chartly Report ChartConfig (v1)",
+  "description": "Chart configuration for report generation and dashboard rendering. Defines the dataset, time range, aggregation, and chart type.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional stable chart config identifier."
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable chart title."
+    },
+    "chart_type": {
+      "type": "string",
+      "enum": ["line", "bar", "scatter", "heatmap"],
+      "description": "Chart type."
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Dataset selector for the chart.",
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Source identifier."
+        },
+        "metric_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Metric name to chart."
+        },
+        "dimensions_filter": {
+          "type": "object",
+          "description": "Optional filter applied to metric dimensions (exact match semantics are implementation-defined).",
+          "additionalProperties": true
+        }
+      },
+      "required": ["source_id", "metric_name"]
+    },
+    "time_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Time range and granularity for the chart.",
+      "properties": {
+        "start": { "type": "string", "format": "date-time", "description": "Range start (inclusive), RFC3339." },
+        "end": { "type": "string", "format": "date-time", "description": "Range end (exclusive), RFC3339." },
+        "granularity": {
+          "type": "string",
+          "enum": ["raw", "minute", "hour", "day", "week", "month"],
+          "description": "Aggregation granularity."
+        }
+      },
+      "required": ["start", "end", "granularity"]
+    },
+    "aggregations": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional aggregation configuration.",
+      "properties": {
+        "function": {
+          "type": "string",
+          "enum": ["avg", "sum", "min", "max", "count"],
+          "description": "Aggregation function."
+        },
+        "window": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Optional rolling window size (in units of granularity)."
+        }
+      },
+      "required": ["function"]
+    },
+    "style": {
+      "type": "object",
+      "description": "Optional style overrides (renderer-specific).",
+      "additionalProperties": true
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope identifier."
+    }
+  },
+  "required": ["title", "chart_type", "dataset", "time_range", "tenant_id"]
+}

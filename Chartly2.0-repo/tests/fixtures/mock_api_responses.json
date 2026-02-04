@@ -1,0 +1,46 @@
+{
+  "health_ok": {
+    "ok": true,
+    "service": "gateway",
+    "ts_unix": 0
+  },
+  "ready_ok": {
+    "ok": true,
+    "deps": {
+      "analytics": true,
+      "storage": true
+    },
+    "ts_unix": 0
+  },
+  "envelope_ok": {
+    "data": {
+      "result": "success"
+    },
+    "ok": true,
+    "request_id": "fixture-req-0001"
+  },
+  "envelope_error_retryable": {
+    "error": {
+      "code": "RATE_LIMITED",
+      "details": {
+        "retry_after_ms": 500
+      },
+      "message": "Too many requests",
+      "retryable": true
+    },
+    "ok": false,
+    "request_id": "fixture-req-0002"
+  },
+  "envelope_error_nonretryable": {
+    "error": {
+      "code": "BAD_REQUEST",
+      "details": {
+        "field": "kind"
+      },
+      "message": "Invalid request payload",
+      "retryable": false
+    },
+    "ok": false,
+    "request_id": "fixture-req-0003"
+  }
+}
