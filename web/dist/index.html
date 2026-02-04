@@ -15,12 +15,10 @@
         <span class="mark" aria-hidden="true"></span>
         <span class="brandText">
           <span class="brandTitle">Chartly Control Plane</span>
-          <span class="brandSub">UI  <span id="gwBadge" class="badge">unknown</span></span>
+          <span class="brandSub">UI <span id="gwBadge" class="badge">unknown</span></span>
         </span>
       </a>
-
       <nav id="nav" class="nav"></nav>
-
       <div class="topActions">
         <button id="btnRefresh" class="btn">Refresh</button>
         <a class="btn ghost" href="/settings" data-link>Settings</a>
@@ -54,9 +52,9 @@
         <section class="panel">
           <div class="panelTitle">Operator Notes</div>
           <div class="small muted">
-            <div> Uses same-origin <code>/api/*</code>.</div>
-            <div> API key stored in <code>sessionStorage</code> only.</div>
-            <div> If a service endpoint is not implemented, UI shows a planned notice (no silent failures).</div>
+            <div>Same-origin <code>/api/*</code>.</div>
+            <div>API key stored in <code>sessionStorage</code>.</div>
+            <div>Charts cap at 5000 points to prevent UI freeze.</div>
           </div>
         </section>
       </aside>
@@ -69,12 +67,11 @@
     <footer class="footer small muted">
       <span>Static SPA</span><span class="dot"></span>
       <span>no-build</span><span class="dot"></span>
-      <span class="mono" id="buildTag">ui-1</span>
+      <span class="mono" id="buildTag">ui-2</span>
     </footer>
   </div>
 
   <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
-
   <script type="module" src="/app.js"></script>
 </body>
 </html>
