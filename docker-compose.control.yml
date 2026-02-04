@@ -40,6 +40,21 @@ services:
       timeout: 5s
       retries: 3
 
+  reporter:
+    build:
+      context: .
+      dockerfile: services/control-plane/reporter/Dockerfile
+    ports: ["8094:8084"]
+    environment:
+      AGGREGATOR_URL: http://aggregator:8082
+    depends_on: [aggregator]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   gateway:
     build:
       context: .
@@ -49,7 +64,8 @@ services:
       REGISTRY_URL: http://registry:8081
       AGGREGATOR_URL: http://aggregator:8082
       COORDINATOR_URL: http://coordinator:8083
-    depends_on: [registry, aggregator, coordinator]
+      REPORTER_URL: http://reporter:8084
+    depends_on: [registry, aggregator, coordinator, reporter]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]

@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,10 +29,10 @@ type SourceConfig struct {
 	Auth string `yaml:"auth"` // "none"
 }
 
-func ProcessProfile(profile Profile) ([]map[string]any, error) {
+func ProcessProfile(profile Profile) ([]map[string]interface{}, error) {
 	if strings.TrimSpace(profile.Source.URL) == "" {
 		logProc("missing_source_url profile_id=%s", profile.ID)
-		return []map[string]any{}, fmt.Errorf("missing_source_url")
+		return []map[string]interface{}{}, fmt.Errorf("missing_source_url")
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -37,20 +40,20 @@ func ProcessProfile(profile Profile) ([]map[string]any, error) {
 	raw, err := fetchSource(client, profile.Source.URL)
 	if err != nil {
 		logProc("fetch_failed url=%s err=%s", profile.Source.URL, err.Error())
-		return []map[string]any{}, err
+		return []map[string]interface{}{}, err
 	}
 
 	var parsed any
 	if err := json.Unmarshal(raw, &parsed); err != nil {
 		logProc("json_parse_failed url=%s err=%s", profile.Source.URL, err.Error())
-		return []map[string]any{}, err
+		return []map[string]interface{}{}, err
 	}
 
 	records := normalizeToRecords(parsed)
 
-	out := make([]map[string]any, 0, len(records))
+	out := make([]map[string]interface{}, 0, len(records))
 	for _, rec := range records {
-		dst := make(map[string]any)
+		dst := make(map[string]interface{})
 
 		for srcPath, dstPath := range profile.Mapping {
 			srcPath = strings.TrimSpace(srcPath)
@@ -66,12 +69,24 @@ func ProcessProfile(profile Profile) ([]map[string]any, error) {
 			setNestedValue(dst, dstPath, val)
 		}
 
-		// If mapping is empty, pass-through objects as best-effort.
 		if len(profile.Mapping) == 0 {
-			if m, ok := rec.(map[string]any); ok {
+			if m, ok := rec.(map[string]interface{}); ok {
 				dst = m
 			}
 		}
+
+		// Coerce measures.* numeric strings to float64
+		coerceMeasures(dst)
+
+		// Fill dims.time.date/year/month from occurred_at
+		fillTimeDims(dst)
+
+		// Compute record_id
+		recForHash := cloneMapWithoutKey(dst, "record_id")
+		canon := canonicalJSONBytes(recForHash)
+		sum := sha256.Sum256(canon)
+		dst["record_id"] = "sha256:" + hex.EncodeToString(sum[:])
+
 		out = append(out, dst)
 	}
 
@@ -84,8 +99,11 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 		return nil, err
 	}
 
+	if isBlockedHost(u.Hostname()) {
+		return nil, fmt.Errorf("blocked_host")
+	}
+
 	// Liberty: BLS timeseries endpoint requires POST; profiles may specify only URL.
-	// If host matches api.bls.gov and path includes /timeseries/data/, do POST with minimal payload.
 	if strings.EqualFold(u.Host, "api.bls.gov") && strings.Contains(u.Path, "/publicAPI/v2/timeseries/data/") {
 		payload := map[string]any{
 			"seriesid": []string{"LNS14000000"},
@@ -120,19 +138,40 @@ func fetchSource(client *http.Client, rawURL string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 }
 
+func isBlockedHost(host string) bool {
+	h := strings.ToLower(strings.TrimSpace(host))
+	if h == "" {
+		return true
+	}
+	if h == "localhost" {
+		return true
+	}
+	if h == "127.0.0.1" {
+		return true
+	}
+	if strings.HasPrefix(h, "169.254.") {
+		return true
+	}
+	if ip := net.ParseIP(h); ip != nil {
+		if ip.IsLoopback() {
+			return true
+		}
+		if strings.HasPrefix(h, "169.254.") {
+			return true
+		}
+	}
+	return false
+}
+
 func normalizeToRecords(parsed any) []any {
-	// Census style: top-level array-of-arrays with header row.
 	if arr, ok := parsed.([]any); ok && len(arr) > 0 {
 		if isArrayOfArraysWithHeader(arr) {
 			return censusToObjects(arr)
 		}
-		// Standard array
 		return arr
 	}
 
-	// Object
 	if obj, ok := parsed.(map[string]any); ok {
-		// If object contains "results" (case-insensitive) as array, use it.
 		for k, v := range obj {
 			if strings.EqualFold(k, "results") {
 				if a, ok := v.([]any); ok {
@@ -140,11 +179,9 @@ func normalizeToRecords(parsed any) []any {
 				}
 			}
 		}
-		// Else treat object itself as a single record.
 		return []any{obj}
 	}
 
-	// Unknown type -> single record wrapper
 	return []any{parsed}
 }
 
@@ -161,7 +198,6 @@ func isArrayOfArraysWithHeader(arr []any) bool {
 			return false
 		}
 	}
-	// Require at least one data row as []any
 	_, ok = arr[1].([]any)
 	return ok
 }
@@ -188,8 +224,7 @@ func censusToObjects(arr []any) []any {
 	return out
 }
 
-// setNestedValue creates nested maps for "a.b.c".
-func setNestedValue(obj map[string]any, path string, value any) {
+func setNestedValue(obj map[string]interface{}, path string, value interface{}) {
 	parts := strings.Split(path, ".")
 	cur := obj
 	for i := 0; i < len(parts); i++ {
@@ -203,13 +238,12 @@ func setNestedValue(obj map[string]any, path string, value any) {
 		}
 		next, ok := cur[p]
 		if ok {
-			if m, ok := next.(map[string]any); ok {
+			if m, ok := next.(map[string]interface{}); ok {
 				cur = m
 				continue
 			}
-			// Overwrite non-map deterministically.
 		}
-		nm := make(map[string]any)
+		nm := make(map[string]interface{})
 		cur[p] = nm
 		cur = nm
 	}
@@ -228,7 +262,7 @@ type pathToken struct {
 	index int
 }
 
-func getValueByPath(obj any, path string) (any, bool) {
+func getValueByPath(obj interface{}, path string) (interface{}, bool) {
 	toks, ok := parsePath(path)
 	if !ok {
 		return nil, false
@@ -262,7 +296,6 @@ func getValueByPath(obj any, path string) (any, bool) {
 	return cur, true
 }
 
-// parsePath supports: a.b[0].c and nested indexes like data[0][1] (treated as sequential).
 func parsePath(path string) ([]pathToken, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
@@ -272,13 +305,11 @@ func parsePath(path string) ([]pathToken, bool) {
 	out := make([]pathToken, 0, 8)
 	i := 0
 	for i < len(path) {
-		// field name
 		if path[i] == '.' {
 			i++
 			continue
 		}
 		if path[i] == '[' {
-			// index
 			j := strings.IndexByte(path[i:], ']')
 			if j < 0 {
 				return nil, false
@@ -294,7 +325,6 @@ func parsePath(path string) ([]pathToken, bool) {
 			continue
 		}
 
-		// read field until '.' or '['
 		start := i
 		for i < len(path) && path[i] != '.' && path[i] != '[' {
 			i++
@@ -306,6 +336,97 @@ func parsePath(path string) ([]pathToken, bool) {
 		out = append(out, pathToken{kind: tokField, field: field})
 	}
 	return out, true
+}
+
+func coerceMeasures(rec map[string]interface{}) {
+	m, ok := rec["measures"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for k, v := range m {
+		if s, ok := v.(string); ok {
+			if f, err := strconv.ParseFloat(strings.TrimSpace(s), 64); err == nil {
+				m[k] = f
+			}
+		}
+	}
+	rec["measures"] = m
+}
+
+func fillTimeDims(rec map[string]interface{}) {
+	var ts string
+	if v := getNestedValue(rec, "dims.time.occurred_at"); v != nil {
+		if s, ok := v.(string); ok {
+			ts = s
+		}
+	}
+	if ts == "" {
+		if v, ok := rec["occurred_at"]; ok {
+			if s, ok := v.(string); ok {
+				ts = s
+			}
+		}
+	}
+	if ts == "" {
+		return
+	}
+	t, err := time.Parse(time.RFC3339, ts)
+	if err != nil {
+		return
+	}
+	date := t.UTC().Format("2006-01-02")
+	year, month, _ := t.Date()
+
+	if getNestedValue(rec, "dims.time.date") == nil {
+		setNestedValue(rec, "dims.time.date", date)
+	}
+	if getNestedValue(rec, "dims.time.year") == nil {
+		setNestedValue(rec, "dims.time.year", int(year))
+	}
+	if getNestedValue(rec, "dims.time.month") == nil {
+		setNestedValue(rec, "dims.time.month", int(month))
+	}
+}
+
+func getNestedValue(obj map[string]interface{}, path string) interface{} {
+	parts := strings.Split(path, ".")
+	var cur interface{} = obj
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			return nil
+		}
+		m, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		v, ok := m[p]
+		if !ok {
+			return nil
+		}
+		cur = v
+	}
+	return cur
+}
+
+func cloneMapWithoutKey(in map[string]interface{}, key string) map[string]interface{} {
+	out := make(map[string]interface{}, len(in))
+	for k, v := range in {
+		if k == key {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func canonicalJSONBytes(v any) []byte {
+	b, _ := json.Marshal(v)
+	var buf bytes.Buffer
+	if err := json.Compact(&buf, b); err == nil {
+		return append(buf.Bytes(), '\n')
+	}
+	return append(b, '\n')
 }
 
 func logProc(format string, args ...any) {

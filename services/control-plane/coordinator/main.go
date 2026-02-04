@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,15 +23,21 @@ const (
 
 type Drone struct {
 	ID               string    `json:"id"`
-	Status           string    `json:"status"` // active, idle, offline
+	Status           string    `json:"status"`
 	LastHeartbeat    time.Time `json:"last_heartbeat"`
 	RegisteredAt     time.Time `json:"registered_at"`
 	AssignedProfiles []string  `json:"assigned_profiles"`
 }
 
+type profileListItem struct {
+	ID      string `json:"id"`
+	Enabled *bool  `json:"enabled,omitempty"`
+}
+
 type server struct {
 	mu     sync.RWMutex
 	drones map[string]*Drone
+	force  map[string]map[string]struct{}
 
 	registryURL string
 	client      *http.Client
@@ -46,11 +51,13 @@ func main() {
 
 	s := &server{
 		drones:      make(map[string]*Drone),
+		force:       make(map[string]map[string]struct{}),
 		registryURL: regURL,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
 	}
+
 	go s.sweeper()
 
 	r := mux.NewRouter()
@@ -61,6 +68,9 @@ func main() {
 	r.HandleFunc("/drones/heartbeat", s.handleHeartbeat).Methods(http.MethodPost, http.MethodOptions)
 	r.HandleFunc("/drones", s.handleList).Methods(http.MethodGet, http.MethodOptions)
 	r.HandleFunc("/drones/stats", s.handleStats).Methods(http.MethodGet, http.MethodOptions)
+	r.HandleFunc("/drones/{id}/work", s.handleWork).Methods(http.MethodGet, http.MethodOptions)
+
+	r.HandleFunc("/profiles/{id}:runNow", s.handleRunNow).Methods(http.MethodPost, http.MethodOptions)
 
 	handler := withCORS(r)
 
@@ -70,6 +80,7 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
+
 	logLine("INFO", "starting", "addr=%s registry_url=%s", addr, regURL)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		logLine("ERROR", "listen_failed", "err=%s", err.Error())
@@ -120,14 +131,13 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_json"})
 		return
 	}
-
 	in.ID = strings.TrimSpace(in.ID)
 	if in.ID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_id"})
 		return
 	}
 
-	profiles, err := s.fetchProfileIDs()
+	profiles, err := s.fetchEnabledProfileIDs()
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "registry_unavailable"})
 		return
@@ -139,16 +149,15 @@ func (s *server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	d, ok := s.drones[in.ID]
 	if !ok {
-		d = &Drone{
-			ID:           in.ID,
-			RegisteredAt: now,
-		}
+		d = &Drone{ID: in.ID, RegisteredAt: now}
 		s.drones[in.ID] = d
 	}
-	// Always refresh assigned profiles on re-register.
 	d.AssignedProfiles = profiles
 	d.LastHeartbeat = now
 	d.Status = "idle"
+	if _, ok := s.force[in.ID]; !ok {
+		s.force[in.ID] = make(map[string]struct{})
+	}
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusOK, d)
@@ -168,7 +177,6 @@ func (s *server) handleHeartbeat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_json"})
 		return
 	}
-
 	in.ID = strings.TrimSpace(in.ID)
 	if in.ID == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_id"})
@@ -235,7 +243,6 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 			offline++
 			continue
 		}
-		// within window
 		if d.Status == "active" {
 			active++
 		}
@@ -246,6 +253,70 @@ func (s *server) handleStats(w http.ResponseWriter, r *http.Request) {
 		"total":   total,
 		"active":  active,
 		"offline": offline,
+	})
+}
+
+func (s *server) handleRunNow(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_id"})
+		return
+	}
+
+	s.mu.Lock()
+	queued := 0
+	for droneID := range s.drones {
+		if _, ok := s.force[droneID]; !ok {
+			s.force[droneID] = make(map[string]struct{})
+		}
+		if _, exists := s.force[droneID][id]; !exists {
+			s.force[droneID][id] = struct{}{}
+			queued++
+		}
+	}
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"queued_for": queued,
+		"profile_id": id,
+	})
+}
+
+func (s *server) handleWork(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_id"})
+		return
+	}
+
+	s.mu.Lock()
+	if _, ok := s.drones[id]; !ok {
+		s.mu.Unlock()
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+		return
+	}
+	q := s.force[id]
+	out := make([]string, 0, len(q))
+	for pid := range q {
+		out = append(out, pid)
+	}
+	sort.Strings(out)
+	s.force[id] = make(map[string]struct{})
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"drone_id": id,
+		"profiles": out,
 	})
 }
 
@@ -262,8 +333,7 @@ func (s *server) countActive() int {
 	return n
 }
 
-func (s *server) fetchProfileIDs() ([]string, error) {
-	// Expect registry to return array of {id,name,version,content}
+func (s *server) fetchEnabledProfileIDs() ([]string, error) {
 	url := strings.TrimRight(s.registryURL, "/") + "/profiles"
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	resp, err := s.client.Do(req)
@@ -274,23 +344,27 @@ func (s *server) fetchProfileIDs() ([]string, error) {
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("registry_status_%d", resp.StatusCode)
 	}
-
 	b, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, err
 	}
-	var arr []struct {
-		ID string `json:"id"`
-	}
+
+	var arr []profileListItem
 	if err := json.Unmarshal(b, &arr); err != nil {
 		return nil, err
 	}
 
 	out := make([]string, 0, len(arr))
 	for _, p := range arr {
-		id := strings.TrimSpace(p.ID)
-		if id != "" {
-			out = append(out, id)
+		enabled := true
+		if p.Enabled != nil {
+			enabled = *p.Enabled
+		}
+		if enabled {
+			id := strings.TrimSpace(p.ID)
+			if id != "" {
+				out = append(out, id)
+			}
 		}
 	}
 	return out, nil
@@ -302,7 +376,7 @@ func decodeJSONStrict(r *http.Request, v any) error {
 	if err != nil {
 		return err
 	}
-	dec := json.NewDecoder(bytes.NewReader(b))
+	dec := json.NewDecoder(strings.NewReader(string(b)))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }
@@ -341,7 +415,6 @@ func requestLoggingMiddleware(next http.Handler) http.Handler {
 		} else if rec.status >= 400 {
 			level = "WARN"
 		}
-
 		ts := time.Now().UTC().Format(time.RFC3339)
 		fmt.Fprintf(os.Stdout, "%s %s method=%s path=%s status=%d duration_ms=%d\n",
 			ts, level, r.Method, r.URL.Path, rec.status, dur)
@@ -359,7 +432,6 @@ func withCORS(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }

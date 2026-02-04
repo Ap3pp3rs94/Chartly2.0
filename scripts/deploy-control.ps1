@@ -22,6 +22,9 @@ while ($elapsed -lt $timeout) {
             Write-Host "  Profiles:  http://localhost:8090/api/profiles" -ForegroundColor White
             Write-Host "  Results:   http://localhost:8090/api/results" -ForegroundColor White
             Write-Host "  Drones:    http://localhost:8090/api/drones" -ForegroundColor White
+            Write-Host "  Runs:      http://localhost:8090/api/runs" -ForegroundColor White
+            Write-Host "  Records:   http://localhost:8090/api/records" -ForegroundColor White
+            Write-Host "  Reports:   http://localhost:8090/api/reports" -ForegroundColor White
             exit 0
         }
     } catch { }

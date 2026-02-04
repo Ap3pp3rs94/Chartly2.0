@@ -20,28 +20,35 @@ const (
 	defaultRegistryURL    = "http://registry:8081"
 	defaultAggregatorURL  = "http://aggregator:8082"
 	defaultCoordinatorURL = "http://coordinator:8083"
+	defaultReporterURL    = "http://reporter:8084"
 
 	distDir = "/app/web/dist"
 )
 
 type serviceDetail struct {
-	Status     string `json:"status"` // up|down
+	Status     string `json:"status"`
 	HTTPStatus int    `json:"http_status,omitempty"`
 	Error      string `json:"error,omitempty"`
+}
+
+type statusDetailed struct {
+	Status   string                   `json:"status"`
+	Services map[string]serviceDetail `json:"services"`
 }
 
 func main() {
 	registryURL := envOr("REGISTRY_URL", defaultRegistryURL)
 	aggregatorURL := envOr("AGGREGATOR_URL", defaultAggregatorURL)
 	coordinatorURL := envOr("COORDINATOR_URL", defaultCoordinatorURL)
+	reporterURL := envOr("REPORTER_URL", defaultReporterURL)
 
 	regProxy := mustProxy(registryURL)
 	aggProxy := mustProxy(aggregatorURL)
 	cooProxy := mustProxy(coordinatorURL)
+	repProxy := mustProxy(reporterURL)
 
 	mux := http.NewServeMux()
 
-	// Health endpoints
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -52,14 +59,15 @@ func main() {
 			return
 		}
 
-		sum := checkAll(registryURL, aggregatorURL, coordinatorURL)
+		sum := checkAll(registryURL, aggregatorURL, coordinatorURL, reporterURL)
 		status := "healthy"
-		if sum.Services["registry"] != "up" ||
-			sum.Services["aggregator"] != "up" ||
-			sum.Services["coordinator"] != "up" {
+		if sum["services"].(map[string]string)["registry"] != "up" ||
+			sum["services"].(map[string]string)["aggregator"] != "up" ||
+			sum["services"].(map[string]string)["coordinator"] != "up" ||
+			sum["services"].(map[string]string)["reporter"] != "up" {
 			status = "degraded"
 		}
-		sum.Status = status
+		sum["status"] = status
 		writeJSON(w, http.StatusOK, sum)
 	})
 
@@ -73,8 +81,7 @@ func main() {
 			return
 		}
 
-		out := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL)
-		// healthy only if all up
+		out := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL)
 		status := "healthy"
 		for _, v := range out.Services {
 			if v.Status != "up" {
@@ -93,8 +100,17 @@ func main() {
 	mux.Handle("/api/results/", stripPrefixProxy("/api", aggProxy))
 	mux.Handle("/api/results", stripPrefixProxy("/api", aggProxy))
 
+	mux.Handle("/api/runs/", stripPrefixProxy("/api", aggProxy))
+	mux.Handle("/api/runs", stripPrefixProxy("/api", aggProxy))
+
+	mux.Handle("/api/records/", stripPrefixProxy("/api", aggProxy))
+	mux.Handle("/api/records", stripPrefixProxy("/api", aggProxy))
+
 	mux.Handle("/api/drones/", stripPrefixProxy("/api", cooProxy))
 	mux.Handle("/api/drones", stripPrefixProxy("/api", cooProxy))
+
+	mux.Handle("/api/reports/", stripPrefixProxy("/api", repProxy))
+	mux.Handle("/api/reports", stripPrefixProxy("/api", repProxy))
 
 	// Static + SPA fallback (everything else)
 	mux.HandleFunc("/", serveSPA(distDir))
@@ -111,7 +127,8 @@ func main() {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	logLine("INFO", "starting", "addr=%s registry=%s aggregator=%s coordinator=%s", addr, registryURL, aggregatorURL, coordinatorURL)
+
+	logLine("INFO", "starting", "addr=%s registry=%s aggregator=%s coordinator=%s reporter=%s", addr, registryURL, aggregatorURL, coordinatorURL, reporterURL)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		logLine("ERROR", "listen_failed", "err=%s", err.Error())
 		os.Exit(1)
@@ -135,7 +152,6 @@ func mustProxy(target string) *httputil.ReverseProxy {
 	orig := p.Director
 	p.Director = func(r *http.Request) {
 		orig(r)
-		// Preserve X-Request-ID end-to-end
 		if rid := r.Header.Get("X-Request-ID"); rid != "" {
 			r.Header.Set("X-Request-ID", rid)
 		}
@@ -148,7 +164,6 @@ func mustProxy(target string) *httputil.ReverseProxy {
 
 func stripPrefixProxy(prefix string, proxy *httputil.ReverseProxy) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Let CORS middleware handle OPTIONS.
 		r.URL.Path = strings.TrimPrefix(r.URL.Path, prefix)
 		if r.URL.Path == "" {
 			r.URL.Path = "/"
@@ -159,7 +174,6 @@ func stripPrefixProxy(prefix string, proxy *httputil.ReverseProxy) http.Handler 
 
 func serveSPA(root string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Never serve static for API routes (belt + suspenders)
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/api/status" || r.URL.Path == "/health" {
 			http.NotFound(w, r)
 			return
@@ -177,7 +191,6 @@ func serveSPA(root string) http.HandlerFunc {
 			return
 		}
 
-		// SPA fallback
 		index := filepath.Join(root, "index.html")
 		if _, err := os.Stat(index); err == nil {
 			http.ServeFile(w, r, index)
@@ -188,35 +201,27 @@ func serveSPA(root string) http.HandlerFunc {
 	}
 }
 
-type healthSummary struct {
-	Status   string            `json:"status"`
-	Services map[string]string `json:"services"`
-}
-
-type statusDetailed struct {
-	Status   string                   `json:"status"`
-	Services map[string]serviceDetail `json:"services"`
-}
-
-func checkAll(reg, agg, coo string) healthSummary {
+func checkAll(reg, agg, coo, rep string) map[string]any {
 	svcs := map[string]string{
 		"registry":    upOrDown(reg + "/health"),
 		"aggregator":  upOrDown(agg + "/health"),
 		"coordinator": upOrDown(coo + "/health"),
+		"reporter":    upOrDown(rep + "/health"),
 	}
-	return healthSummary{
-		Status:   "healthy",
-		Services: svcs,
+	return map[string]any{
+		"status":   "healthy",
+		"services": svcs,
 	}
 }
 
-func checkAllDetailed(reg, agg, coo string) statusDetailed {
+func checkAllDetailed(reg, agg, coo, rep string) statusDetailed {
 	return statusDetailed{
 		Status: "healthy",
 		Services: map[string]serviceDetail{
 			"registry":    upOrDownDetailed(reg + "/health"),
 			"aggregator":  upOrDownDetailed(agg + "/health"),
 			"coordinator": upOrDownDetailed(coo + "/health"),
+			"reporter":    upOrDownDetailed(rep + "/health"),
 		},
 	}
 }
@@ -295,7 +300,6 @@ func withCORS(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-
 		next.ServeHTTP(w, r)
 	})
 }

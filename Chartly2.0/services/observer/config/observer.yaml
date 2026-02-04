@@ -1,0 +1,69 @@
+# Chartly 2.0  Observer Service Configuration (v0)
+#
+# This service is intentionally minimal in v0:
+# - Observations are stored IN-MEMORY ONLY (no persistence).
+# - Suitable for local development and early integration tests.
+# - Future versions should wire durable storage (e.g., PostgreSQL) behind the same API.
+
+observer:
+  env:
+    var: OBSERVER_ENV
+    default: local
+    allowed: [local, dev, staging, prod]
+
+  server:
+    addr:
+      var: OBSERVER_ADDR
+      default: "0.0.0.0"
+
+    port:
+      var: OBSERVER_PORT
+      default: 8086
+
+    # Go time.ParseDuration format, e.g. "10s", "1m"
+    read_timeout:
+      var: OBSERVER_READ_TIMEOUT
+      default: "10s"
+
+    write_timeout:
+      var: OBSERVER_WRITE_TIMEOUT
+      default: "10s"
+
+    idle_timeout:
+      var: OBSERVER_IDLE_TIMEOUT
+      default: "60s"
+
+    shutdown_timeout:
+      var: OBSERVER_SHUTDOWN_TIMEOUT
+      default: "10s"
+
+    max_body_bytes:
+      var: OBSERVER_MAX_BODY_BYTES
+      default: 1048576 # 1 MiB
+
+    max_header_bytes:
+      var: OBSERVER_MAX_HEADER_BYTES
+      default: 32768   # 32 KiB
+
+  tenancy:
+    # Tenant header behavior:
+    # - OBSERVER_ENV=local => missing X-Tenant-Id defaults to "local"
+    # - otherwise => X-Tenant-Id required for /v0/*
+    header_name:
+      var: OBSERVER_TENANT_HEADER
+      default: "X-Tenant-Id"
+
+    local_default_tenant:
+      var: OBSERVER_LOCAL_TENANT
+      default: "local"
+
+  retention:
+    # Max in-memory events; oldest evicted first deterministically.
+    max_events:
+      var: OBSERVER_MAX_EVENTS
+      default: 200000
+
+  notes:
+    - "v0 uses in-memory storage; restarting the service clears all observations."
+    - "Planned: durable backend (e.g., PostgreSQL or time-series chunk storage)."
+    - "Observer data is DATA ONLY; alerting and enforcement are handled by higher layers."

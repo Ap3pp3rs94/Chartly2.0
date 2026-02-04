@@ -1,0 +1,199 @@
+# Chartly 2.0  RBAC Roles Catalog (DATA ONLY)
+#
+# IMPORTANT:
+# - This file is a DATA-ONLY catalog of roles and permissions.
+# - It does NOT enforce anything by itself.
+# - Enforcement requires an RBAC engine in code (future or elsewhere in the repo).
+#
+# Permission naming convention:
+#   "<service>:<resource>:<action>"
+# Examples:
+#   "storage:objects:read"
+#   "audit:events:write"
+#   "auth:tokens:issue"
+#
+# Determinism:
+# - Role IDs are stable.
+# - Permission lists are kept in a stable (lexicographic) order.
+# - Packs reference role IDs only.
+
+catalog:
+  schema: "chartly.rbac.roles.v1"
+  version: "1.0.0"
+  updated_at: "REPLACE_AT_BUILD_TIME" # placeholder; a registry may override at runtime
+  notes:
+    - "DATA ONLY: roles + permissions; enforcement lives in code."
+    - "Use packs for default tenant bootstrap role assignments."
+
+permission_taxonomy:
+  format: "<service>:<resource>:<action>"
+  services:
+    - "storage"
+    - "audit"
+    - "auth"
+    - "analytics"
+    - "connector-hub"
+  common_resources:
+    storage:
+      - "objects"
+      - "profiles"
+      - "stats"
+    audit:
+      - "events"
+      - "chains"
+      - "reports"
+    auth:
+      - "tokens"
+      - "keys"
+      - "rbac"
+    analytics:
+      - "charts"
+      - "templates"
+      - "queries"
+    connector-hub:
+      - "connectors"
+      - "profiles"
+      - "runs"
+
+roles:
+  - id: "owner"
+    display_name: "Owner"
+    description: "Full control over tenant resources, including security and role assignments."
+    inherits: ["admin"]
+    permissions:
+      - "auth:rbac:write"
+      - "auth:tokens:issue"
+      - "auth:tokens:revoke"
+      - "audit:chains:read"
+      - "audit:events:read"
+      - "audit:events:write"
+      - "analytics:charts:read"
+      - "analytics:charts:write"
+      - "analytics:templates:read"
+      - "analytics:templates:write"
+      - "connector-hub:connectors:read"
+      - "connector-hub:connectors:write"
+      - "connector-hub:profiles:read"
+      - "connector-hub:profiles:write"
+      - "storage:objects:delete"
+      - "storage:objects:read"
+      - "storage:objects:write"
+      - "storage:profiles:delete"
+      - "storage:profiles:read"
+      - "storage:profiles:write"
+      - "storage:stats:read"
+    constraints:
+      notes:
+        - "Should be assigned sparingly; typically 12 principals per tenant."
+
+  - id: "admin"
+    display_name: "Admin"
+    description: "Administrative access for day-to-day operations and configuration."
+    permissions:
+      - "auth:tokens:issue"
+      - "auth:tokens:revoke"
+      - "audit:chains:read"
+      - "audit:events:read"
+      - "audit:events:write"
+      - "analytics:charts:read"
+      - "analytics:charts:write"
+      - "analytics:templates:read"
+      - "analytics:templates:write"
+      - "connector-hub:connectors:read"
+      - "connector-hub:connectors:write"
+      - "connector-hub:profiles:read"
+      - "connector-hub:profiles:write"
+      - "storage:objects:delete"
+      - "storage:objects:read"
+      - "storage:objects:write"
+      - "storage:profiles:delete"
+      - "storage:profiles:read"
+      - "storage:profiles:write"
+      - "storage:stats:read"
+    constraints:
+      notes:
+        - "Does not grant RBAC catalog editing; use Owner for role assignment changes."
+
+  - id: "ops"
+    display_name: "Ops"
+    description: "Operational access: observe systems, read data, and perform limited maintenance."
+    permissions:
+      - "audit:chains:read"
+      - "audit:events:read"
+      - "audit:events:write"
+      - "analytics:charts:read"
+      - "analytics:templates:read"
+      - "connector-hub:connectors:read"
+      - "connector-hub:profiles:read"
+      - "storage:objects:read"
+      - "storage:profiles:read"
+      - "storage:stats:read"
+    constraints:
+      notes:
+        - "Intended for SRE/ops workflows; can write audit events but not mutate core objects."
+
+  - id: "developer"
+    display_name: "Developer"
+    description: "Build/integration role: can write profiles and run connectors; limited object writes."
+    permissions:
+      - "audit:events:read"
+      - "audit:events:write"
+      - "analytics:charts:read"
+      - "analytics:charts:write"
+      - "analytics:templates:read"
+      - "connector-hub:connectors:read"
+      - "connector-hub:connectors:write"
+      - "connector-hub:profiles:read"
+      - "connector-hub:profiles:write"
+      - "connector-hub:runs:read"
+      - "connector-hub:runs:write"
+      - "storage:objects:read"
+      - "storage:objects:write"
+      - "storage:profiles:read"
+      - "storage:profiles:write"
+      - "storage:stats:read"
+    constraints:
+      notes:
+        - "Does not include delete permissions; designed for safer iteration in shared environments."
+
+  - id: "viewer"
+    display_name: "Viewer"
+    description: "Read-only role for dashboards and inspection."
+    permissions:
+      - "audit:chains:read"
+      - "audit:events:read"
+      - "analytics:charts:read"
+      - "analytics:templates:read"
+      - "connector-hub:connectors:read"
+      - "connector-hub:profiles:read"
+      - "connector-hub:runs:read"
+      - "storage:objects:read"
+      - "storage:profiles:read"
+      - "storage:stats:read"
+    constraints:
+      notes:
+        - "Intended for stakeholders; no write privileges."
+
+  - id: "service_account"
+    display_name: "Service Account"
+    description: "Non-human principal for automation. Grant least-privilege permissions per workload."
+    permissions:
+      - "audit:events:write"
+      - "connector-hub:runs:write"
+      - "storage:objects:read"
+      - "storage:objects:write"
+      - "storage:profiles:read"
+    constraints:
+      notes:
+        - "Prefer narrower custom roles for production service accounts."
+
+role_packs:
+  - id: "admin_pack_v1"
+    display_name: "Admin Pack"
+    role_ids: ["owner", "admin"]
+  - id: "ops_pack_v1"
+    display_name: "Ops Pack"
+    role_ids: ["ops", "viewer"]
+  - id: "readonly_pack_v1"
+    display_name: "Read-Only Pack"
+    role_ids: ["viewer"]

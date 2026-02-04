@@ -1,0 +1,119 @@
+version: "1.0"
+
+scope:
+  roots:
+    - "profiles/core"
+    - "profiles/domains"
+  file_patterns:
+    - "**/*.yaml"
+    - "**/*.yml"
+  exclude_patterns:
+    - "profiles/tests/fixtures/**"
+    - "**/.keep"
+
+required_files:
+  # Profile bundles must include these files unless explicitly documented otherwise.
+  base_bundle:
+    - "profile.yaml"
+    - "mappings.yaml"
+    - "rules.yaml"
+    - "cleansing.yaml"
+    - "deduplication.yaml"
+    - "enrichment.yaml"
+    - "retention.yaml"
+    - "alerts.yaml"
+  domain_bundle_minimum:
+    - "profile.yaml"
+    - "mappings.yaml"
+    - "retention.yaml"
+
+yaml_style_rules:
+  enforce_utf8: true
+  max_line_length: 120
+  require_document_start: false
+  forbid_tabs: true
+  require_consistent_indentation: true
+  indentation_spaces: 2
+
+secret_scanning_rules:
+  enabled: true
+  forbidden_key_patterns:
+    - "(?i)^password$"
+    - "(?i)^secret$"
+    - "(?i)^token$"
+    - "(?i)^api[_-]?key$"
+    - "(?i)^private[_-]?key$"
+    - "(?i)^access[_-]?key$"
+    - "(?i)^secret[_-]?key$"
+  forbidden_value_patterns:
+    - "(?i)-----BEGIN (RSA|EC|OPENSSH|PRIVATE) KEY-----"
+    - "(?i)AKIA[0-9A-Z]{16}"
+    - "(?i)ghp_[A-Za-z0-9]{36}"
+  allow_env_refs_only:
+    env_ref_syntax: "${ENV:VAR_NAME}"
+    notes:
+      - "Auth credentials may be referenced by env var name; literal secret values are forbidden."
+
+semantic_rules:
+  profile_version_required: true
+  version_format_regex: "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+  required_top_level_keys_in_profile_yaml:
+    - "profile"
+    - "compatibility"
+    - "classification"
+    - "scope"
+    - "contract_enforcement"
+    - "canonicalization"
+    - "quarantine_policy"
+    - "idempotency_policy"
+    - "policy_references"
+  contract_references_must_exist: true
+  referenced_files_must_exist: true
+
+domain_specific_rules:
+  healthcare_phi:
+    match:
+      file: "profiles/domains/healthcare/profile.yaml"
+    requires:
+      - "classification.data_sensitivity == phi"
+      - "policy_references.phi_handling exists"
+      - "llm_workers_overrides.forbidden contains llm_sees_raw_phi"
+  finance_sox:
+    match:
+      file: "profiles/domains/finance/profile.yaml"
+    requires:
+      - "compliance.sox == true"
+      - "retention_guidance.audit_retention_days_min >= 3650"
+  ecommerce_gdpr:
+    match:
+      file: "profiles/domains/ecommerce/profile.yaml"
+    requires:
+      - "compliance.gdpr == true"
+      - "classification.data_sensitivity == pii"
+
+llm_rules:
+  enabled: true
+  required_fields_when_present:
+    - "approval_gate"
+    - "audit_fields_required"
+  required_audit_fields:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+  forbidden_in_base_profile:
+    file: "profiles/core/base/profile.yaml"
+    rules:
+      - "llm_workers.approval_gates.default must be human_required"
+      - "llm_workers.forbidden_actions includes auto_apply_profile_changes_without_approval"
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example lint failure cases:
+# - profile.yaml missing profile.version
+# - mappings.yaml contains a literal token value instead of ${ENV:...}
+# - healthcare profile enables LLM PHI access without explicit deny
+# -----------------------------------------------------------------------------

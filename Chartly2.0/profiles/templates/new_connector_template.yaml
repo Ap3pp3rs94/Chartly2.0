@@ -1,0 +1,123 @@
+# Chartly 2.0  New Connector Profile Template
+# Create a new file under: profiles/core/connectors/<CONNECTOR_ID>.yaml
+# Connector IDs should match configs/connector-registry.yaml entries.
+
+version: "1.0"
+
+connector_profile:
+  id: "<CONNECTOR_ID>"
+  protocol: "<PROTOCOL>"     # e.g., http_rest, graphql, websocket, grpc, database, sftp, s3, rss, webhook
+  kind: "<KIND>"             # api|domain|db|file|webhook
+  description: >
+    <ONE_PARAGRAPH_DESCRIPTION_OF_CONNECTOR_BEHAVIOR_AND_SAFETY>
+  version: "1.0.0"
+  status: "experimental"     # experimental|active|deprecated
+
+source_config_schema:
+  required_fields:
+    - "<REQUIRED_FIELD_1>"
+  optional_fields:
+    - "<OPTIONAL_FIELD_1>"
+  field_docs:
+    <REQUIRED_FIELD_1>:
+      type: "<string|integer|boolean|object|array>"
+      rules:
+        - "<RULE_1>"
+        - "<RULE_2>"
+    <OPTIONAL_FIELD_1>:
+      type: "<...>"
+      rules:
+        - "<...>"
+
+transport:
+  # Define protocol-specific connection behavior
+  timeout_policy:
+    default_seconds: 30
+    min_seconds: 1
+    max_seconds: 120
+  tls:
+    enabled: true
+    verify: true
+    min_version: "1.2"
+  auth:
+    # No secrets here. Use env-var references only.
+    env_ref_syntax: "${ENV:VAR_NAME}"
+    allowed_modes: ["none", "api_key", "bearer", "basic", "oauth2"]
+    notes:
+      - "Never store secret literals in config/profiles."
+
+rate_limiting_and_backpressure:
+  defaults:
+    rate_limit_rpm: 60
+    per_domain_concurrency: 5
+  enforcement:
+    location: "connector-hub"
+    keys: ["tenant_id", "source_id", "host"]
+  backpressure:
+    - "Stop initiating new requests when queue depth exceeds threshold."
+    - "Honor Retry-After when present."
+
+retries_and_circuit_breakers:
+  retry_policy:
+    max_attempts: 3
+    base_backoff_ms: 500
+    max_backoff_ms: 8000
+    jitter: true
+    retry_on:
+      - "<TRANSIENT_ERROR_CLASS_OR_STATUS>"
+  circuit_breaker:
+    enabled: true
+    failure_threshold: 10
+    open_seconds: 60
+    half_open_probe_requests: 2
+
+payload_handling:
+  accepted_content_types:
+    - "application/json"
+  max_payload_bytes: 10000000
+  storage:
+    raw_plane_required: true
+    raw_ref_required_fields: ["bucket", "key", "sha256", "content_type", "captured_at"]
+  notes:
+    - "Never log payload bodies."
+    - "Always compute sha256 and store raw blobs."
+
+observability:
+  required_metrics:
+    - "<connector.requests_total>"
+    - "<connector.errors_total>"
+  required_log_fields:
+    - "ts"
+    - "service=connector-hub"
+    - "tenant_id"
+    - "source_id"
+    - "job_id"
+    - "raw_sha256"
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["schema_drift_explainer"]
+  approval_gate: "human_required"
+  forbidden:
+    - "include_secret_values"
+    - "auto_apply_config_changes"
+    - "disable_rate_limits"
+  audit_fields_required:
+    - "llm_role"
+    - "model_id"
+    - "prompt_hash"
+    - "output_hash"
+    - "approver"
+    - "decision"
+
+# -----------------------------------------------------------------------------
+# CHECKLIST (comments only)  before enabling connector in staging/production
+#
+# [ ] Connector ID exists in configs/connector-registry.yaml
+# [ ] Source config schema documented and validated (required/optional fields)
+# [ ] Rate limits and backpressure behavior verified under load test
+# [ ] Retry + circuit breaker behavior tested against fault injection
+# [ ] Raw blob storage + sha256 verification tested end-to-end
+# [ ] Observability metrics/logs emitted and dashboards/alerts defined
+# [ ] Security review: no secrets in profiles/config; least-privilege runtime creds
+# -----------------------------------------------------------------------------

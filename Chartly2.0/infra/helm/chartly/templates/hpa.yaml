@@ -1,0 +1,53 @@
+{{- $ns := .Values.global.namespace -}}
+{{- $components := dict
+  "gateway"        (dict "enabled" (dig "services" "gateway" "autoscaling" "enabled" .Values | default false) "name" "chartly-gateway")
+  "orchestrator"   (dict "enabled" (dig "services" "orchestrator" "autoscaling" "enabled" .Values | default false) "name" "chartly-orchestrator")
+  "connector-hub"  (dict "enabled" (dig "services" "connectorHub" "autoscaling" "enabled" .Values | default false) "name" "chartly-connector-hub")
+  "normalizer"     (dict "enabled" (dig "services" "normalizer" "autoscaling" "enabled" .Values | default false) "name" "chartly-normalizer")
+  "analytics"      (dict "enabled" (dig "services" "analytics" "autoscaling" "enabled" .Values | default false) "name" "chartly-analytics")
+  "storage"        (dict "enabled" (dig "services" "storage" "autoscaling" "enabled" .Values | default false) "name" "chartly-storage")
+  "audit"          (dict "enabled" (dig "services" "audit" "autoscaling" "enabled" .Values | default false) "name" "chartly-audit")
+  "auth"           (dict "enabled" (dig "services" "auth" "autoscaling" "enabled" .Values | default false) "name" "chartly-auth")
+  "observer"       (dict "enabled" (dig "services" "observer" "autoscaling" "enabled" .Values | default false) "name" "chartly-observer")
+-}}
+
+{{- range $key, $c := $components -}}
+  {{- if $c.enabled -}}
+    {{- $vals := (dig "services" $key "autoscaling" .Values | default dict) -}}
+    {{- /* handle connectorHub key mismatch (values uses connectorHub) */ -}}
+    {{- if eq $key "connector-hub" -}}
+      {{- $vals = (dig "services" "connectorHub" "autoscaling" .Values | default dict) -}}
+    {{- end -}}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ printf "%s-hpa" $c.name }}
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- toYaml $.Values.global.labels | nindent 4 }}
+    app.kubernetes.io/component: {{ $key | quote }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $c.name | quote }}
+  minReplicas: {{ (get $vals "minReplicas" | default 1) }}
+  maxReplicas: {{ (get $vals "maxReplicas" | default 3) }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ (get $vals "targetCPUUtilizationPercentage" | default 70) }}
+    {{- if (get $vals "targetMemoryUtilizationPercentage") }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ (get $vals "targetMemoryUtilizationPercentage") }}
+    {{- end }}
+---
+  {{- end -}}
+{{- end -}}
