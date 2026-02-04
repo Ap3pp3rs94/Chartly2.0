@@ -93,9 +93,15 @@ func NewRouter() http.Handler {
 	// Reports (placeholder)
 	mux.HandleFunc("/reports", methodOnly(http.MethodPost, requireJSON(handlers.Reports)))
 
-	// Profiles (schema introspection)
+	// Profiles (list + schema + fields)
 	mux.HandleFunc("/api/profiles", methodOnly(http.MethodGet, handlers.ListProfiles))
-	mux.HandleFunc("/api/profiles/", methodOnly(http.MethodGet, handlers.GetProfileSchema))
+	mux.HandleFunc("/api/profiles/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/fields") {
+			methodOnly(http.MethodGet, handlers.GetProfileFields)(w, r)
+			return
+		}
+		methodOnly(http.MethodGet, handlers.GetProfileSchema)(w, r)
+	})
 
 	// Analytics correlate
 	mux.HandleFunc("/api/analytics/correlate", methodOnly(http.MethodPost, requireJSON(handlers.Correlate)))

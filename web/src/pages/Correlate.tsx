@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 
 type ProfileItem = { id: string; name: string };
-type SchemaField = { path: string; type: string; example?: any };
-type SchemaResp = {
+type Field = { path: string; label: string; type: string; sample?: any };
+type FieldsResp = {
   profile_id: string;
   name: string;
-  fields: SchemaField[];
-  join_keys: string[];
-  numeric_fields: string[];
+  fields: Field[];
+  cached: boolean;
+  expires_in_seconds: number;
 };
 
 type CorrelateResp = {
@@ -23,10 +23,12 @@ export default function Correlate() {
 
   const [profileA, setProfileA] = useState<string>("");
   const [profileB, setProfileB] = useState<string>("");
-  const [schemaA, setSchemaA] = useState<SchemaResp | null>(null);
-  const [schemaB, setSchemaB] = useState<SchemaResp | null>(null);
+  const [schemaA, setSchemaA] = useState<FieldsResp | null>(null);
+  const [schemaB, setSchemaB] = useState<FieldsResp | null>(null);
   const [loadingA, setLoadingA] = useState<boolean>(false);
   const [loadingB, setLoadingB] = useState<boolean>(false);
+  const [errorA, setErrorA] = useState<string>("");
+  const [errorB, setErrorB] = useState<string>("");
 
   const [joinA, setJoinA] = useState<string>("");
   const [joinB, setJoinB] = useState<string>("");
@@ -72,17 +74,19 @@ export default function Correlate() {
     let alive = true;
     async function loadSchema() {
       setLoadingA(true);
+      setErrorA("");
       try {
-        const res = await fetch(`/api/profiles/${encodeURIComponent(profileA)}/schema`);
+        const res = await fetch(`/api/profiles/${encodeURIComponent(profileA)}/fields`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as SchemaResp;
+        const data = (await res.json()) as FieldsResp;
         if (!alive) return;
         setSchemaA(data);
-        setJoinA(data.join_keys?.[0] ?? "");
-        setNumA(data.numeric_fields?.[0] ?? "");
-      } catch {
+        setJoinA("");
+        setNumA("");
+      } catch (e: any) {
         if (!alive) return;
         setSchemaA(null);
+        setErrorA(String(e?.message ?? e));
       } finally {
         if (alive) setLoadingA(false);
       }
@@ -98,17 +102,19 @@ export default function Correlate() {
     let alive = true;
     async function loadSchema() {
       setLoadingB(true);
+      setErrorB("");
       try {
-        const res = await fetch(`/api/profiles/${encodeURIComponent(profileB)}/schema`);
+        const res = await fetch(`/api/profiles/${encodeURIComponent(profileB)}/fields`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as SchemaResp;
+        const data = (await res.json()) as FieldsResp;
         if (!alive) return;
         setSchemaB(data);
-        setJoinB(data.join_keys?.[0] ?? "");
-        setNumB(data.numeric_fields?.[0] ?? "");
-      } catch {
+        setJoinB("");
+        setNumB("");
+      } catch (e: any) {
         if (!alive) return;
         setSchemaB(null);
+        setErrorB(String(e?.message ?? e));
       } finally {
         if (alive) setLoadingB(false);
       }
@@ -122,6 +128,19 @@ export default function Correlate() {
   const canRun = useMemo(() => {
     return !!profileA && !!profileB && !!joinA && !!joinB;
   }, [profileA, profileB, joinA, joinB]);
+
+  const joinFieldsA = useMemo(() => {
+    return (schemaA?.fields || []).filter((f) => f.type === "string").sort((a, b) => a.path.localeCompare(b.path));
+  }, [schemaA]);
+  const joinFieldsB = useMemo(() => {
+    return (schemaB?.fields || []).filter((f) => f.type === "string").sort((a, b) => a.path.localeCompare(b.path));
+  }, [schemaB]);
+  const numericFieldsA = useMemo(() => {
+    return (schemaA?.fields || []).filter((f) => f.type === "number").sort((a, b) => a.path.localeCompare(b.path));
+  }, [schemaA]);
+  const numericFieldsB = useMemo(() => {
+    return (schemaB?.fields || []).filter((f) => f.type === "number").sort((a, b) => a.path.localeCompare(b.path));
+  }, [schemaB]);
 
   async function runCorrelate() {
     if (!canRun) return;
@@ -200,12 +219,14 @@ export default function Correlate() {
             className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loadingA && <option>Loading...</option>}
-            {schemaA?.join_keys?.map((k) => (
-              <option key={k} value={k}>
-                {k}
+            {!loadingA && joinFieldsA.length === 0 && <option value="">(no string fields)</option>}
+            {joinFieldsA.map((f) => (
+              <option key={f.path} value={f.path}>
+                {f.label}
               </option>
             ))}
           </select>
+          {errorA && <div className="text-red-400 text-sm mt-2">Error: {errorA}</div>}
 
           <label className="block mt-4 text-gray-400 text-sm">numeric field (A) for correlation</label>
           <select
@@ -215,9 +236,9 @@ export default function Correlate() {
             className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="">-- optional --</option>
-            {schemaA?.numeric_fields?.map((f) => (
-              <option key={f} value={f}>
-                {f}
+            {numericFieldsA.map((f) => (
+              <option key={f.path} value={f.path}>
+                {f.label}
               </option>
             ))}
           </select>
@@ -247,12 +268,14 @@ export default function Correlate() {
             className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loadingB && <option>Loading...</option>}
-            {schemaB?.join_keys?.map((k) => (
-              <option key={k} value={k}>
-                {k}
+            {!loadingB && joinFieldsB.length === 0 && <option value="">(no string fields)</option>}
+            {joinFieldsB.map((f) => (
+              <option key={f.path} value={f.path}>
+                {f.label}
               </option>
             ))}
           </select>
+          {errorB && <div className="text-red-400 text-sm mt-2">Error: {errorB}</div>}
 
           <label className="block mt-4 text-gray-400 text-sm">numeric field (B) for correlation</label>
           <select
@@ -262,9 +285,9 @@ export default function Correlate() {
             className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="">-- optional --</option>
-            {schemaB?.numeric_fields?.map((f) => (
-              <option key={f} value={f}>
-                {f}
+            {numericFieldsB.map((f) => (
+              <option key={f.path} value={f.path}>
+                {f.label}
               </option>
             ))}
           </select>

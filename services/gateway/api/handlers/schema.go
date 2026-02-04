@@ -14,15 +14,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type profileListResp struct {
-	Profiles []profileListItem `json:"profiles"`
-}
-
-type profileListItem struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
 type profileSchemaResp struct {
 	ProfileID     string         `json:"profile_id"`
 	Name          string         `json:"name"`
@@ -41,33 +32,6 @@ type profileYAML struct {
 	ID      string            `yaml:"id"`
 	Name    string            `yaml:"name"`
 	Mapping map[string]string `yaml:"mapping"`
-}
-
-// ListProfiles handles GET /api/profiles
-func ListProfiles(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
-		return
-	}
-
-	dir := profilesDir()
-	files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, "list_failed", "failed to list profiles")
-		return
-	}
-
-	items := make([]profileListItem, 0, len(files))
-	for _, p := range files {
-		id, name, _ := loadProfileMeta(p)
-		if id == "" {
-			id = strings.TrimSuffix(filepath.Base(p), filepath.Ext(p))
-		}
-		items = append(items, profileListItem{ID: id, Name: name})
-	}
-	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
-
-	writeJSON(w, http.StatusOK, profileListResp{Profiles: items})
 }
 
 // GetProfileSchema handles GET /api/profiles/{id}/schema
@@ -118,31 +82,6 @@ func GetProfileSchema(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func profilesDir() string {
-	v := strings.TrimSpace(os.Getenv("PROFILES_DIR"))
-	if v != "" {
-		return v
-	}
-	return filepath.FromSlash("profiles/government")
-}
-
-func loadProfileMeta(path string) (string, string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", "", err
-	}
-	p, err := parseProfileYAML(b)
-	if err != nil {
-		return "", "", err
-	}
-	id := strings.TrimSpace(p.ID)
-	name := strings.TrimSpace(p.Name)
-	if name == "" {
-		name = id
-	}
-	return id, name, nil
 }
 
 func parseProfileYAML(b []byte) (profileYAML, error) {
