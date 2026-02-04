@@ -1,0 +1,212 @@
+version: "1.0"
+
+canonical_order:
+  description: "Normalized, PHI/PII-minimized order shape used for downstream mappings."
+  fields:
+    order_id_hash:
+      type: "string"
+      required: true
+      notes: "sha256 hash of order_id (and optional tenant/source salt handled by implementation)."
+    created_at:
+      type: "rfc3339"
+      required: true
+    store_id:
+      type: "string"
+      required: true
+    channel:
+      type: "string"
+      required: true
+      allowed: ["web", "pos", "marketplace", "other"]
+    currency:
+      type: "string"
+      required: true
+      notes: "ISO 4217 currency code"
+    order_total:
+      type: "number"
+      required: true
+    subtotal:
+      type: "number"
+      required: false
+    tax_total:
+      type: "number"
+      required: false
+    shipping_total:
+      type: "number"
+      required: false
+    discount_total:
+      type: "number"
+      required: false
+    item_count:
+      type: "integer"
+      required: true
+  optional_fields:
+    region:
+      type: "string"
+      required: false
+    payment_method:
+      type: "string"
+      required: false
+
+input_adapters:
+  shopify:
+    detect_when:
+      - "payload has keys: ['id','created_at','total_price','currency']"
+      - "payload has 'line_items' array"
+    field_map:
+      order_id: "payload.id"
+      created_at: "payload.created_at"
+      currency: "payload.currency"
+      order_total: "payload.total_price"
+      subtotal: "payload.subtotal_price"
+      tax_total: "payload.total_tax"
+      shipping_total: "payload.total_shipping_price_set.shop_money.amount (optional)"
+      discount_total: "payload.total_discounts"
+      store_id: "payload.location_id (optional) else ctx.source_id"
+      channel: "'web' (default) or payload.source_name (mapped)"
+      region: "payload.shipping_address.country_code (optional) [PII caution]"
+      customer_id: "payload.customer.id (optional)"
+    transforms:
+      - "created_at -> parse_datetime -> rfc3339 UTC"
+      - "money fields -> to_number"
+      - "channel normalize to one of allowed values"
+    notes:
+      - "Shipping address fields are PII; do not output address. Region may be derived safely (country_code only)."
+
+  stripe:
+    detect_when:
+      - "payload has keys: ['id','created','amount_total','currency']"
+      - "payload.object in ['checkout.session','payment_intent'] (if present)"
+    field_map:
+      order_id: "payload.id"
+      created_at: "payload.created (unix_seconds)"
+      currency: "payload.currency"
+      order_total: "payload.amount_total / 100"
+      subtotal: "payload.amount_subtotal / 100 (optional)"
+      tax_total: "payload.total_details.amount_tax / 100 (optional)"
+      discount_total: "payload.total_details.amount_discount / 100 (optional)"
+      shipping_total: "payload.total_details.amount_shipping / 100 (optional)"
+      store_id: "ctx.source_id"
+      channel: "'web'"
+      customer_id: "payload.customer (optional)"
+    transforms:
+      - "created_at unix_seconds -> rfc3339 UTC"
+      - "currency -> upper"
+      - "amounts cents -> dollars via /100"
+    notes:
+      - "Do not emit customer email or billing address from Stripe objects."
+
+  generic:
+    detect_when:
+      - "payload has keys: ['order_id','created_at','total','currency'] OR similar"
+    field_map:
+      order_id: "payload.order_id OR payload.id"
+      created_at: "payload.created_at OR payload.timestamp"
+      currency: "payload.currency"
+      order_total: "payload.total OR payload.order_total"
+      subtotal: "payload.subtotal (optional)"
+      tax_total: "payload.tax_total (optional)"
+      shipping_total: "payload.shipping_total (optional)"
+      discount_total: "payload.discount_total (optional)"
+      item_count: "payload.item_count OR len(payload.items)"
+      store_id: "payload.store_id OR ctx.source_id"
+      channel: "payload.channel OR 'other'"
+      region: "payload.region (optional)"
+      customer_id: "payload.customer_id (optional)"
+    transforms:
+      - "created_at -> parse_datetime -> rfc3339 UTC"
+      - "money fields -> to_number"
+      - "channel normalize"
+    notes:
+      - "Generic adapter is conservative; prefer explicit domain adapters when possible."
+
+pii_minimization:
+  drop_fields:
+    # Fields that must never appear in the normalized order output
+    - "customer_email"
+    - "email"
+    - "phone"
+    - "shipping_address"
+    - "billing_address"
+    - "full_name"
+    - "name"
+    - "address"
+  hash_fields:
+    # Deterministic hashing performed by implementation, consistent with dedupe rules.
+    - source_field: "order_id"
+      output_field: "order_id_hash"
+      algo: "sha256"
+    - source_field: "customer_id"
+      output_field: "customer_id_hash"
+      algo: "sha256"
+      optional: true
+  prohibited_outputs:
+    - "raw customer identifiers"
+    - "emails"
+    - "addresses"
+    - "phones"
+
+money_and_currency:
+  currency_code:
+    normalize: "upper"
+    required: true
+    allowed_pattern: "^[A-Z]{3}$"
+  decimals:
+    precision: 2
+    rounding: "bankers"   # bankers|half_up
+  rules:
+    - "All money values must be non-negative."
+    - "If adapter provides integer minor units (cents), convert deterministically."
+    - "Avoid floating error by rounding to precision after conversion."
+
+validation:
+  required_fields:
+    - "order_id_hash"
+    - "created_at"
+    - "store_id"
+    - "channel"
+    - "currency"
+    - "order_total"
+    - "item_count"
+  bounds:
+    order_total_min: 0
+    subtotal_min: 0
+    tax_total_min: 0
+    shipping_total_min: 0
+    discount_total_min: 0
+    item_count_min: 0
+  quarantine_on:
+    - condition: "missing_required_field"
+      reason_code: "mapping.missing_required_field"
+    - condition: "invalid_currency"
+      reason_code: "mapping.type_coercion_failed"
+    - condition: "negative_money_value"
+      reason_code: "mapping.type_coercion_failed"
+    - condition: "timestamp_parse_failed"
+      reason_code: "mapping.type_coercion_failed"
+  notes:
+    - "Quarantine decisions are enforced by rules.yaml; this section defines domain intent."
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["schema_drift_explainer", "mapping_suggester"]
+  approval_gate: "human_required"
+  constraints:
+    - "LLM must not receive PII fields or values."
+    - "LLM may propose adapter field maps and transforms only."
+    - "All changes require version bump and review."
+  audit_fields_required: ["llm_role", "model_id", "prompt_hash", "output_hash", "approver", "decision"]
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Stripe-like payload
+# payload:
+#   { id: "cs_123", created: 1705831200, amount_total: 5999, currency: "usd" }
+# -> normalized:
+#   { order_id_hash: sha256("cs_123"), created_at: "2026-..Z", currency:"USD", order_total:59.99, item_count:0, store_id:ctx.source_id, channel:"web" }
+#
+# Example: Shopify-like payload (PII dropped)
+# payload:
+#   { id: 1, created_at:"2026-01-21T10:00:00Z", total_price:"59.99", currency:"USD", customer:{id:99,email:"x@y.com"} }
+# -> normalized includes customer_id_hash but not email.
+# -----------------------------------------------------------------------------

@@ -1,0 +1,117 @@
+version: 2
+
+# Chartly 2.0  Dependabot Configuration
+# Purpose:
+# - Keep Go + Web + Actions + Docker dependencies patched with a predictable cadence.
+# - Group related updates to reduce PR noise and preserve review bandwidth.
+#
+# Notes:
+# - Docker updates are directory-scoped. We explicitly list root + each service directory
+#   because Dependabot does not support a recursive wildcard for Docker ecosystems.
+
+updates:
+  # Go modules (repo root: go.mod / go.work)
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    groups:
+      go-deps:
+        patterns:
+          - "*"
+
+  # Web dependencies (Vite/React app)
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    groups:
+      web-deps:
+        patterns:
+          - "*"
+
+  # GitHub Actions (workflow actions)
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    groups:
+      actions:
+        patterns:
+          - "*"
+
+  # Docker (root + services)
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    open-pull-requests-limit: 10
+    groups:
+      docker:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "docker"
+    directory: "/services/gateway"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/orchestrator"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/connector-hub"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/normalizer"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/analytics"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/storage"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/audit"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/auth"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }
+
+  - package-ecosystem: "docker"
+    directory: "/services/observer"
+    schedule: { interval: "weekly", day: "monday", time: "09:00" }
+    open-pull-requests-limit: 10
+    groups: { docker: { patterns: ["*"] } }

@@ -4,156 +4,253 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
 
-type reportReq struct {
-	Charts []chartConfig `json:"charts"`
-}
-type chartConfig struct {
-	Title     string         `json:"title"`
-	ChartType string         `json:"chart_type"`
-	Dataset   chartDataset   `json:"dataset"`
-	TimeRange chartTimeRange `json:"time_range"`
-}
-type chartDataset struct {
-	SourceID   string         `json:"source_id"`
-	MetricName string         `json:"metric_name"`
-	Dimensions map[string]any `json:"dimensions_filter,omitempty"`
-}
-type chartTimeRange struct {
-	Start       string `json:"start"`
-	End         string `json:"end"`
-	Granularity string `json:"granularity"`
-}
-type reportStubResp struct {
-	Error   errResp   `json:"error"`
-	Request reportReq `json:"request"`
+type reportFile struct {
+	ReportID  string `json:"report_id"`
+	Name      string `json:"name"`
+	PlanHash  string `json:"plan_hash"`
+	CreatedAt string `json:"created_at"`
+	Plan      plan   `json:"plan"`
 }
 
-func envIsLocalReports() bool {
-	env := strings.TrimSpace(os.Getenv("CHARTLY_ENV"))
-	if env == "" {
-		env = "local"
-	}
-	return strings.EqualFold(env, "local")
+type reportListResp struct {
+	Reports []reportListItem `json:"reports"`
 }
-func tenantFromHeaderReports(r *http.Request) (string, bool) {
-	t := strings.TrimSpace(r.Header.Get("X-Tenant-Id"))
-	if t == "" {
-		if envIsLocalReports() {
-			return "local", true
-		}
-		return "", false
-	}
-	return t, true
+
+type reportListItem struct {
+	ReportID  string `json:"report_id"`
+	Name      string `json:"name"`
+	PlanHash  string `json:"plan_hash"`
+	CreatedAt string `json:"created_at"`
 }
-func parseRFC3339Required(v string) (string, bool) {
-	v = strings.TrimSpace(v)
-	if v == "" {
-		return "", false
-	}
-	if _, err := time.Parse(time.RFC3339, v); err == nil {
-		return v, true
-	}
-	if _, err := time.Parse(time.RFC3339Nano, v); err == nil {
-		return v, true
-	}
-	return "", false
+
+type createReportReq struct {
+	Name string `json:"name"`
+	Plan plan   `json:"plan"`
 }
-func validGranularity(g string) bool {
-	switch g {
-	case "raw", "minute", "hour", "day", "week", "month":
-		return true
-	default:
-		return false
-	}
+
+type createReportResp struct {
+	ReportID  string `json:"report_id"`
+	Name      string `json:"name"`
+	PlanHash  string `json:"plan_hash"`
+	CreatedAt string `json:"created_at"`
 }
-func validChartType(t string) bool {
-	switch t {
-	case "line", "bar", "scatter", "heatmap":
-		return true
-	default:
-		return false
-	}
+
+type runReportResp struct {
+	RunID    string            `json:"run_id"`
+	Status   string            `json:"status"`
+	Next     string            `json:"next"`
+	Profiles []profileListItem `json:"profiles"`
 }
-func Reports(w http.ResponseWriter, r *http.Request) {
-	tenantID, ok := tenantFromHeaderReports(r)
-	if !ok {
-		writeErr(w, http.StatusBadRequest, "missing_tenant", "X-Tenant-Id header is required")
+
+// ListReports handles GET /api/reports
+func ListReports(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
-	defer r.Body.Close()
-	var req reportReq
+
+	reports, _ := loadReports()
+	items := make([]reportListItem, 0, len(reports))
+	for _, r := range reports {
+		items = append(items, reportListItem{
+			ReportID:  r.ReportID,
+			Name:      r.Name,
+			PlanHash:  r.PlanHash,
+			CreatedAt: r.CreatedAt,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ReportID < items[j].ReportID })
+	writeJSON(w, http.StatusOK, reportListResp{Reports: items})
+}
+
+// CreateReport handles POST /api/reports
+func CreateReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	if !requireAPIKey(w, r) {
+		return
+	}
+
+	var req createReportReq
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid_json", "invalid JSON body")
 		return
 	}
-	if len(req.Charts) == 0 {
-		writeErr(w, http.StatusBadRequest, "missing_charts", "charts must be a non-empty array")
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "missing_name", "name is required")
 		return
 	}
 
-	// Validate each chart and referenced sources
-	srcs := sources.list(tenantID)
-	srcIndex := map[string]Source{}
-	for _, s := range srcs {
-		srcIndex[s.ID] = s
+	planHash := hashPlan(req.Plan)
+	short := planHash
+	if len(short) > 12 {
+		short = short[:12]
 	}
-	for i := range req.Charts {
-		c := &req.Charts[i]
-		c.Title = strings.TrimSpace(c.Title)
-		c.ChartType = strings.TrimSpace(c.ChartType)
-		c.Dataset.SourceID = strings.TrimSpace(c.Dataset.SourceID)
-		c.Dataset.MetricName = strings.TrimSpace(c.Dataset.MetricName)
-		c.TimeRange.Granularity = strings.TrimSpace(c.TimeRange.Granularity)
-		if c.Title == "" {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "chart title is required")
-			return
-		}
-		if !validChartType(c.ChartType) {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "chart_type must be one of: line, bar, scatter, heatmap")
-			return
-		}
-		if c.Dataset.SourceID == "" || c.Dataset.MetricName == "" {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "dataset.source_id and dataset.metric_name are required")
-			return
-		}
-		if _, ok := srcIndex[c.Dataset.SourceID]; !ok {
-			writeErr(w, http.StatusNotFound, "source_not_found", "source not found: "+c.Dataset.SourceID)
-			return
-		}
-		if !srcIndex[c.Dataset.SourceID].Enabled {
-			writeErr(w, http.StatusConflict, "source_disabled", "source is disabled: "+c.Dataset.SourceID)
-			return
-		}
-		start, ok := parseRFC3339Required(c.TimeRange.Start)
-		if !ok {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.start must be RFC3339")
-			return
-		}
-		end, ok := parseRFC3339Required(c.TimeRange.End)
-		if !ok {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.end must be RFC3339")
-			return
-		}
-		c.TimeRange.Start = start
-		c.TimeRange.End = end
-		if !validGranularity(c.TimeRange.Granularity) {
-			writeErr(w, http.StatusBadRequest, "invalid_chart", "time_range.granularity is invalid")
-			return
-		}
-	}
-	w.Header().Set("content-type", "application/json; charset=utf-8")
-	w.WriteHeader(http.StatusNotImplemented)
-	var resp reportStubResp
-	resp.Error.Error.Code = "feature_unavailable"
-	resp.Error.Error.Message = "reports feature is unavailable in this build"
-	resp.Request = req
+	reportID := "rep_" + short
+	createdAt := time.Now().UTC().Format(time.RFC3339)
 
-	_ = json.NewEncoder(w).Encode(resp)
+	rep := reportFile{
+		ReportID:  reportID,
+		Name:      name,
+		PlanHash:  planHash,
+		CreatedAt: createdAt,
+		Plan:      req.Plan,
+	}
+
+	if err := saveReport(rep); err != nil {
+		writeErr(w, http.StatusInternalServerError, "write_failed", "failed to save report")
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, createReportResp{
+		ReportID:  reportID,
+		Name:      name,
+		PlanHash:  planHash,
+		CreatedAt: createdAt,
+	})
+}
+
+// GetReport handles GET /api/reports/{id}
+func GetReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/reports/")
+	id = strings.Trim(id, "/")
+	if id == "" || strings.Contains(id, "..") {
+		writeErr(w, http.StatusBadRequest, "invalid_id", "invalid report id")
+		return
+	}
+
+	rep, err := loadReportByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "report not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
+}
+
+// RunReport handles POST /api/reports/{id}:run
+func RunReport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		return
+	}
+	id := strings.TrimPrefix(r.URL.Path, "/api/reports/")
+	if !strings.HasSuffix(id, ":run") {
+		writeErr(w, http.StatusNotFound, "not_found", "endpoint not found")
+		return
+	}
+	id = strings.TrimSuffix(id, ":run")
+	id = strings.Trim(id, "/")
+	if id == "" || strings.Contains(id, "..") {
+		writeErr(w, http.StatusBadRequest, "invalid_id", "invalid report id")
+		return
+	}
+
+	rep, err := loadReportByID(id)
+	if err != nil {
+		writeErr(w, http.StatusNotFound, "not_found", "report not found")
+		return
+	}
+
+	runID := "run_" + strings.TrimPrefix(rep.ReportID, "rep_")
+	resp := runReportResp{
+		RunID:    runID,
+		Status:   "planned",
+		Next:     "fetch_results",
+		Profiles: rep.Plan.Profiles,
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func requireAPIKey(w http.ResponseWriter, r *http.Request) bool {
+	expected := strings.TrimSpace(os.Getenv("REGISTRY_API_KEY"))
+	if expected == "" {
+		writeErr(w, http.StatusForbidden, "api_key_not_configured", "api key not configured")
+		return false
+	}
+	provided := strings.TrimSpace(r.Header.Get("X-API-Key"))
+	if provided == "" || provided != expected {
+		writeErr(w, http.StatusForbidden, "forbidden", "invalid api key")
+		return false
+	}
+	return true
+}
+
+func reportsDir() (string, error) {
+	root, err := findRepoRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, "reports"), nil
+}
+
+func saveReport(r reportFile) error {
+	dir, err := reportsDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	filename := r.ReportID + ".json"
+	path := filepath.Join(dir, filename)
+	b, _ := json.MarshalIndent(r, "", "  ")
+	b = append(b, '\n')
+	return os.WriteFile(path, b, 0o644)
+}
+
+func loadReports() ([]reportFile, error) {
+	dir, err := reportsDir()
+	if err != nil {
+		return nil, err
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "rep_*.json"))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]reportFile, 0, len(files))
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var r reportFile
+		if err := json.Unmarshal(b, &r); err != nil {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out, nil
+}
+
+func loadReportByID(id string) (reportFile, error) {
+	dir, err := reportsDir()
+	if err != nil {
+		return reportFile{}, err
+	}
+	path := filepath.Join(dir, id+".json")
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return reportFile{}, err
+	}
+	var r reportFile
+	if err := json.Unmarshal(b, &r); err != nil {
+		return reportFile{}, err
+	}
+	return r, nil
 }

@@ -1,0 +1,147 @@
+profile:
+  name: "domains/finance"
+  description: >
+    Finance domain overlay. Inherits from core/base and tightens correctness, auditability,
+    retention, and change control to support SOX-style expectations and defensible reporting.
+  domain: "finance"
+  version: "1.0.0"
+  status: "active"
+  owners:
+    - "Chartly Maintainers"
+  created_at: "2026-01-21T00:00:00Z"
+  updated_at: "2026-01-21T00:00:00Z"
+
+inherits:
+  base_profile: "profiles/core/base/profile.yaml"
+  overridden_files:
+    - "mappings.yaml"
+    - "compliance_rules.yaml"
+    - "retention.yaml"
+
+classification:
+  data_sensitivity: "none"   # finance domain assumes no PHI; avoid PII by design
+  notes:
+    - "Finance datasets should avoid PII/PHI. Use opaque identifiers (account_id) only when necessary."
+    - "Do not store payment card data. If detected, quarantine and escalate."
+
+compliance:
+  sox: true
+  change_control:
+    required: true
+    rules:
+      - "All profile changes require CODEOWNERS review."
+      - "All breaking changes require MAJOR version bump."
+      - "All changes must be recorded in changelog and auditable."
+  immutability:
+    audit_plane_required: true
+    raw_plane_required: true
+    canonical_plane_required: true
+  retention_guidance:
+    audit_retention_days_min: 3650
+    canonical_retention_days_min: 730
+    raw_retention_days_min: 90
+    notes:
+      - "Finance reporting often requires multi-year audit and record retention."
+
+scope:
+  supported_source_kinds: ["api", "db", "file", "domain"]
+  supported_connector_types:
+    - "http_rest"
+    - "graphql"
+    - "database"
+    - "s3"
+    - "file_system"
+    - "rss"
+
+canonicalization_overrides:
+  timestamp_policy:
+    max_future_skew_seconds: 60
+    max_past_skew_days: 3650
+    fallback_to_ctx_captured_at: true
+  dimension_policy:
+    max_dimensions_per_record: 96
+    max_dimension_value_len: 256
+    notes:
+      - "Finance metrics may need more dimensions for instrument/currency/venue."
+
+idempotency_overrides:
+  dedupe_window_policy:
+    enabled: true
+    window_seconds: 300
+    notes:
+      - "Finance sources can emit repeated updates; a small dedupe window reduces noise."
+      - "Idempotency remains hash-based; windowing only supplements duplicates."
+
+quarantine_overrides:
+  escalation_rules:
+    - when: "schema.validation_failed"
+      action: "open_case"
+      severity: "high"
+    - when: "dedupe.collision_conflict"
+      action: "open_case"
+      severity: "critical"
+  notes:
+    - "Conflicts are treated as high-risk due to reporting defensibility requirements."
+
+policy_references:
+  mappings: "profiles/domains/finance/mappings.yaml"
+  compliance_rules: "profiles/domains/finance/compliance_rules.yaml"
+  retention: "profiles/domains/finance/retention.yaml"
+
+llm_workers_overrides:
+  enabled: true
+  lanes:
+    - lane: "reporting_specs"
+      purpose: "Suggest chart/report configurations and narrative summaries (non-sensitive)."
+      model: "llama3.1:8b"
+      allowed_roles: ["report_spec_assistant", "anomaly_hint_assistant"]
+      approval_gate: "human_required"
+      constraints:
+        - "LLM suggestions must not alter mappings/rules automatically."
+        - "LLM must not create financial advice claims; it only formats analytics outputs."
+    - lane: "drift_analysis"
+      purpose: "Explain schema drift and propose mapping patches."
+      model: "llama3.1:8b"
+      allowed_roles: ["schema_drift_explainer", "mapping_suggester"]
+      approval_gate: "human_required"
+      constraints:
+        - "All proposed changes must be auditable and validated against contracts."
+        - "No secrets or credentials in suggestions."
+  audit_requirements:
+    required: true
+    record_fields:
+      - "ts"
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "llm_role"
+      - "model_id"
+      - "prompt_hash"
+      - "output_hash"
+      - "decision"
+      - "approver"
+
+observability_overrides:
+  additional_metrics:
+    - "finance.metric_quality_score"
+    - "finance.schema_drift_events_total"
+    - "finance.report_generation_total"
+  notes:
+    - "Track data quality and drift explicitly in finance domain."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Finance domain overlay for currency conversion metrics
+# canonicalization_overrides:
+#   dimension_policy:
+#     max_dimensions_per_record: 120
+#
+# Example: Tighten quarantine escalation for any PII detection
+# quarantine_overrides:
+#   escalation_rules:
+#     - when: "policy.pii_phi_violation"
+#       action: "open_case"
+#       severity: "critical"
+# -----------------------------------------------------------------------------

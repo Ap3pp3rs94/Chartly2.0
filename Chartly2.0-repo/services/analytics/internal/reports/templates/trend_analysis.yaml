@@ -1,0 +1,241 @@
+# Chartly 2.0  Trend Analysis Report (DATA-ONLY)
+#
+# IMPORTANT:
+# - Catalog artifact only; requires a YAML loader/registry to be used with the report engine.
+# - This template is evidence-first and should not be interpreted as a guarantee of analytics coverage.
+# - The report engine only assembles what upstream inputs provide.
+
+template:
+  id: "trend_analysis_v1"
+  title: "Trend Analysis  {{tenant_id}}"
+  subtitle: "Source {{source_id}}  Job {{job_id}}  {{generated_at}}"
+  summary: >
+    Evidence-based trend analysis summary for tenant {{tenant_id}}. Includes aggregation KPIs,
+    multi-series trend charts, seasonality notes, anomaly/change-point evidence (if provided),
+    and forecast comparison artifacts. (Template-only; generation depends on upstream inputs.)
+
+  meta:
+    template_family: "trend_analysis"
+    owner: "analytics"
+    version: "v1"
+    stability: "draft"
+    posture: "evidence_container"
+    notes: "Data-only scaffold; sections may be missing if not provided by upstream pipeline."
+
+  sections:
+    - id: "objective"
+      title: "Objective & Scope"
+      kind: "text"
+      text: |-
+        **Tenant:** {{tenant_id}}
+        **Request:** {{request_id}}
+        **Report:** {{report_id}}
+        **Template:** {{template_id}}
+
+        **Pipeline identifiers**
+        - Source ID: {{source_id}}
+        - Connector ID: {{connector_id}}
+        - Job ID: {{job_id}}
+
+        **Objective**
+        Provide an evidence-based view of trends and changes in the selected metrics. This report
+        does not infer beyond the supplied artifacts; it assembles and formats upstream outputs
+        for decision support.
+
+      meta:
+        role: "objective"
+
+    - id: "dataset_summary"
+      title: "Input Dataset Summary"
+      kind: "json"
+      json_key: "dataset.summary"
+      meta:
+        role: "dataset_json"
+        expectation: "Provide counts, time range, sampling interval, missingness, and key fields."
+
+    - id: "kpis"
+      title: "Aggregation KPIs"
+      kind: "table"
+      table_key: "kpis.table"
+      meta:
+        role: "kpi_table"
+        expectation: "Provide kpis.table as {columns,rows} or row objects."
+
+    - id: "trend_chart"
+      title: "Multi-series Trend"
+      kind: "chart"
+      chart_key: "charts.trend_multi"
+      meta:
+        role: "trend_chart"
+        expectation: "Provide charts.trend_multi as a chart spec object (or JSON string)."
+
+    - id: "seasonality_notes"
+      title: "Seasonality & Decomposition Notes"
+      kind: "text"
+      text: |-
+        **Seasonality assumptions (if provided)**
+        - Season length: {{seasonality.length}}
+        - Method: {{seasonality.method}}
+
+        **Interpretation guidance**
+        - If the sampling interval is irregular, consider resampling before decomposition.
+        - When seasonality evidence is absent, treat changes as non-seasonal until confirmed.
+
+        _This section is a narrative container; evidence should be supplied in the JSON section below._
+
+      meta:
+        role: "seasonality_text"
+
+    - id: "seasonality_json"
+      title: "Seasonality Evidence (Structured)"
+      kind: "json"
+      json_key: "seasonality.evidence"
+      meta:
+        role: "seasonality_json"
+        expectation: "Optional. Provide decomposition outputs, residual stats, and confidence notes."
+
+    - id: "changepoints_chart"
+      title: "Change Points / Anomaly Overlay"
+      kind: "chart"
+      chart_key: "charts.changepoints"
+      meta:
+        role: "changepoints_chart"
+        expectation: "Optional. Provide a chart spec with annotations/overlay series."
+
+    - id: "changepoints_json"
+      title: "Change Points / Anomalies (Structured)"
+      kind: "json"
+      json_key: "anomalies.summary"
+      meta:
+        role: "anomalies_json"
+        expectation: "Optional. Provide anomalies list (ts, score, direction, reason, method)."
+
+    - id: "forecast_chart"
+      title: "Forecast Comparison"
+      kind: "chart"
+      chart_key: "charts.forecast_compare"
+      meta:
+        role: "forecast_chart"
+        expectation: "Optional. Provide forecast vs actual overlay chart spec."
+
+    - id: "forecast_json"
+      title: "Forecast Evidence (Structured)"
+      kind: "json"
+      json_key: "forecast.results"
+      meta:
+        role: "forecast_json"
+        expectation: "Optional. Provide model selection, horizon, metrics, notes."
+
+    - id: "segment_breakdown"
+      title: "Segment Breakdown"
+      kind: "table"
+      table_key: "segments.table"
+      meta:
+        role: "segments_table"
+        expectation: "Optional. Provide grouped stats by dimension (e.g., region, plan, endpoint)."
+
+    - id: "methodology"
+      title: "Methodology Appendix"
+      kind: "text"
+      text: |-
+        This appendix documents how to interpret the evidence artifacts included in the report.
+        It is not a statement that the analytics engine performed any specific algorithm unless the
+        corresponding evidence blocks are present.
+
+        **Common evidence patterns**
+        - Trend charts: show the shape of metric movement over time.
+        - Aggregation KPIs: summarize totals, means, percentiles, and deltas.
+        - Anomalies/change points: flags on statistically unusual points; always validate context.
+        - Forecast comparison: best used when backtest metrics are provided.
+
+        **Suggested next questions**
+        - What changed operationally at detected change points?
+        - Is seasonality stable or shifting?
+        - Which segments drive the overall trend?
+
+      meta:
+        role: "methodology"
+
+constraints:
+  required_paths:
+    - "dataset.summary"
+    - "kpis.table"
+    - "charts.trend_multi"
+  optional_paths:
+    - "seasonality.evidence"
+    - "charts.changepoints"
+    - "anomalies.summary"
+    - "charts.forecast_compare"
+    - "forecast.results"
+    - "segments.table"
+  placeholder_expectations:
+    - "Provide tenant_id, request_id, source_id, job_id as top-level vars when possible."
+    - "Provide chart specs as objects or JSON strings."
+
+example_input:
+  # Illustrative only.
+  tenant_id: "acme"
+  request_id: "req_123"
+  source_id: "src_001"
+  connector_id: "conn_http"
+  job_id: "job_20260130_0001"
+  generated_at: "2026-01-30T12:34:56Z"
+
+  dataset:
+    summary:
+      n_points: 1440
+      start: "2026-01-29T00:00:00Z"
+      end: "2026-01-30T00:00:00Z"
+      interval_seconds: 60
+      missing_ratio: 0.01
+      metrics: ["requests", "errors"]
+
+  kpis:
+    table:
+      columns: ["metric", "mean", "p95", "min", "max"]
+      rows:
+        - ["requests", 120.2, 240, 10, 500]
+        - ["errors", 1.2, 4, 0, 12]
+
+  charts:
+    trend_multi:
+      type: "line"
+      title: "Requests & Errors (Multi-series)"
+      series:
+        - name: "requests"
+          kind: "line"
+          data:
+            - { x: "2026-01-29T00:00:00Z", y: 100 }
+            - { x: "2026-01-29T00:01:00Z", y: 110 }
+        - name: "errors"
+          kind: "line"
+          data:
+            - { x: "2026-01-29T00:00:00Z", y: 1 }
+            - { x: "2026-01-29T00:01:00Z", y: 0 }
+
+  seasonality:
+    length: "1440"
+    method: "phase_mean_residual"
+    evidence:
+      notes: "example only"
+      residual_std: 12.3
+
+  anomalies:
+    summary:
+      method: "auto"
+      anomalies:
+        - { ts: "2026-01-29T18:23:00Z", score: 3.9, direction: "high", reason: "spike" }
+
+  forecast:
+    results:
+      best_model: "holt"
+      horizon: 60
+      metrics:
+        mae: 1.23
+
+  segments:
+    table:
+      columns: ["segment", "count", "mean"]
+      rows:
+        - ["region:us", 720, 130.1]
+        - ["region:eu", 720, 110.2]

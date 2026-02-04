@@ -1,0 +1,130 @@
+# Chartly 2.0  New Domain Profile Template
+# Copy this folder structure:
+#   profiles/domains/<DOMAIN_NAME>/
+# And create:
+#   profile.yaml, mappings.yaml, retention.yaml (+ any domain-specific policy files)
+#
+# This file is a starting point for profiles/domains/<DOMAIN_NAME>/profile.yaml
+
+profile:
+  name: "domains/<DOMAIN_NAME>"
+  description: >
+    <ONE_PARAGRAPH_DESCRIPTION_OF_DOMAIN_AND_GOALS>
+  domain: "<DOMAIN_NAME>"
+  version: "1.0.0"
+  status: "active"
+  owners:
+    - "<OWNER_OR_TEAM>"
+  created_at: "<RFC3339_UTC_TIMESTAMP>"
+  updated_at: "<RFC3339_UTC_TIMESTAMP>"
+
+inherits:
+  base_profile: "profiles/core/base/profile.yaml"
+  overridden_files:
+    - "mappings.yaml"
+    - "retention.yaml"
+    # Add domain-specific files here, e.g.:
+    # - "compliance_rules.yaml"
+    # - "phi_handling.yaml"
+    # - "order_normalization.yaml"
+
+classification:
+  data_sensitivity: "<none|pii|phi|mixed>"
+  handling_notes:
+    - "<DATA_MINIMIZATION_NOTES>"
+    - "<LOGGING_PROHIBITIONS>"
+  allowed_storage:
+    raw: true
+    canonical: true
+    audit: true
+
+compliance:
+  gdpr: false
+  hipaa: false
+  sox: false
+  change_control:
+    required: true
+    rules:
+      - "All profile changes require CODEOWNERS review."
+      - "Breaking changes require MAJOR version bump and migration note."
+
+scope:
+  supported_source_kinds: ["api", "domain", "db", "file", "webhook"]
+  supported_connector_types:
+    - "http_rest"
+    - "graphql"
+    - "database"
+    - "file_system"
+    - "webhook"
+    - "s3"
+    - "rss"
+
+canonicalization_overrides:
+  # Tighten or expand dimension/timestamp policy as needed.
+  timestamp_policy:
+    max_future_skew_seconds: 300
+    max_past_skew_days: 3650
+  dimension_policy:
+    max_dimensions_per_record: 64
+    max_dimension_value_len: 256
+    prohibitions:
+      - "<EXAMPLE: no_email_in_dimensions>"
+
+quarantine_overrides:
+  escalation_rules:
+    - when: "policy.secret_detected"
+      action: "open_case"
+      severity: "critical"
+    # Add domain-specific escalations (e.g., PII/PHI)
+  notes:
+    - "<WHEN_TO_OPEN_CASES_AND_HOW_TO_TRIAGE>"
+
+policy_references:
+  mappings: "profiles/domains/<DOMAIN_NAME>/mappings.yaml"
+  retention: "profiles/domains/<DOMAIN_NAME>/retention.yaml"
+  # Add domain-specific policy files as needed
+
+llm_workers_overrides:
+  enabled: true
+  safe_mode_default: true
+  lanes:
+    - lane: "reporting_specs"
+      purpose: "Suggest report/chart configurations (no sensitive data)."
+      model: "llama3.1:8b"
+      allowed_roles: ["report_spec_assistant", "anomaly_hint_assistant"]
+      approval_gate: "human_required"
+      constraints:
+        - "No secrets."
+        - "No PII/PHI unless explicitly allowed by domain policy."
+    - lane: "drift_analysis"
+      purpose: "Explain schema drift and propose mapping patches (human-gated)."
+      model: "llama3.1:8b"
+      allowed_roles: ["schema_drift_explainer", "mapping_suggester"]
+      approval_gate: "human_required"
+      constraints:
+        - "Redact/minimize samples before prompting."
+        - "No auto-apply."
+  audit_requirements:
+    required: true
+    record_fields:
+      - "ts"
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "llm_role"
+      - "model_id"
+      - "prompt_hash"
+      - "output_hash"
+      - "decision"
+      - "approver"
+
+observability_overrides:
+  additional_metrics:
+    - "<domain.metric_1>"
+    - "<domain.metric_2>"
+
+# Notes:
+# - Keep this file deterministic and reviewable.
+# - Never store secrets in profiles.
+# - All canonical outputs must validate against contracts/v1.

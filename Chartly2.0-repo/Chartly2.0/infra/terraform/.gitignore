@@ -1,0 +1,23 @@
+# Terraform local state / working directories
+.terraform/
+.terraform.lock.hcl
+
+# State files (never commit)
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+crash.*.log
+
+# CLI override files (often contain local settings)
+terraform.rc
+.terraformrc
+
+# Plan outputs (optional; keep local)
+*.tfplan
+*.plan
+
+# Variable files (may contain secrets; keep local)
+*.tfvars
+*.tfvars.json

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/telemetry/api_stats.schema.json",
+  "title": "Chartly Telemetry APIStats (v1)",
+  "description": "HTTP API request statistics emitted by services (primarily gateway). Includes route/method/status and latency. Sensitive data should not be logged; IPs must be hashed if captured.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ts": { "type": "string", "format": "date-time", "description": "RFC3339 timestamp of the request completion." },
+    "service": { "type": "string", "minLength": 1, "description": "Service name emitting stats." },
+    "env": { "type": "string", "enum": ["local", "staging", "production"], "description": "Runtime environment." },
+    "instance_id": { "type": "string", "minLength": 1, "description": "Instance identifier (pod/container/host)." },
+    "route": { "type": "string", "minLength": 1, "description": "Normalized route template (e.g., /sources/{id})." },
+    "method": {
+      "type": "string",
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"],
+      "description": "HTTP method."
+    },
+    "status_code": { "type": "integer", "minimum": 100, "maximum": 599, "description": "HTTP status code." },
+    "latency_ms": { "type": "number", "minimum": 0, "description": "Request latency in milliseconds." },
+    "request_id": {
+      "description": "Optional request correlation id.",
+      "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "tenant_id": {
+      "description": "Optional tenant scope identifier.",
+      "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "user_agent": {
+      "description": "Optional user agent string.",
+      "oneOf": [{ "type": "string" }, { "type": "null" }]
+    },
+    "ip_hash": {
+      "description": "Optional hashed IP (never store raw IP here).",
+      "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "bytes_in": { "type": "integer", "minimum": 0, "description": "Optional bytes received." },
+    "bytes_out": { "type": "integer", "minimum": 0, "description": "Optional bytes sent." }
+  },
+  "required": ["ts", "service", "env", "instance_id", "route", "method", "status_code", "latency_ms"]
+}

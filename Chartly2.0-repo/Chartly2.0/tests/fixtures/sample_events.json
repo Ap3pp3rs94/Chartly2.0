@@ -1,0 +1,32 @@
+[
+  {
+    "kind": "fixture_event",
+    "msg": "sample event 1",
+    "nonce": "fixture-evt-0001",
+    "ts_unix": 0
+  },
+  {
+    "kind": "fixture_event",
+    "msg": "sample event 2",
+    "nonce": "fixture-evt-0002",
+    "ts_unix": 0
+  },
+  {
+    "kind": "fixture_event",
+    "msg": "sample event 3",
+    "nonce": "fixture-evt-0003",
+    "ts_unix": 0
+  },
+  {
+    "kind": "fixture_event",
+    "msg": "sample event 4",
+    "nonce": "fixture-evt-0004",
+    "ts_unix": 0
+  },
+  {
+    "kind": "fixture_event",
+    "msg": "sample event 5",
+    "nonce": "fixture-evt-0005",
+    "ts_unix": 0
+  }
+]

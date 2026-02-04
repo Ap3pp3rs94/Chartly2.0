@@ -1,0 +1,66 @@
+# Chartly 2.0  CODEOWNERS
+# This file defines required reviewers for changes to critical parts of the repository.
+# Ownership is enforced to protect contracts, profiles, security, and core architecture.
+
+# Default owner for everything
+* @Ap3pp3rs94
+
+############################
+# Governance / project law
+############################
+/MANIFEST.yaml          @Ap3pp3rs94
+/ARCHITECTURE.md       @Ap3pp3rs94
+/SECURITY.md           @Ap3pp3rs94
+/CHANGELOG.md          @Ap3pp3rs94
+
+############################
+# Contracts (source of truth)
+############################
+/contracts/             @Ap3pp3rs94
+
+############################
+# Profiles (domain behavior)
+############################
+/profiles/              @Ap3pp3rs94
+
+############################
+# Core services (spine)
+############################
+/services/gateway/      @Ap3pp3rs94
+/services/orchestrator/ @Ap3pp3rs94
+/services/connector-hub/ @Ap3pp3rs94
+/services/normalizer/   @Ap3pp3rs94
+/services/storage/      @Ap3pp3rs94
+
+############################
+# Planned / extended services
+############################
+/services/analytics/    @Ap3pp3rs94
+/services/audit/        @Ap3pp3rs94
+/services/auth/         @Ap3pp3rs94
+/services/observer/     @Ap3pp3rs94
+
+############################
+# Shared libraries
+############################
+/pkg/                   @Ap3pp3rs94
+
+############################
+# Infrastructure & deployment
+############################
+/infra/                 @Ap3pp3rs94
+/.github/workflows/     @Ap3pp3rs94
+
+############################
+# Web UI & SDKs
+############################
+/web/                   @Ap3pp3rs94
+/sdk/                   @Ap3pp3rs94
+
+############################
+# Tooling, scripts, tests, docs
+############################
+/tools/                 @Ap3pp3rs94
+/scripts/               @Ap3pp3rs94
+/tests/                 @Ap3pp3rs94
+/docs/                  @Ap3pp3rs94

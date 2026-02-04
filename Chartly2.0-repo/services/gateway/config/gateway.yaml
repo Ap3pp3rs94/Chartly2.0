@@ -1,0 +1,63 @@
+service: "gateway"
+env: "${ENV:CHARTLY_ENV}"
+
+server:
+  port: 8080
+  timeouts:
+    read_header_seconds: 5
+    read_seconds: 30
+    write_seconds: 30
+    idle_seconds: 120
+
+middleware:
+  request_id:
+    enabled: true
+    header_name: "X-Request-Id"
+
+  cors:
+    enabled: true
+    allowed_origins:
+      - "*"     # tighten in staging/prod via env-specific config
+    allowed_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    allowed_headers: ["*"]
+    allow_credentials: false
+    max_age_seconds: 600
+
+  rate_limit:
+    enabled: true
+    strategy: "ip_hash"          # ip_hash|api_key|tenant
+    requests_per_minute: 600
+    burst: 100
+    notes:
+      - "Use conservative defaults; tune per environment."
+      - "Never store raw IP; hash if recorded."
+
+  auth:
+    enabled: false
+    mode: "jwt"                  # jwt|oauth2 (roadmap)
+    jwt:
+      issuer: "${ENV:AUTH_JWT_ISSUER}"
+      audience: "${ENV:AUTH_JWT_AUDIENCE}"
+      signing_key_env: "AUTH_JWT_SIGNING_KEY"
+
+upstreams:
+  orchestrator:
+    base_url: "http://localhost:8081"
+    timeout_seconds: 10
+  storage:
+    base_url: "http://localhost:8085"
+    timeout_seconds: 10
+  analytics:
+    base_url: "http://localhost:8084"
+    timeout_seconds: 15
+  auth:
+    base_url: "http://localhost:8087"
+    timeout_seconds: 10
+
+observability:
+  log_level: "${ENV:CHARTLY_LOG_LEVEL}"
+  structured_logs: true
+  otel:
+    enabled: false
+    exporter_otlp_endpoint: "${ENV:OTEL_EXPORTER_OTLP_ENDPOINT}"
+    protocol: "grpc"

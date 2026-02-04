@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/reports/report_result.schema.json",
+  "title": "Chartly Reports ReportResult (v1)",
+  "description": "Result of a report generation request. Contains chart series data and optional artifact references for generated exports.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "report_id": { "type": "string", "minLength": 1, "description": "Report identifier." },
+    "tenant_id": { "type": "string", "minLength": 1, "description": "Tenant scope identifier." },
+    "generated_at": { "type": "string", "format": "date-time", "description": "RFC3339 timestamp when the report was generated." },
+    "status": { "type": "string", "enum": ["ok", "partial", "error"], "description": "Report status." },
+    "warnings": {
+      "type": "array",
+      "description": "Optional warnings encountered during report generation.",
+      "items": { "type": "string" }
+    },
+    "charts": {
+      "type": "array",
+      "description": "Rendered chart data outputs.",
+      "minItems": 0,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": { "type": "string", "minLength": 1 },
+          "chart_type": { "type": "string", "enum": ["line", "bar", "scatter", "heatmap"] },
+          "series": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "name": { "type": "string", "minLength": 1 },
+                "points": {
+                  "type": "array",
+                  "minItems": 0,
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "ts": { "type": "string", "format": "date-time" },
+                      "value": { "type": "number" },
+                      "dimensions": {
+                        "type": "object",
+                        "description": "Optional dimensions/tags for the point.",
+                        "additionalProperties": true
+                      }
+                    },
+                    "required": ["ts", "value"]
+                  }
+                }
+              },
+              "required": ["name", "points"]
+            }
+          }
+        },
+        "required": ["title", "chart_type", "series"]
+      }
+    },
+    "artifact": {
+      "description": "Optional artifact reference when the report produced a stored output (export/pdf/etc.).",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "artifact_type": { "type": "string", "enum": ["report", "export"], "description": "Artifact category." },
+            "storage_ref": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "bucket": { "type": "string", "minLength": 1 },
+                "key": { "type": "string", "minLength": 1 },
+                "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" },
+                "content_type": { "type": "string", "minLength": 1 },
+                "captured_at": { "type": "string", "format": "date-time" },
+                "size_bytes": { "type": "integer", "minimum": 0 }
+              },
+              "required": ["bucket", "key", "sha256", "content_type", "captured_at"]
+            }
+          },
+          "required": ["artifact_type", "storage_ref"]
+        },
+        { "type": "null" }
+      ]
+    },
+    "errors": {
+      "type": "array",
+      "description": "Optional errors encountered during report generation.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1, "maxLength": 4000 },
+          "chart_title": {
+            "description": "Optional chart title associated with the error.",
+            "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+          }
+        },
+        "required": ["code", "detail", "chart_title"]
+      }
+    }
+  },
+  "required": ["report_id", "tenant_id", "generated_at", "status", "charts"]
+}

@@ -1,0 +1,9 @@
+id: data-gov
+name: Data.gov API
+version: 0.1.0
+description: Data.gov dataset placeholder
+source:
+  type: http_rest
+  url: https://api.data.gov/
+  auth: none
+mapping: {}

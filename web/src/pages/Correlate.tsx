@@ -1,366 +1,241 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useHeartbeat } from "@/App";
 
-type ProfileItem = { id: string; name: string };
-type Field = { path: string; label: string; type: string; sample?: any };
-type FieldsResp = {
-  profile_id: string;
-  name: string;
-  fields: Field[];
-  cached: boolean;
+type CatalogProfile = { id: string; name: string };
+
+type Catalog = {
+  generated_at: string;
   expires_in_seconds: number;
+  profiles: CatalogProfile[];
 };
 
-type CorrelateResp = {
-  joined_count: number;
-  correlation?: { coefficient: number; p_value: number; interpretation: string };
-  preview: Array<{ join_value: string; a_value: any; b_value: any; a_label: string; b_label: string }>;
+type PlanField = { profile_id?: string; path: string; label: string; type: string; confidence: number };
+
+type Plan = {
+  intent: string;
+  report_type: string;
+  profiles: { id: string; name: string }[];
+  join_key?: PlanField;
+  x?: PlanField;
+  y?: PlanField;
+  time?: PlanField;
+  preferences?: { geo_level: string; time_granularity: string; metric_preference: string };
 };
+
+type Recommendation = {
+  plan: Plan;
+  plan_hash: string;
+  confidence: number;
+  why: string[];
+  fallbacks?: string[];
+};
+
+const KEY_PLAN = "chartly.plan";
+const KEY_API = "chartly_api_key";
+const KEY_PREF = "chartly_preferences";
 
 export default function Correlate() {
-  const [profiles, setProfiles] = useState<ProfileItem[]>([]);
-  const [loadingProfiles, setLoadingProfiles] = useState<boolean>(true);
-  const [err, setErr] = useState<string>("");
-
+  const hb = useHeartbeat();
+  const nav = useNavigate();
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [intent, setIntent] = useState("compare");
   const [profileA, setProfileA] = useState<string>("");
   const [profileB, setProfileB] = useState<string>("");
-  const [schemaA, setSchemaA] = useState<FieldsResp | null>(null);
-  const [schemaB, setSchemaB] = useState<FieldsResp | null>(null);
-  const [loadingA, setLoadingA] = useState<boolean>(false);
-  const [loadingB, setLoadingB] = useState<boolean>(false);
-  const [errorA, setErrorA] = useState<string>("");
-  const [errorB, setErrorB] = useState<string>("");
-
-  const [joinA, setJoinA] = useState<string>("");
-  const [joinB, setJoinB] = useState<string>("");
-  const [numA, setNumA] = useState<string>("");
-  const [numB, setNumB] = useState<string>("");
-
-  const [limit, setLimit] = useState<number>(100);
-  const [maxJoined, setMaxJoined] = useState<number>(200);
-
-  const [result, setResult] = useState<CorrelateResp | null>(null);
-  const [running, setRunning] = useState<boolean>(false);
+  const [prefs, setPrefs] = useState(() => {
+    const raw = localStorage.getItem(KEY_PREF);
+    if (!raw) return { geo_level: "auto", time_granularity: "auto", metric_preference: "auto" };
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return { geo_level: "auto", time_granularity: "auto", metric_preference: "auto" };
+    }
+  });
+  const [rec, setRec] = useState<Recommendation | null>(null);
+  const [name, setName] = useState("");
+  const [err, setErr] = useState("");
 
   useEffect(() => {
-    let alive = true;
-    async function loadProfiles() {
-      setLoadingProfiles(true);
-      setErr("");
-      try {
-        const res = await fetch("/api/profiles");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const list = Array.isArray(data?.profiles) ? data.profiles : [];
-        list.sort((a: ProfileItem, b: ProfileItem) => a.id.localeCompare(b.id));
-        if (!alive) return;
-        setProfiles(list);
-        if (list.length > 0) setProfileA(list[0].id);
-        if (list.length > 1) setProfileB(list[1].id);
-      } catch (e: any) {
-        if (!alive) return;
-        setErr(String(e?.message ?? e));
-      } finally {
-        if (alive) setLoadingProfiles(false);
-      }
-    }
-    loadProfiles();
-    return () => {
-      alive = false;
-    };
+    fetchCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (!profileA) return;
-    let alive = true;
-    async function loadSchema() {
-      setLoadingA(true);
-      setErrorA("");
-      try {
-        const res = await fetch(`/api/profiles/${encodeURIComponent(profileA)}/fields`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as FieldsResp;
-        if (!alive) return;
-        setSchemaA(data);
-        setJoinA("");
-        setNumA("");
-      } catch (e: any) {
-        if (!alive) return;
-        setSchemaA(null);
-        setErrorA(String(e?.message ?? e));
-      } finally {
-        if (alive) setLoadingA(false);
-      }
-    }
-    loadSchema();
-    return () => {
-      alive = false;
-    };
-  }, [profileA]);
+    if (!hb?.catalog_hash) return;
+    fetchCatalog(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hb?.catalog_hash]);
 
-  useEffect(() => {
-    if (!profileB) return;
-    let alive = true;
-    async function loadSchema() {
-      setLoadingB(true);
-      setErrorB("");
-      try {
-        const res = await fetch(`/api/profiles/${encodeURIComponent(profileB)}/fields`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as FieldsResp;
-        if (!alive) return;
-        setSchemaB(data);
-        setJoinB("");
-        setNumB("");
-      } catch (e: any) {
-        if (!alive) return;
-        setSchemaB(null);
-        setErrorB(String(e?.message ?? e));
-      } finally {
-        if (alive) setLoadingB(false);
-      }
-    }
-    loadSchema();
-    return () => {
-      alive = false;
-    };
-  }, [profileB]);
-
-  const canRun = useMemo(() => {
-    return !!profileA && !!profileB && !!joinA && !!joinB;
-  }, [profileA, profileB, joinA, joinB]);
-
-  const joinFieldsA = useMemo(() => {
-    return (schemaA?.fields || []).filter((f) => f.type === "string").sort((a, b) => a.path.localeCompare(b.path));
-  }, [schemaA]);
-  const joinFieldsB = useMemo(() => {
-    return (schemaB?.fields || []).filter((f) => f.type === "string").sort((a, b) => a.path.localeCompare(b.path));
-  }, [schemaB]);
-  const numericFieldsA = useMemo(() => {
-    return (schemaA?.fields || []).filter((f) => f.type === "number").sort((a, b) => a.path.localeCompare(b.path));
-  }, [schemaA]);
-  const numericFieldsB = useMemo(() => {
-    return (schemaB?.fields || []).filter((f) => f.type === "number").sort((a, b) => a.path.localeCompare(b.path));
-  }, [schemaB]);
-
-  async function runCorrelate() {
-    if (!canRun) return;
-    setRunning(true);
-    setResult(null);
-    setErr("");
+  async function fetchCatalog(silent = false) {
     try {
-      const payload = {
-        dataset_a: { profile_id: profileA, join_key: joinA, numeric_field: numA },
-        dataset_b: { profile_id: profileB, join_key: joinB, numeric_field: numB },
-        limit,
-        max_joined: maxJoined,
-      };
-      const res = await fetch("/api/analytics/correlate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch("/api/catalog");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as CorrelateResp;
-      setResult(data);
+      const data = (await res.json()) as Catalog;
+      setCatalog(data);
+      if (!profileA && data.profiles[0]) setProfileA(data.profiles[0].id);
+      if (!profileB && data.profiles[1]) setProfileB(data.profiles[1].id);
     } catch (e: any) {
-      setErr(String(e?.message ?? e));
-    } finally {
-      setRunning(false);
+      if (!silent) setErr(String(e?.message ?? e));
     }
   }
 
-  async function exportCSV() {
-    if (!canRun) return;
-    const payload = {
-      dataset_a: { profile_id: profileA, join_key: joinA, numeric_field: numA },
-      dataset_b: { profile_id: profileB, join_key: joinB, numeric_field: numB },
-      limit,
-      max_joined: maxJoined,
-    };
-    const spec = encodeURIComponent(JSON.stringify(payload));
-    window.location.href = `/api/analytics/correlate/export?format=csv&spec=${spec}`;
+  async function recommend() {
+    setErr("");
+    setRec(null);
+    const profiles = [profileA, profileB].filter(Boolean);
+    const body = { intent, profiles, preferences: prefs };
+    const res = await fetch("/api/recommendations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      setErr(`HTTP ${res.status}`);
+      return;
+    }
+    const data = (await res.json()) as Recommendation;
+    setRec(data);
   }
+
+  async function saveReport() {
+    if (!rec) return;
+    const apiKey = sessionStorage.getItem(KEY_API) || "";
+    if (!apiKey) {
+      setErr("Missing X-API-Key in Settings");
+      return;
+    }
+    const res = await fetch("/api/reports", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": apiKey },
+      body: JSON.stringify({ name: name || "Report", plan: rec.plan })
+    });
+    if (!res.ok) {
+      setErr(`HTTP ${res.status}`);
+      return;
+    }
+    nav("/");
+  }
+
+  function runReport() {
+    if (!rec) return;
+    sessionStorage.setItem(KEY_PLAN, JSON.stringify(rec.plan));
+    nav("/charts");
+  }
+
+  const profiles = catalog?.profiles || [];
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white p-8">
-      <h1 className="text-3xl font-bold mb-2">Correlate</h1>
-      <p className="text-gray-400 mb-8">
-        Join two profile result sets by a shared key. Example join keys: location.state_code, location.name, company.cik
-      </p>
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <h1 style={{ margin: 0, fontSize: 20 }}>Autopilot</h1>
+      {err ? <div style={{ fontSize: 12, color: "#ff5c7a" }}>{err}</div> : null}
 
-      {loadingProfiles ? (
-        <div className="text-gray-400 mb-6">Loading profiles...</div>
-      ) : err ? (
-        <div className="text-red-400 mb-6">Error: {err}</div>
-      ) : null}
+      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center" }}>
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Intent</label>
+        <select value={intent} onChange={(e) => setIntent(e.target.value)} style={inputStyle}>
+          <option value="compare">compare</option>
+          <option value="trend">trend</option>
+          <option value="rank">rank</option>
+          <option value="explain">explain</option>
+          <option value="anomaly">anomaly</option>
+        </select>
 
-      <div className="grid grid-cols-2 gap-6 mb-6">
-        <div className="bg-gray-900 rounded-xl p-6">
-          <span className="bg-blue-600 text-white text-sm px-3 py-1 rounded">Dataset A</span>
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Profile A</label>
+        <select value={profileA} onChange={(e) => setProfileA(e.target.value)} style={inputStyle}>
+          <option value="">auto</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name || p.id}
+            </option>
+          ))}
+        </select>
 
-          <label className="block mt-4 text-gray-400 text-sm">profile_id</label>
-          <select
-            value={profileA}
-            onChange={(e) => setProfileA(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full"
-          >
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Profile B</label>
+        <select value={profileB} onChange={(e) => setProfileB(e.target.value)} style={inputStyle}>
+          <option value="">auto</option>
+          {profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name || p.id}
+            </option>
+          ))}
+        </select>
 
-          <label className="block mt-4 text-gray-400 text-sm">join key JSON path (A)</label>
-          <select
-            disabled={!schemaA || loadingA}
-            value={joinA}
-            onChange={(e) => setJoinA(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loadingA && <option>Loading...</option>}
-            {!loadingA && joinFieldsA.length === 0 && <option value="">(no string fields)</option>}
-            {joinFieldsA.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          {errorA && <div className="text-red-400 text-sm mt-2">Error: {errorA}</div>}
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Geo level</label>
+        <select value={prefs.geo_level} onChange={(e) => setPrefs({ ...prefs, geo_level: e.target.value })} style={inputStyle}>
+          <option value="auto">auto</option>
+          <option value="state">state</option>
+          <option value="county">county</option>
+          <option value="none">none</option>
+        </select>
 
-          <label className="block mt-4 text-gray-400 text-sm">numeric field (A) for correlation</label>
-          <select
-            disabled={!schemaA || loadingA}
-            value={numA}
-            onChange={(e) => setNumA(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">-- optional --</option>
-            {numericFieldsA.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Time granularity</label>
+        <select value={prefs.time_granularity} onChange={(e) => setPrefs({ ...prefs, time_granularity: e.target.value })} style={inputStyle}>
+          <option value="auto">auto</option>
+          <option value="year">year</option>
+          <option value="month">month</option>
+          <option value="day">day</option>
+        </select>
 
-        <div className="bg-gray-900 rounded-xl p-6">
-          <span className="bg-blue-600 text-white text-sm px-3 py-1 rounded">Dataset B</span>
-
-          <label className="block mt-4 text-gray-400 text-sm">profile_id</label>
-          <select
-            value={profileB}
-            onChange={(e) => setProfileB(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full"
-          >
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-
-          <label className="block mt-4 text-gray-400 text-sm">join key JSON path (B)</label>
-          <select
-            disabled={!schemaB || loadingB}
-            value={joinB}
-            onChange={(e) => setJoinB(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loadingB && <option>Loading...</option>}
-            {!loadingB && joinFieldsB.length === 0 && <option value="">(no string fields)</option>}
-            {joinFieldsB.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-          {errorB && <div className="text-red-400 text-sm mt-2">Error: {errorB}</div>}
-
-          <label className="block mt-4 text-gray-400 text-sm">numeric field (B) for correlation</label>
-          <select
-            disabled={!schemaB || loadingB}
-            value={numB}
-            onChange={(e) => setNumB(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2 w-full disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <option value="">-- optional --</option>
-            {numericFieldsB.map((f) => (
-              <option key={f.path} value={f.path}>
-                {f.label}
-              </option>
-            ))}
-          </select>
-        </div>
+        <label style={{ fontSize: 12, opacity: 0.8 }}>Metric preference</label>
+        <select value={prefs.metric_preference} onChange={(e) => setPrefs({ ...prefs, metric_preference: e.target.value })} style={inputStyle}>
+          <option value="auto">auto</option>
+          <option value="rate">rate</option>
+          <option value="count">count</option>
+          <option value="total">total</option>
+        </select>
       </div>
 
-      <div className="flex gap-4 items-end mb-8">
-        <div>
-          <label className="text-gray-400 text-sm">limit per profile (rows)</label>
-          <input
-            type="number"
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2"
-          />
-        </div>
-        <div>
-          <label className="text-gray-400 text-sm">max joined preview</label>
-          <input
-            type="number"
-            value={maxJoined}
-            onChange={(e) => setMaxJoined(Number(e.target.value))}
-            className="bg-gray-800 border border-gray-700 text-white rounded px-4 py-2"
-          />
-        </div>
-        <button
-          onClick={runCorrelate}
-          disabled={!canRun || running}
-          className="bg-blue-600 hover:bg-blue-700 px-6 py-2 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {running ? "Running..." : "Join + Analyze"}
-        </button>
-        <button onClick={exportCSV} className="bg-gray-700 hover:bg-gray-600 px-6 py-2 rounded">
-          Export Joined CSV
-        </button>
+      <div style={{ display: "flex", gap: 10 }}>
+        <button onClick={recommend} style={primaryBtn}>Recommend</button>
+        <button onClick={runReport} style={secondaryBtn} disabled={!rec}>Run</button>
       </div>
 
-      <div className="bg-gray-900 rounded-xl p-6">
-        <h2 className="text-xl font-semibold mb-2">Output</h2>
-        <p className="text-gray-400 text-sm mb-4">Joined preview + correlation (if numeric fields provided).</p>
+      {rec ? (
+        <div style={{ padding: 12, borderRadius: 8, border: "1px solid #222", background: "#10151e" }}>
+          <div style={{ fontWeight: 700, marginBottom: 6 }}>Plan</div>
+          <div style={{ fontSize: 12 }}>Type: {rec.plan.report_type}</div>
+          <div style={{ fontSize: 12 }}>Confidence: {rec.confidence.toFixed(2)}</div>
+          <div style={{ fontSize: 12 }}>Join: {rec.plan.join_key?.label || "-"}</div>
+          <div style={{ fontSize: 12 }}>X: {rec.plan.x?.label || "-"}</div>
+          <div style={{ fontSize: 12 }}>Y: {rec.plan.y?.label || "-"}</div>
+          <div style={{ fontSize: 12 }}>Time: {rec.plan.time?.label || "-"}</div>
+          <ul style={{ fontSize: 12 }}>
+            {rec.why.map((w, i) => (
+              <li key={i}>{w}</li>
+            ))}
+          </ul>
 
-        {result?.correlation && (
-          <div className="mb-4 p-4 bg-gray-800 rounded">
-            <p>
-              Correlation: <strong>{result.correlation.coefficient.toFixed(3)}</strong>
-            </p>
-            <p className="text-gray-400">{result.correlation.interpretation}</p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Report name" style={inputStyle} />
+            <button onClick={saveReport} style={secondaryBtn}>Save as Report</button>
           </div>
-        )}
-
-        {running && <p>Running...</p>}
-        {!running && !result && <p className="text-gray-500">Run Join + Analyze.</p>}
-        {result && (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-gray-400">
-                <th className="py-2">join_value</th>
-                <th className="py-2">a_value</th>
-                <th className="py-2">b_value</th>
-              </tr>
-            </thead>
-            <tbody>
-              {result.preview.map((row, idx) => (
-                <tr key={`${row.join_value}-${idx}`} className="border-t border-gray-800">
-                  <td className="py-2">{row.join_value}</td>
-                  <td className="py-2">{String(row.a_value)}</td>
-                  <td className="py-2">{String(row.b_value)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+        </div>
+      ) : null}
     </div>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "1px solid #333",
+  background: "#111",
+  color: "#fff"
+};
+
+const primaryBtn: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 8,
+  background: "#1f6feb",
+  color: "#fff",
+  border: "1px solid #1f6feb",
+  cursor: "pointer"
+};
+
+const secondaryBtn: React.CSSProperties = {
+  padding: "8px 12px",
+  borderRadius: 8,
+  background: "#222",
+  color: "#fff",
+  border: "1px solid #333",
+  cursor: "pointer"
+};

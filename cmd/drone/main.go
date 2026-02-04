@@ -71,13 +71,13 @@ type runReport struct {
 }
 
 type sourceSpec struct {
-	ID           string            `json:"id"`
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Description  string            `json:"description"`
-	Source       SourceConfig      `json:"source"`
-	Schedule     *scheduleSpec     `json:"schedule,omitempty"`
-	Limits       *limitsSpec       `json:"limits,omitempty"`
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Version     string            `json:"version"`
+	Description string            `json:"description"`
+	Source      SourceConfig      `json:"source"`
+	Schedule    *scheduleSpec     `json:"schedule,omitempty"`
+	Limits      *limitsSpec       `json:"limits,omitempty"`
 	MappingHints map[string]string `json:"mapping_hints,omitempty"`
 }
 

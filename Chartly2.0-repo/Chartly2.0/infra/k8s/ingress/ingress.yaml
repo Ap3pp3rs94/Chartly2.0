@@ -1,0 +1,102 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: chartly
+  namespace: chartly
+  labels:
+    app.kubernetes.io/name: chartly
+    app.kubernetes.io/part-of: chartly
+    app.kubernetes.io/component: ingress
+    app.kubernetes.io/instance: chartly
+    app.kubernetes.io/version: dev
+    app.kubernetes.io/managed-by: codex
+  # annotations:
+  #   # Add ingress controller-specific annotations in overlays. Examples:
+  #   # - cert-manager.io/cluster-issuer: letsencrypt-prod
+  #   # - <controller>.ingress.kubernetes.io/ssl-redirect: "true"
+  #   # - <controller>.ingress.kubernetes.io/limit-rps: "100"
+  #   # - <controller>.ingress.kubernetes.io/enable-cors: "true"
+spec:
+  # Provider/controller-neutral. Override to your cluster's ingress class via overlay.
+  ingressClassName: "REPLACE_ME"
+  rules:
+    - host: "chartly.local" # Override in production overlay
+      http:
+        paths:
+          # Default route (root). Point to a gateway or landing page service.
+          # NOTE: chartly-gateway is a conventional entrypoint name; create it or override via overlay.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-gateway
+                port:
+                  name: http
+
+          # Optional external health endpoint for upstream load balancers/uptime checks.
+          # Keep Exact so it doesn't overlap service prefixes.
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: chartly-gateway
+                port:
+                  name: http
+
+          # Service routes (top-level prefixes; ordering is not significant for these, but kept alphabetical for clarity).
+          - path: /analytics
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-analytics
+                port:
+                  name: http
+          - path: /audit
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-audit
+                port:
+                  name: http
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-auth
+                port:
+                  name: http
+          - path: /connectors
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-connector-hub
+                port:
+                  name: http
+          - path: /normalize
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-normalizer
+                port:
+                  name: http
+          - path: /observer
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-observer
+                port:
+                  name: http
+          - path: /orchestrator
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-orchestrator
+                port:
+                  name: http
+          - path: /storage
+            pathType: Prefix
+            backend:
+              service:
+                name: chartly-storage
+                port:
+                  name: http

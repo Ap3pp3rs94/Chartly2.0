@@ -1,0 +1,18 @@
+WHAT'S LEFT TO DO
+
+1) Repair WSL/Docker Desktop so the Linux engine starts:
+   - Run WSL repair/update as prompted
+   - Restart Docker Desktop and confirm it shows "Running"
+
+2) Bring up control plane:
+   - C:\Chartly2.0\scripts\deploy-control.ps1
+
+3) Verify endpoints:
+   - http://localhost:8090/health
+   - http://localhost:8090/api/status
+
+4) Start a drone (optional):
+   - C:\Chartly2.0\scripts\start-drone.ps1 -ControlPlane http://localhost:8090
+
+5) Stop all (optional):
+   - C:\Chartly2.0\scripts\stop-all.ps1

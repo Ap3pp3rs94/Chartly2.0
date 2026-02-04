@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/canonical/case.schema.json",
+  "title": "Chartly Canonical Case (v1)",
+  "description": "A Case represents a tracked incident, investigation, quarantine issue, or compliance workflow. Cases provide an auditable container for references to sources, raw payloads, canonical records, or policy violations.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable case identifier (ULID recommended)."
+    },
+    "case_type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Case type discriminator (e.g., quarantine.schema_validation, compliance.hipaa, incident.connector_failure)."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "closed", "quarantined"],
+      "description": "Case status."
+    },
+    "opened_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp when the case was opened."
+    },
+    "closed_at": {
+      "description": "RFC3339 timestamp when the case was closed (null if open).",
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "references": {
+      "type": "array",
+      "description": "References to related artifacts (raw_ref, canonical IDs, source IDs, external URLs, etc.).",
+      "items": {
+        "type": "object",
+        "description": "Reference object; shape depends on case_type.",
+        "additionalProperties": true
+      },
+      "minItems": 0
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope identifier."
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 5000,
+      "description": "Optional human notes for investigation context."
+    }
+  },
+  "required": [
+    "id",
+    "case_type",
+    "status",
+    "opened_at",
+    "closed_at",
+    "references",
+    "tenant_id"
+  ]
+}

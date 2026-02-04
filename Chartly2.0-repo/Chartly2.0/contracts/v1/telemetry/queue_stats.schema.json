@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/telemetry/queue_stats.schema.json",
+  "title": "Chartly Telemetry QueueStats (v1)",
+  "description": "Telemetry describing queue depth and throughput for backpressure monitoring. Emitted by orchestrator and workers/consumers (where implemented).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "ts": { "type": "string", "format": "date-time", "description": "RFC3339 timestamp when the snapshot was produced." },
+    "service": { "type": "string", "minLength": 1, "description": "Service emitting queue stats." },
+    "env": { "type": "string", "enum": ["local", "staging", "production"], "description": "Runtime environment." },
+    "instance_id": { "type": "string", "minLength": 1, "description": "Instance identifier (pod/container/host)." },
+    "backend": { "type": "string", "enum": ["redis", "nats", "kafka", "other"], "description": "Queue backend type." },
+    "queue": { "type": "string", "minLength": 1, "description": "Queue/stream/topic identifier." },
+    "group": {
+      "description": "Optional consumer group identifier (if applicable).",
+      "oneOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }]
+    },
+    "depth": { "type": "integer", "minimum": 0, "description": "Pending messages (queue depth)." },
+    "inflight": { "type": "integer", "minimum": 0, "description": "Messages currently being processed." },
+    "rate_in_per_sec": { "type": "number", "minimum": 0, "description": "Optional ingress rate (msgs/sec)." },
+    "rate_out_per_sec": { "type": "number", "minimum": 0, "description": "Optional egress rate (msgs/sec)." },
+    "oldest_age_ms": { "type": "integer", "minimum": 0, "description": "Optional age of oldest pending message (ms)." },
+    "lag_ms": { "type": "integer", "minimum": 0, "description": "Optional consumer lag (ms), backend-dependent." },
+    "backpressure": { "type": "boolean", "description": "Whether backpressure is currently active." },
+    "tags": { "type": "object", "description": "Optional tags/dimensions.", "additionalProperties": true }
+  },
+  "required": ["ts", "service", "env", "instance_id", "backend", "queue", "depth", "inflight", "backpressure"]
+}

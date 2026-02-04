@@ -103,6 +103,32 @@ func NewRouter() http.Handler {
 		methodOnly(http.MethodGet, handlers.GetProfileSchema)(w, r)
 	})
 
+	// Autopilot catalog/recommendations/heartbeat
+	mux.HandleFunc("/api/catalog", methodOnly(http.MethodGet, handlers.GetCatalog))
+	mux.HandleFunc("/api/recommendations", methodOnly(http.MethodPost, requireJSON(handlers.PostRecommendations)))
+	mux.HandleFunc("/api/heartbeat", methodOnly(http.MethodGet, handlers.GetHeartbeat))
+	mux.HandleFunc("/api/events", methodOnly(http.MethodGet, handlers.ServeEvents))
+
+	// Reports
+	mux.HandleFunc("/api/reports", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handlers.ListReports(w, r)
+		case http.MethodPost:
+			requireJSON(handlers.CreateReport)(w, r)
+		default:
+			w.Header().Set("allow", strings.Join([]string{http.MethodGet, http.MethodPost}, ", "))
+			writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed")
+		}
+	})
+	mux.HandleFunc("/api/reports/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ":run") {
+			methodOnly(http.MethodPost, handlers.RunReport)(w, r)
+			return
+		}
+		methodOnly(http.MethodGet, handlers.GetReport)(w, r)
+	})
+
 	// Analytics correlate
 	mux.HandleFunc("/api/analytics/correlate", methodOnly(http.MethodPost, requireJSON(handlers.Correlate)))
 	mux.HandleFunc("/api/analytics/correlate/export", methodOnly(http.MethodGet, handlers.CorrelateExport))

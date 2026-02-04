@@ -1,0 +1,32 @@
+{{/* Chartly Go Structs Template (placeholder)
+
+This template is reserved for a future schema->Go generator that uses templates rather than quicktype.
+It is not currently used by the repository scripts.
+
+Intended inputs:
+- schema_title: string
+- package_name: string (e.g., canonical_gen)
+- structs: array of structs
+  - name: string
+  - fields: array
+    - name: string
+    - type: string
+    - json: string
+    - omitempty: bool
+    - comment: string
+
+Intended output:
+- One .go file per schema with:
+  - package declaration
+  - imports (time/json as needed)
+  - struct definitions with json tags
+  - optional validation helpers (future)
+
+Example (illustrative only):
+
+package {{package_name}}
+
+type {{structs.0.name}} struct {
+  {{structs.0.fields.0.name}} {{structs.0.fields.0.type}} `json:"{{structs.0.fields.0.json}}{{if structs.0.fields.0.omitempty}},omitempty{{end}}"`
+}
+*/}}

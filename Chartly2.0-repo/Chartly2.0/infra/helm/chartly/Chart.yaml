@@ -1,0 +1,32 @@
+apiVersion: v2
+name: chartly
+description: Chartly platform base chart (gateway, services, ingress, monitoring) with provider-neutral defaults.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+keywords:
+  - chartly
+  - kubernetes
+  - platform
+  - observability
+
+home: "https://example.com/chartly"
+sources:
+  - "https://example.com/chartly/repo"
+
+icon: "https://example.com/chartly/icon.png"
+
+maintainers:
+  - name: "Chartly Maintainers"
+    email: "maintainer@example.com"
+
+annotations:
+  # Artifact Hub metadata (optional; safe placeholders)
+  artifacthub.io/links: |
+    - name: Source
+      url: https://example.com/chartly/repo
+    - name: Documentation
+      url: https://example.com/chartly/docs
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/prerelease: "true"

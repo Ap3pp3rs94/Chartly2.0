@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/reports/export_manifest.schema.json",
+  "title": "Chartly Reports ExportManifest (v1)",
+  "description": "Manifest describing an export request/job, including format, query parameters, and destination for the generated artifact.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional export manifest identifier."
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope identifier."
+    },
+    "format": {
+      "type": "string",
+      "enum": ["csv", "json", "xlsx", "pdf"],
+      "description": "Export format."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp when the export was requested."
+    },
+    "expires_at": {
+      "description": "Optional RFC3339 timestamp when the export artifact expires.",
+      "oneOf": [
+        { "type": "string", "format": "date-time" },
+        { "type": "null" }
+      ]
+    },
+    "query": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Query parameters for the export.",
+      "properties": {
+        "source_id": { "type": "string", "minLength": 1, "description": "Source identifier." },
+        "metric_name": { "type": "string", "minLength": 1, "description": "Metric name." },
+        "time_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "start": { "type": "string", "format": "date-time", "description": "Range start (inclusive), RFC3339." },
+            "end": { "type": "string", "format": "date-time", "description": "Range end (exclusive), RFC3339." }
+          },
+          "required": ["start", "end"]
+        },
+        "dimensions_filter": {
+          "type": "object",
+          "description": "Optional filter applied to metric dimensions (exact match semantics are implementation-defined).",
+          "additionalProperties": true
+        }
+      },
+      "required": ["source_id", "metric_name", "time_range"]
+    },
+    "destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Export destination definition.",
+      "properties": {
+        "type": { "type": "string", "enum": ["blob"], "description": "Destination type." },
+        "bucket": { "type": "string", "minLength": 1, "description": "Destination bucket name." },
+        "key_prefix": { "type": "string", "minLength": 1, "description": "Key prefix/path for placing export artifacts." }
+      },
+      "required": ["type", "bucket", "key_prefix"]
+    },
+    "options": {
+      "type": "object",
+      "description": "Optional export options (delimiter, sheet name, template id, etc.).",
+      "additionalProperties": true
+    }
+  },
+  "required": ["tenant_id", "format", "requested_at", "expires_at", "query", "destination"]
+}
