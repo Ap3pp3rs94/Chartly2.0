@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,6 +40,8 @@ const (
 	defaultRateLimitBurst = 20
 
 	distDir = "/app/web/dist"
+
+	defaultCryptoSymbolsURL = "https://api.binance.com/api/v3/exchangeInfo?permissions=SPOT"
 )
 
 type serviceDetail struct {
@@ -65,12 +68,15 @@ func main() {
 	coordinatorURL := envOr("COORDINATOR_URL", defaultCoordinatorURL)
 	reporterURL := envOr("REPORTER_URL", defaultReporterURL)
 	analyticsURL := envOr("ANALYTICS_URL", defaultAnalyticsURL)
+	cryptoSymbolsURL := envOr("CRYPTO_SYMBOLS_URL", defaultCryptoSymbolsURL)
+	cryptoSymbolsTTL := time.Duration(envInt64("CRYPTO_SYMBOLS_TTL_SECONDS", 600)) * time.Second
 
 	regProxy := mustProxy(registryURL)
 	aggProxy := mustProxy(aggregatorURL)
 	cooProxy := mustProxy(coordinatorURL)
 	repProxy := mustProxy(reporterURL)
 	anaProxy := mustProxy(analyticsURL)
+	symbolsCache := &cryptoSymbolsCache{}
 
 	mux := http.NewServeMux()
 
@@ -179,6 +185,7 @@ func main() {
 	mux.Handle("/api/records/", stripPrefixProxy("/api", aggProxy))
 	mux.Handle("/api/records", stripPrefixProxy("/api", aggProxy))
 	mux.Handle("/api/crypto/top", stripPrefixProxy("/api", aggProxy))
+	mux.HandleFunc("/api/crypto/symbols", cryptoSymbolsHandler(cryptoSymbolsURL, cryptoSymbolsTTL, symbolsCache))
 
 	mux.Handle("/api/drones/", stripPrefixProxy("/api", cooProxy))
 	mux.Handle("/api/drones", stripPrefixProxy("/api", cooProxy))
@@ -358,6 +365,107 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = enc.Encode(v)
 }
 
+// --- Crypto symbols ---
+
+type cryptoSymbolsCache struct {
+	mu      sync.Mutex
+	expires time.Time
+	payload []byte
+}
+
+type binanceExchangeInfo struct {
+	Symbols []struct {
+		Symbol               string   `json:"symbol"`
+		Status               string   `json:"status"`
+		Permissions          []string `json:"permissions"`
+		QuoteAsset           string   `json:"quoteAsset"`
+		IsSpotTradingAllowed bool     `json:"isSpotTradingAllowed"`
+	} `json:"symbols"`
+}
+
+func cryptoSymbolsHandler(upstream string, ttl time.Duration, cache *cryptoSymbolsCache) http.HandlerFunc {
+	client := &http.Client{Timeout: 5 * time.Second}
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		now := time.Now()
+		cache.mu.Lock()
+		if cache.payload != nil && now.Before(cache.expires) {
+			payload := cache.payload
+			cache.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(payload)
+			return
+		}
+		cache.mu.Unlock()
+
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, upstream, nil)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_unavailable"})
+			return
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_unavailable"})
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode/100 != 2 {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_unavailable"})
+			return
+		}
+
+		var info binanceExchangeInfo
+		if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_unavailable"})
+			return
+		}
+
+		out := make([]string, 0, len(info.Symbols))
+		for _, s := range info.Symbols {
+			if s.Symbol == "" || s.Status != "TRADING" {
+				continue
+			}
+			if !s.IsSpotTradingAllowed && !hasPermission(s.Permissions, "SPOT") {
+				continue
+			}
+			out = append(out, s.Symbol)
+		}
+		sort.Strings(out)
+
+		payload, err := json.Marshal(map[string]any{"symbols": out})
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "encode_failed"})
+			return
+		}
+
+		cache.mu.Lock()
+		cache.payload = payload
+		cache.expires = time.Now().Add(ttl)
+		cache.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(payload)
+	}
+}
+
+func hasPermission(perms []string, v string) bool {
+	for _, p := range perms {
+		if p == v {
+			return true
+		}
+	}
+	return false
+}
+
 // --- Auth + Rate limiting ---
 
 type authConfig struct {
@@ -418,6 +526,7 @@ func loadAuthConfig() *authConfig {
 		AllowAnonymous: map[string]struct{}{
 			"/health":      {},
 			"/api/status":  {},
+			"/api/crypto/symbols": {},
 			"/metrics":     {},
 			"/favicon.ico": {},
 		},

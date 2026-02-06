@@ -176,12 +176,15 @@ services:
       dockerfile: services/crypto-stream/Dockerfile
     environment:
       AGGREGATOR_URL: http://aggregator:8082
+      REGISTRY_URL: http://registry:8081
       BINANCE_WS_URL: wss://data-stream.binance.vision/ws/!miniTicker@arr
-      CRYPTO_PROFILE_ID: crypto-binance-mini
+      CRYPTO_PROFILE_ID: crypto-watchlist
+      CRYPTO_WATCHLIST_PROFILE_ID: crypto-watchlist
+      CRYPTO_WATCHLIST_REFRESH: 30s
       CRYPTO_DRONE_ID: crypto-binance-ws
       CRYPTO_PROJECT_MODE: avg_usdt
       CRYPTO_PROJECT_MIN_VOL: 1000
-    depends_on: [aggregator]
+    depends_on: [aggregator, registry]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8088/health"]

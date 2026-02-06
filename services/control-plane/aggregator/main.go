@@ -747,6 +747,7 @@ func (s *server) handleCryptoTop(w http.ResponseWriter, r *http.Request) {
 		suffix = "USDT"
 	}
 	minVol := parseFloat64(q.Get("min_vol"))
+	symbols := parseSymbolsCSV(q.Get("symbols"))
 
 	order := "DESC"
 	if direction == "down" {
@@ -755,7 +756,17 @@ func (s *server) handleCryptoTop(w http.ResponseWriter, r *http.Request) {
 
 	var rows *sql.Rows
 	var err error
-	if suffix == "*" {
+	if len(symbols) > 0 {
+		inClause, args := s.buildInClause(symbols)
+		args = append(args, minVol, limit)
+		rows, err = s.db.Query(
+			`SELECT symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw
+			 FROM crypto_ticks_latest
+			 WHERE symbol IN `+inClause+` AND volume >= `+s.ph(len(args)-1)+`
+			 ORDER BY pct_change `+order+` LIMIT `+s.ph(len(args)),
+			args...,
+		)
+	} else if suffix == "*" {
 		rows, err = s.db.Query(
 			`SELECT symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw
 			 FROM crypto_ticks_latest
@@ -804,6 +815,45 @@ func (s *server) handleCryptoTop(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, out)
+}
+
+func parseSymbolsCSV(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		s := strings.ToUpper(strings.TrimSpace(p))
+		if s == "" {
+			continue
+		}
+		if len(s) > 32 {
+			continue
+		}
+		ok := true
+		for _, r := range s {
+			if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+				continue
+			}
+			ok = false
+			break
+		}
+		if ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func (s *server) buildInClause(symbols []string) (string, []any) {
+	args := make([]any, 0, len(symbols))
+	parts := make([]string, 0, len(symbols))
+	for i, sym := range symbols {
+		args = append(args, sym)
+		parts = append(parts, s.ph(i+1))
+	}
+	return "(" + strings.Join(parts, ",") + ")", args
 }
 
 func (s *server) count(table string) (int, error) {

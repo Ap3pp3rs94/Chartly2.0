@@ -17,10 +17,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"gopkg.in/yaml.v3"
 )
 
 type config struct {
 	AggregatorURL  string
+	RegistryURL    string
 	BinanceWSURL   string
 	ProfileID      string
 	DroneID        string
@@ -32,6 +34,9 @@ type config struct {
 	HealthAddr     string
 	ProjectMode    string
 	ProjectMinVol  float64
+	WatchlistID    string
+	WatchlistEvery time.Duration
+	Watchlist      *watchlistState
 }
 
 type resultIn struct {
@@ -60,6 +65,9 @@ func main() {
 	defer stop()
 
 	go serveHealth(cfg.HealthAddr)
+	if cfg.Watchlist != nil && cfg.WatchlistID != "" {
+		go watchlistLoop(ctx, cfg, cfg.Watchlist)
+	}
 
 	startedAt := time.Now().UTC()
 	rowsOut := int64(0)
@@ -222,11 +230,15 @@ func normalizeMiniTicker(raw []byte, cfg config) ([]json.RawMessage, error) {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	out := make([]json.RawMessage, 0, len(arr)+1)
 	parsed := make([]miniTicker, 0, len(arr))
+	filter := cfg.Watchlist
 	for _, item := range arr {
 		item["source"] = "binance"
 		item["event"] = "mini_ticker"
 		item["ingest_ts"] = now
 		if mt, ok := parseMini(item); ok {
+			if filter != nil && !filter.allows(mt.Symbol) {
+				continue
+			}
 			parsed = append(parsed, mt)
 		}
 		b, err := json.Marshal(item)
@@ -381,10 +393,12 @@ func serveHealth(addr string) {
 }
 
 func loadConfig() config {
+	wl := &watchlistState{}
 	return config{
 		AggregatorURL:  getenv("AGGREGATOR_URL", "http://aggregator:8082"),
+		RegistryURL:    getenv("REGISTRY_URL", "http://registry:8081"),
 		BinanceWSURL:   getenv("BINANCE_WS_URL", "wss://data-stream.binance.vision/ws/!miniTicker@arr"),
-		ProfileID:      getenv("CRYPTO_PROFILE_ID", "crypto-binance-mini"),
+		ProfileID:      getenv("CRYPTO_PROFILE_ID", "crypto-watchlist"),
 		DroneID:        getenv("CRYPTO_DRONE_ID", "crypto-binance-ws"),
 		RunID:          getenv("CRYPTO_RUN_ID", "run_"+time.Now().UTC().Format("20060102T150405Z")),
 		BatchMax:       getenvInt("CRYPTO_BATCH_MAX", 500),
@@ -394,6 +408,9 @@ func loadConfig() config {
 		HealthAddr:     getenv("CRYPTO_HEALTH_ADDR", ":8088"),
 		ProjectMode:    getenv("CRYPTO_PROJECT_MODE", "avg_usdt"),
 		ProjectMinVol:  getenvFloat("CRYPTO_PROJECT_MIN_VOL", 1000),
+		WatchlistID:    getenv("CRYPTO_WATCHLIST_PROFILE_ID", "crypto-watchlist"),
+		WatchlistEvery: getenvDuration("CRYPTO_WATCHLIST_REFRESH", 30*time.Second),
+		Watchlist:      wl,
 	}
 }
 
@@ -438,4 +455,103 @@ func getenvFloat(key string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+type watchlistState struct {
+	value atomic.Value
+}
+
+func (w *watchlistState) set(symbols []string) {
+	if len(symbols) == 0 {
+		w.value.Store(map[string]struct{}{})
+		return
+	}
+	m := make(map[string]struct{}, len(symbols))
+	for _, s := range symbols {
+		s = strings.ToUpper(strings.TrimSpace(s))
+		if s == "" {
+			continue
+		}
+		m[s] = struct{}{}
+	}
+	w.value.Store(m)
+}
+
+func (w *watchlistState) allows(symbol string) bool {
+	v := w.value.Load()
+	if v == nil {
+		return true
+	}
+	m, ok := v.(map[string]struct{})
+	if !ok || len(m) == 0 {
+		return true
+	}
+	_, ok = m[strings.ToUpper(symbol)]
+	return ok
+}
+
+type registryProfile struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Content string `json:"content"`
+}
+
+type watchlistDoc struct {
+	Crypto struct {
+		Symbols []string `yaml:"symbols"`
+	} `yaml:"crypto"`
+}
+
+func watchlistLoop(ctx context.Context, cfg config, wl *watchlistState) {
+	ticker := time.NewTicker(cfg.WatchlistEvery)
+	defer ticker.Stop()
+
+	refresh := func() {
+		symbols, err := fetchWatchlist(ctx, cfg)
+		if err != nil {
+			log.Printf("watchlist refresh error: %v", err)
+			return
+		}
+		wl.set(symbols)
+	}
+
+	refresh()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refresh()
+		}
+	}
+}
+
+func fetchWatchlist(ctx context.Context, cfg config) ([]string, error) {
+	if cfg.RegistryURL == "" || cfg.WatchlistID == "" {
+		return nil, nil
+	}
+	u := strings.TrimRight(cfg.RegistryURL, "/") + "/profiles/" + cfg.WatchlistID
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("registry status %d", resp.StatusCode)
+	}
+	var prof registryProfile
+	if err := json.NewDecoder(resp.Body).Decode(&prof); err != nil {
+		return nil, err
+	}
+	var doc watchlistDoc
+	if err := yaml.Unmarshal([]byte(prof.Content), &doc); err != nil {
+		return nil, err
+	}
+	return doc.Crypto.Symbols, nil
 }
