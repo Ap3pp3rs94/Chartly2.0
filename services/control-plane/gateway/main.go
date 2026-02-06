@@ -131,6 +131,38 @@ func main() {
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	mux.HandleFunc("/api/heartbeat", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+
+		sum := checkAll(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
+		status := "healthy"
+		if sum["services"].(map[string]string)["registry"] != "up" ||
+			sum["services"].(map[string]string)["aggregator"] != "up" ||
+			sum["services"].(map[string]string)["coordinator"] != "up" ||
+			sum["services"].(map[string]string)["reporter"] != "up" ||
+			sum["services"].(map[string]string)["analytics"] != "up" {
+			status = "degraded"
+		}
+
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":   status,
+			"ts":       time.Now().UTC().Format(time.RFC3339),
+			"services": sum["services"],
+			"counts": map[string]int{
+				"profiles": 0,
+				"drones":   0,
+				"results":  0,
+			},
+		})
+	})
+
 	// Discovery (Data.gov)
 	mux.HandleFunc("/api/discover/datagov", handleDiscoverDataGov)
 
