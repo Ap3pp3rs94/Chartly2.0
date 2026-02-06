@@ -10,10 +10,12 @@ import (
 )
 
 func PostResult(ctx context.Context, controlPlaneURL, resultsPath string, out types.TopicOutput) {
+  runID := "topic:" + out.TopicID + ":" + out.OutputHash
   body := map[string]any{
     "drone_id": "topics-codex",
     "profile_id": "topic:" + out.TopicID,
-    "data": out,
+    "run_id": runID,
+    "data": []any{out},
   }
   b, _ := json.Marshal(body)
   req, _ := http.NewRequestWithContext(ctx, http.MethodPost, controlPlaneURL+resultsPath, bytes.NewReader(b))

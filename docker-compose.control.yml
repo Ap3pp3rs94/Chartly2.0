@@ -136,7 +136,7 @@ services:
     ports: ["8099:8087"]
     environment:
       CONTROL_PLANE_URL: http://gateway:8080
-      CODEX_EXECUTOR_URL: ${CODEX_EXECUTOR_URL:-}
+      CODEX_EXECUTOR_URL: http://codex-executor:8087
     volumes:
       - ./profiles/topics:/app/profiles/topics:ro
       - ./services/topics/config:/app/config:ro
