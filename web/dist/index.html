@@ -1,52 +1,13 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark light" />
-  <title>Chartly Control Plane</title>
-  <link rel="icon" href="/favicon.svg" />
-  <link rel="stylesheet" href="/app.css" />
-</head>
-<body>
-  <div id="app" class="app">
-    <header class="topbar">
-      <a class="brand" href="/" data-link>
-        <span class="mark" aria-hidden="true"></span>
-        <span class="brandText">
-          <span class="brandTitle">Chartly Control Plane</span>
-          <span class="brandSub">UI</span>
-        </span>
-      </a>
-
-      <nav id="nav" class="nav"></nav>
-
-      <div class="statusStrip">
-        <span class="statusText" id="gwStatus">unknown</span>
-        <span class="dot" id="dotRegistry" title="registry"></span>
-        <span class="dot" id="dotAggregator" title="aggregator"></span>
-        <span class="dot" id="dotCoordinator" title="coordinator"></span>
-      </div>
-
-      <div class="topActions">
-        <button id="btnRefresh" class="btn">Refresh</button>
-        <a class="btn ghost" href="/settings" data-link>Settings</a>
-      </div>
-    </header>
-
-    <main class="main">
-      <div id="page" class="page"></div>
-    </main>
-
-    <footer class="footer small muted">
-      <span>Static SPA</span><span class="dotSep">•</span>
-      <span>no-build</span><span class="dotSep">•</span>
-      <span class="mono" id="buildTag">ui-min</span>
-    </footer>
-  </div>
-
-  <div id="toasts" class="toasts" aria-live="polite" aria-atomic="true"></div>
-
-  <script type="module" src="/app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chartly</title>
+    <script type="module" crossorigin src="/assets/index-BC7J3UDt.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BkpVGIDe.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
 </html>

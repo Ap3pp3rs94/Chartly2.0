@@ -131,6 +131,9 @@ func main() {
 		writeJSON(w, http.StatusOK, out)
 	})
 
+	// Discovery (Data.gov)
+	mux.HandleFunc("/api/discover/datagov", handleDiscoverDataGov)
+
 	// Proxies (strip /api prefix)
 	mux.Handle("/api/profiles/", stripPrefixProxy("/api", regProxy))
 	mux.Handle("/api/profiles", stripPrefixProxy("/api", regProxy))
@@ -826,7 +829,7 @@ func withLogging(next http.Handler) http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, Authorization, X-Tenant-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 

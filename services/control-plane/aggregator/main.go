@@ -357,10 +357,37 @@ func (s *server) handleResultsPost(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleResultsGet(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	droneID := strings.TrimSpace(q.Get("drone_id"))
+	profileID := strings.TrimSpace(q.Get("profile_id"))
+	runID := strings.TrimSpace(q.Get("run_id"))
 	limit := parseLimit(q.Get("limit"))
 
-	sqlq := fmt.Sprintf(`SELECT id, drone_id, profile_id, run_id, timestamp, data FROM results ORDER BY timestamp DESC, id ASC LIMIT %s`, s.ph(1))
-	rows, err := s.db.Query(sqlq, limit)
+	sqlq := `SELECT id, drone_id, profile_id, run_id, timestamp, data FROM results`
+	conds := make([]string, 0, 3)
+	args := make([]any, 0, 4)
+	idx := 1
+	if droneID != "" {
+		conds = append(conds, "drone_id = "+s.ph(idx))
+		args = append(args, droneID)
+		idx++
+	}
+	if profileID != "" {
+		conds = append(conds, "profile_id = "+s.ph(idx))
+		args = append(args, profileID)
+		idx++
+	}
+	if runID != "" {
+		conds = append(conds, "run_id = "+s.ph(idx))
+		args = append(args, runID)
+		idx++
+	}
+	if len(conds) > 0 {
+		sqlq += " WHERE " + strings.Join(conds, " AND ")
+	}
+	sqlq += " ORDER BY timestamp DESC, id ASC LIMIT " + s.ph(idx)
+	args = append(args, limit)
+
+	rows, err := s.db.Query(sqlq, args...)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
 		return

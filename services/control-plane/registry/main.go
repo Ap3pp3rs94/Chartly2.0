@@ -46,6 +46,15 @@ type profileYAML struct {
 	Version string `yaml:"version"`
 }
 
+type profileDoc struct {
+	ID      string `yaml:"id"`
+	Name    string `yaml:"name"`
+	Version string `yaml:"version"`
+	Source  struct {
+		URL string `yaml:"url"`
+	} `yaml:"source"`
+}
+
 type Overrides struct {
 	Enabled    *bool  `json:"enabled,omitempty"`
 	Interval   string `json:"interval,omitempty"`
@@ -64,9 +73,37 @@ type Limits struct {
 type store struct {
 	mu          sync.RWMutex
 	profiles    map[string]Profile
+	fieldsCache map[string]cachedFields
 	profilesDir string
 	aggURL      string
 	client      *http.Client
+}
+
+type cachedFields struct {
+	key     string
+	expires time.Time
+	resp    fieldsResponse
+}
+
+type fieldsResponse struct {
+	ProfileID        string      `json:"profile_id"`
+	Name             string      `json:"name"`
+	Fields           []fieldInfo `json:"fields"`
+	Cached           bool        `json:"cached"`
+	ExpiresInSeconds int         `json:"expires_in_seconds"`
+}
+
+type fieldInfo struct {
+	Path   string `json:"path"`
+	Label  string `json:"label"`
+	Type   string `json:"type"`
+	Sample any    `json:"sample,omitempty"`
+}
+
+type fieldEntry struct {
+	path   string
+	typ    string
+	sample any
 }
 
 func main() {
@@ -82,6 +119,7 @@ func main() {
 
 	s := &store{
 		profiles:    make(map[string]Profile),
+		fieldsCache: make(map[string]cachedFields),
 		profilesDir: profilesDir,
 		aggURL:      aggURL,
 		client: &http.Client{
@@ -98,6 +136,8 @@ func main() {
 	r.HandleFunc("/profiles", s.handleProfilesList).Methods(http.MethodGet, http.MethodOptions)
 	r.HandleFunc("/profiles", s.handleProfilesCreate).Methods(http.MethodPost, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}", s.handleProfileGet).Methods(http.MethodGet, http.MethodOptions)
+	r.HandleFunc("/profiles/{id}", s.handleProfileDelete).Methods(http.MethodDelete, http.MethodOptions)
+	r.HandleFunc("/profiles/{id}/fields", s.handleProfileFields).Methods(http.MethodGet, http.MethodOptions)
 
 	r.HandleFunc("/profiles/{id}/status", s.handleProfileStatus).Methods(http.MethodGet, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}:pause", s.handleProfilePause).Methods(http.MethodPost, http.MethodOptions)
@@ -181,6 +221,39 @@ func parseProfileYAML(content string) (profileYAML, error) {
 	return meta, nil
 }
 
+func parseProfileDoc(content string) (profileDoc, error) {
+	var doc profileDoc
+	dec := yaml.NewDecoder(strings.NewReader(content))
+	dec.KnownFields(false)
+	if err := dec.Decode(&doc); err != nil {
+		return profileDoc{}, err
+	}
+	return doc, nil
+}
+
+func (s *store) getCachedFields(key string) (fieldsResponse, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c, ok := s.fieldsCache[key]
+	if !ok {
+		return fieldsResponse{}, false
+	}
+	if time.Now().After(c.expires) {
+		return fieldsResponse{}, false
+	}
+	return c.resp, true
+}
+
+func (s *store) setCachedFields(key string, resp fieldsResponse) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.fieldsCache[key] = cachedFields{
+		key:     key,
+		expires: time.Now().Add(5 * time.Minute),
+		resp:    resp,
+	}
+}
+
 func normalizeYAMLBytes(b []byte) []byte {
 	out := bytes.TrimRight(b, "\r\n")
 	out = append(out, '\n')
@@ -190,6 +263,254 @@ func normalizeYAMLBytes(b []byte) []byte {
 func digestBytes(b []byte) string {
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+var envRe = regexp.MustCompile(`\$\{([A-Z0-9_]+)\}`)
+
+func expandEnvPlaceholders(s string) (string, error) {
+	out := s
+	matches := envRe.FindAllStringSubmatch(s, -1)
+	for _, m := range matches {
+		if len(m) < 2 {
+			continue
+		}
+		key := m[1]
+		val := strings.TrimSpace(os.Getenv(key))
+		if val == "" {
+			return "", fmt.Errorf("missing env var %s", key)
+		}
+		out = strings.ReplaceAll(out, m[0], val)
+	}
+	return out, nil
+}
+
+func fetchSampleRecords(url string) ([]any, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("User-Agent", "Chartly-Gateway/1.0")
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("status_%d", resp.StatusCode)
+	}
+	b, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return nil, err
+	}
+	var parsed any
+	if err := json.Unmarshal(b, &parsed); err != nil {
+		return nil, err
+	}
+	return extractRecords(parsed), nil
+}
+
+func extractRecords(parsed any) []any {
+	if arr, ok := parsed.([]any); ok {
+		if isArrayOfArraysWithHeader(arr) {
+			return limitRecords(censusToObjects(arr), 5)
+		}
+		return limitRecords(arr, 5)
+	}
+	if obj, ok := parsed.(map[string]any); ok {
+		for k, v := range obj {
+			if strings.EqualFold(k, "results") {
+				if arr, ok := v.([]any); ok {
+					return limitRecords(arr, 5)
+				}
+			}
+		}
+		return []any{obj}
+	}
+	return []any{parsed}
+}
+
+func isArrayOfArraysWithHeader(arr []any) bool {
+	if len(arr) < 2 {
+		return false
+	}
+	h, ok := arr[0].([]any)
+	if !ok || len(h) == 0 {
+		return false
+	}
+	for _, v := range h {
+		if _, ok := v.(string); !ok {
+			return false
+		}
+	}
+	_, ok = arr[1].([]any)
+	return ok
+}
+
+func censusToObjects(arr []any) []any {
+	headerRow := arr[0].([]any)
+	headers := make([]string, 0, len(headerRow))
+	for _, h := range headerRow {
+		headers = append(headers, fmt.Sprintf("%v", h))
+	}
+	out := make([]any, 0, len(arr)-1)
+	for i := 1; i < len(arr); i++ {
+		row, ok := arr[i].([]any)
+		if !ok {
+			continue
+		}
+		obj := make(map[string]any)
+		for j := 0; j < len(headers) && j < len(row); j++ {
+			obj[headers[j]] = row[j]
+		}
+		out = append(out, obj)
+	}
+	return out
+}
+
+func limitRecords(arr []any, n int) []any {
+	if len(arr) <= n {
+		return arr
+	}
+	return arr[:n]
+}
+
+func inferFields(records []any) []fieldInfo {
+	entries := map[string]fieldEntry{}
+
+	for _, rec := range records {
+		flattenAny(entries, "", rec)
+	}
+
+	out := make([]fieldInfo, 0, len(entries))
+	keys := make([]string, 0, len(entries))
+	for k := range entries {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		e := entries[k]
+		out = append(out, fieldInfo{
+			Path:   k,
+			Label:  labelFromPath(k),
+			Type:   e.typ,
+			Sample: e.sample,
+		})
+	}
+	return out
+}
+
+func flattenAny(entries map[string]fieldEntry, prefix string, v any) {
+	switch t := v.(type) {
+	case map[string]any:
+		for k, val := range t {
+			p := k
+			if prefix != "" {
+				p = prefix + "." + k
+			}
+			flattenAny(entries, p, val)
+		}
+	case []any:
+		if len(t) == 0 {
+			return
+		}
+		if isScalarArray(t) {
+			addField(entries, prefix+"[0]", "array", t[0])
+			return
+		}
+		// array of objects: inspect first up to 5 entries, normalize index to [0]
+		for i := 0; i < len(t) && i < 5; i++ {
+			subPrefix := prefix + "[" + fmt.Sprintf("%d", i) + "]"
+			flattenAny(entries, subPrefix, t[i])
+		}
+	default:
+		typ := inferType(v)
+		addField(entries, prefix, typ, v)
+	}
+}
+
+func addField(entries map[string]fieldEntry, path, typ string, sample any) {
+	if path == "" {
+		return
+	}
+	norm := normalizeIndex(path)
+	ex, ok := entries[norm]
+	if !ok {
+		entries[norm] = fieldEntry{path: norm, typ: typ, sample: sample}
+		return
+	}
+	// prefer number > string > boolean > array
+	entries[norm] = fieldEntry{
+		path:   norm,
+		typ:    mergeType(ex.typ, typ),
+		sample: chooseSample(ex.sample, sample),
+	}
+}
+
+func normalizeIndex(path string) string {
+	return regexp.MustCompile(`\[\d+\]`).ReplaceAllString(path, "[0]")
+}
+
+func isScalarArray(arr []any) bool {
+	for _, v := range arr {
+		switch v.(type) {
+		case map[string]any, []any:
+			return false
+		}
+	}
+	return true
+}
+
+func inferType(v any) string {
+	switch v.(type) {
+	case float64:
+		return "number"
+	case string:
+		return "string"
+	case bool:
+		return "boolean"
+	case []any:
+		return "array"
+	default:
+		return ""
+	}
+}
+
+func mergeType(a, b string) string {
+	rank := func(t string) int {
+		switch t {
+		case "number":
+			return 4
+		case "string":
+			return 3
+		case "boolean":
+			return 2
+		case "array":
+			return 1
+		default:
+			return 0
+		}
+	}
+	if rank(b) > rank(a) {
+		return b
+	}
+	return a
+}
+
+func chooseSample(a, b any) any {
+	if a != nil {
+		return a
+	}
+	return b
+}
+
+func labelFromPath(path string) string {
+	parts := strings.Split(path, ".")
+	last := parts[len(parts)-1]
+	last = strings.ReplaceAll(last, "[0]", "")
+	last = strings.ReplaceAll(last, "_", " ")
+	last = strings.ReplaceAll(last, "-", " ")
+	if last == strings.ToUpper(last) {
+		return last
+	}
+	return strings.Title(strings.ToLower(last))
 }
 
 func (s *store) overridesPath(id string) string {
@@ -327,6 +648,92 @@ func (s *store) handleProfileGet(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *store) handleProfileDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	if id == "" || !safeIDRe.MatchString(id) || strings.Contains(id, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_id"})
+		return
+	}
+
+	full := filepath.Join(s.profilesDir, id+".yaml")
+	if _, err := os.Stat(full); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+		return
+	}
+
+	if err := os.Remove(full); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "delete_failed"})
+		return
+	}
+	_ = os.Remove(s.overridesPath(id))
+
+	s.mu.Lock()
+	delete(s.profiles, id)
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "id": id})
+}
+
+func (s *store) handleProfileFields(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_id"})
+		return
+	}
+
+	s.mu.RLock()
+	p, ok := s.profiles[id]
+	s.mu.RUnlock()
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+		return
+	}
+
+	doc, err := parseProfileDoc(p.Content)
+	if err != nil || strings.TrimSpace(doc.Source.URL) == "" {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]any{"error": "missing_source_url"})
+		return
+	}
+	resolvedURL, rerr := expandEnvPlaceholders(doc.Source.URL)
+	if rerr != nil {
+		writeJSON(w, http.StatusPreconditionFailed, map[string]any{"error": rerr.Error()})
+		return
+	}
+
+	cacheKey := id + "|" + resolvedURL
+	if resp, ok := s.getCachedFields(cacheKey); ok {
+		resp.Cached = true
+		writeJSON(w, http.StatusOK, resp)
+		return
+	}
+
+	records, ferr := fetchSampleRecords(resolvedURL)
+	if ferr != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "sample_fetch_failed"})
+		return
+	}
+	fields := inferFields(records)
+	resp := fieldsResponse{
+		ProfileID:        id,
+		Name:             firstNonEmpty(strings.TrimSpace(doc.Name), id),
+		Fields:           fields,
+		Cached:           false,
+		ExpiresInSeconds: 300,
+	}
+	s.setCachedFields(cacheKey, resp)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 type statusBridge struct {
@@ -752,7 +1159,7 @@ func requestLoggingMiddleware(next http.Handler) http.Handler {
 func withCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Request-ID, X-API-Key, X-Principal, X-Tenant-ID")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 

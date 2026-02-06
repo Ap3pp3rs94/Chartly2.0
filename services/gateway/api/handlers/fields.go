@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Ap3pp3rs94/Chartly2.0/services/gateway/api/middleware"
 	"gopkg.in/yaml.v3"
 )
 
@@ -92,9 +93,9 @@ func GetProfileFields(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resolvedURL, err := expandEnvPlaceholders(strings.TrimSpace(p.Source.URL))
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, "missing_env_var", err.Error())
+	resolvedURL, missing := expandEnvPlaceholders(strings.TrimSpace(p.Source.URL), middleware.VarsFromContext(r.Context()))
+	if len(missing) > 0 {
+		writeMissingVars(w, missing)
 		return
 	}
 
@@ -167,17 +168,36 @@ func isProfilesDir(root string) bool {
 
 var envRe = regexp.MustCompile(`\$\{([A-Za-z0-9_]+)\}`)
 
-func expandEnvPlaceholders(s string) (string, error) {
+func expandEnvPlaceholders(s string, vars map[string]string) (string, []string) {
+	missing := []string{}
 	matches := envRe.FindAllStringSubmatch(s, -1)
 	for _, m := range matches {
 		key := m[1]
-		val := strings.TrimSpace(os.Getenv(key))
+		val := ""
+		if vars != nil {
+			val = strings.TrimSpace(vars[key])
+		}
 		if val == "" {
-			return "", fmt.Errorf("missing env var %s", key)
+			val = strings.TrimSpace(os.Getenv(key))
+		}
+		if val == "" {
+			missing = append(missing, key)
+			continue
 		}
 		s = strings.ReplaceAll(s, "${"+key+"}", val)
 	}
-	return s, nil
+	return s, missing
+}
+
+func writeMissingVars(w http.ResponseWriter, missing []string) {
+	sort.Strings(missing)
+	resp := map[string]interface{}{
+		"ok":           false,
+		"code":         "precondition_failed",
+		"message":      "missing_vars",
+		"missing_vars": missing,
+	}
+	writeJSON(w, http.StatusPreconditionFailed, resp)
 }
 
 func fetchSample(url string) (interface{}, error) {
@@ -421,3 +441,4 @@ func fieldsCacheSet(key string, resp profileFieldsResp) {
 		key:       key,
 	}
 }
+

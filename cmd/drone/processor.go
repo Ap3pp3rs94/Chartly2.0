@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -83,6 +84,9 @@ func ProcessProfile(profile Profile) ([]map[string]interface{}, error) {
 				dst = m
 			}
 		}
+
+		// Inject crypto_id/timeframe from profile ID when available.
+		injectCryptoDims(dst, profile.ID)
 
 		// Coerce measures.* numeric strings to float64
 		coerceMeasures(dst)
@@ -222,6 +226,94 @@ func isBlockedHost(host string) bool {
 }
 
 func normalizeToRecords(parsed any) []any {
+	if obj, ok := parsed.(map[string]any); ok {
+		// CoinGecko market_chart: expand prices/market_caps/total_volumes into records.
+		if pv, ok := obj["prices"].([]any); ok {
+			prices := pv
+			caps, _ := obj["market_caps"].([]any)
+			vols, _ := obj["total_volumes"].([]any)
+			max := len(prices)
+			if len(caps) > 0 && len(caps) < max {
+				max = len(caps)
+			}
+			if len(vols) > 0 && len(vols) < max {
+				max = len(vols)
+			}
+			out := make([]any, 0, max)
+			for i := 0; i < max; i++ {
+				row := make(map[string]any)
+				if pair, ok := prices[i].([]any); ok && len(pair) >= 2 {
+					row["timestamp"] = pair[0]
+					row["price"] = pair[1]
+				}
+				if len(caps) > 0 {
+					if pair, ok := caps[i].([]any); ok && len(pair) >= 2 {
+						row["market_cap"] = pair[1]
+					}
+				}
+				if len(vols) > 0 {
+					if pair, ok := vols[i].([]any); ok && len(pair) >= 2 {
+						row["volume"] = pair[1]
+					}
+				}
+				out = append(out, row)
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+
+		// CoinGecko simple/price: map of objects -> records with crypto_id
+		if allMapValues(obj) {
+			out := make([]any, 0, len(obj))
+			keys := make([]string, 0, len(obj))
+			for k := range obj {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				if mv, ok := obj[k].(map[string]any); ok {
+					row := make(map[string]any)
+					row["crypto_id"] = k
+					for kk, vv := range mv {
+						row[kk] = vv
+					}
+					out = append(out, row)
+				}
+			}
+			if len(out) > 0 {
+				return out
+			}
+		}
+
+		// Open-Meteo: if object contains "hourly" with parallel arrays, expand into records.
+		if hv, exists := obj["hourly"]; exists {
+			if hmap, ok := hv.(map[string]any); ok {
+				timeArr, _ := hmap["time"].([]any)
+				if len(timeArr) > 0 {
+					keys := make([]string, 0, len(hmap))
+					for k, v := range hmap {
+						if arr, ok := v.([]any); ok && len(arr) == len(timeArr) {
+							keys = append(keys, k)
+						}
+					}
+					sort.Strings(keys)
+					out := make([]any, 0, len(timeArr))
+					for i := 0; i < len(timeArr); i++ {
+						row := make(map[string]any)
+						for _, k := range keys {
+							arr := hmap[k].([]any)
+							row[k] = arr[i]
+						}
+						out = append(out, row)
+					}
+					return out
+				}
+			}
+		}
+	}
+
+	// Census style: top-level array-of-arrays with header row.
 	if arr, ok := parsed.([]any); ok && len(arr) > 0 {
 		if isArrayOfArraysWithHeader(arr) {
 			return censusToObjects(arr)
@@ -241,6 +333,46 @@ func normalizeToRecords(parsed any) []any {
 	}
 
 	return []any{parsed}
+}
+
+func allMapValues(obj map[string]any) bool {
+	if len(obj) == 0 {
+		return false
+	}
+	for _, v := range obj {
+		if _, ok := v.(map[string]any); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func injectCryptoDims(rec map[string]interface{}, profileID string) {
+	if rec == nil {
+		return
+	}
+	if v := getNestedValue(rec, "dims.crypto_id"); v != nil {
+		return
+	}
+	if !strings.HasPrefix(profileID, "crypto-") {
+		return
+	}
+	parts := strings.Split(profileID, "-")
+	if len(parts) < 3 {
+		return
+	}
+	if strings.HasPrefix(profileID, "crypto-top10") {
+		return
+	}
+	// crypto-<id>-<timeframe>
+	tf := parts[len(parts)-1]
+	id := strings.Join(parts[1:len(parts)-1], "-")
+	if id != "" {
+		setNestedValue(rec, "dims.crypto_id", id)
+	}
+	if tf != "" {
+		setNestedValue(rec, "dims.timeframe", tf)
+	}
 }
 
 func isArrayOfArraysWithHeader(arr []any) bool {
