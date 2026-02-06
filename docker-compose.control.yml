@@ -129,6 +129,25 @@ services:
       timeout: 5s
       retries: 3
 
+  topics:
+    build:
+      context: .
+      dockerfile: services/topics/Dockerfile
+    ports: ["8099:8087"]
+    environment:
+      CONTROL_PLANE_URL: http://gateway:8080
+      CODEX_EXECUTOR_URL: ${CODEX_EXECUTOR_URL:-}
+    volumes:
+      - ./profiles/topics:/app/profiles/topics:ro
+      - ./services/topics/config:/app/config:ro
+    depends_on: [gateway]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   gateway:
     build:
       context: .

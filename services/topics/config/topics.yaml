@@ -1,0 +1,18 @@
+server:
+  port: 8087
+endpoints:
+  control_plane_url: http://gateway:8090
+  results_path: /api/results
+topics:
+  root: /app/profiles/topics
+schedule:
+  raw_fetch_interval: 5m
+  codex_process_interval: 10m
+limits:
+  sample_limit: 50
+  per_topic_max_sources: 20
+  max_raw_bytes: 1048576
+codex:
+  executor_url: ""
+  executor_path: /execute
+  max_tokens: 2200
