@@ -3,6 +3,7 @@ import { Link, Route, Routes, useLocation, useNavigate } from "react-router-dom"
 import Correlate from "@/pages/Correlate";
 import Charts from "@/pages/Charts";
 import Dashboard from "@/pages/Dashboard";
+import Crypto from "@/pages/Crypto";
 
 export type Heartbeat = {
   status: "healthy" | "degraded" | "down" | "unknown";
@@ -26,6 +27,7 @@ const navItems = [
   { to: "/results", label: "Results" },
   { to: "/correlate", label: "Correlate" },
   { to: "/charts", label: "Charts" },
+  { to: "/crypto", label: "Crypto" },
   { to: "/settings", label: "Settings" }
 ];
 
@@ -310,6 +312,7 @@ export default function App() {
             <Route path="/results" element={<ResultsPage />} />
             <Route path="/correlate" element={<Correlate />} />
             <Route path="/charts" element={<Charts />} />
+            <Route path="/crypto" element={<Crypto />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Dashboard />} />
           </Routes>
