@@ -170,6 +170,25 @@ services:
       timeout: 5s
       retries: 3
 
+  crypto-stream:
+    build:
+      context: .
+      dockerfile: services/crypto-stream/Dockerfile
+    environment:
+      AGGREGATOR_URL: http://aggregator:8082
+      BINANCE_WS_URL: wss://data-stream.binance.vision/ws/!miniTicker@arr
+      CRYPTO_PROFILE_ID: crypto-binance-mini
+      CRYPTO_DRONE_ID: crypto-binance-ws
+      CRYPTO_PROJECT_MODE: avg_usdt
+      CRYPTO_PROJECT_MIN_VOL: 1000
+    depends_on: [aggregator]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8088/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
 networks:
   default:
     name: chartly-control-plane
