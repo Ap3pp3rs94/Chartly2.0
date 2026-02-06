@@ -121,6 +121,7 @@ func main() {
 	mux.HandleFunc("/records", s.handleRecords)
 	mux.HandleFunc("/runs", s.handleRuns)
 	mux.HandleFunc("/runs/", s.handleRunGet)
+	mux.HandleFunc("/crypto/top", s.handleCryptoTop)
 
 	h := withRequestLogging(withCORS(withAuth(mux)))
 
@@ -179,6 +180,20 @@ func (s *server) initSchema() error {
 			`CREATE INDEX IF NOT EXISTS idx_runs_profile ON runs(profile_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_runs_drone ON runs(drone_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);`,
+
+			`CREATE TABLE IF NOT EXISTS crypto_ticks_latest (
+	symbol TEXT PRIMARY KEY,
+	ts TIMESTAMPTZ NOT NULL,
+	open DOUBLE PRECISION NOT NULL,
+	close DOUBLE PRECISION NOT NULL,
+	high DOUBLE PRECISION NOT NULL,
+	low DOUBLE PRECISION NOT NULL,
+	volume DOUBLE PRECISION NOT NULL,
+	quote_volume DOUBLE PRECISION NOT NULL,
+	pct_change DOUBLE PRECISION NOT NULL,
+	raw JSONB NOT NULL
+	);`,
+			`CREATE INDEX IF NOT EXISTS idx_crypto_ticks_latest_pct ON crypto_ticks_latest(pct_change DESC);`,
 		}
 	} else {
 		stmts = []string{
@@ -220,6 +235,20 @@ func (s *server) initSchema() error {
 			`CREATE INDEX IF NOT EXISTS idx_runs_profile ON runs(profile_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_runs_drone ON runs(drone_id);`,
 			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at);`,
+
+			`CREATE TABLE IF NOT EXISTS crypto_ticks_latest (
+	symbol TEXT PRIMARY KEY,
+	ts DATETIME NOT NULL,
+	open REAL NOT NULL,
+	close REAL NOT NULL,
+	high REAL NOT NULL,
+	low REAL NOT NULL,
+	volume REAL NOT NULL,
+	quote_volume REAL NOT NULL,
+	pct_change REAL NOT NULL,
+	raw TEXT NOT NULL
+	);`,
+			`CREATE INDEX IF NOT EXISTS idx_crypto_ticks_latest_pct ON crypto_ticks_latest(pct_change DESC);`,
 		}
 	}
 
@@ -345,6 +374,13 @@ func (s *server) handleResultsPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		insertedResults++
+
+		if strings.HasPrefix(in.ProfileID, "crypto-") {
+			if err := s.upsertCryptoTick(canon); err != nil {
+				writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
+				return
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -687,6 +723,89 @@ func (s *server) handleSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *server) handleCryptoTop(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+		return
+	}
+
+	q := r.URL.Query()
+	limit := parseLimit(q.Get("limit"))
+	if limit > 200 {
+		limit = 200
+	}
+	direction := strings.ToLower(strings.TrimSpace(q.Get("direction")))
+	if direction != "down" {
+		direction = "up"
+	}
+	suffix := strings.TrimSpace(q.Get("suffix"))
+	if suffix == "" {
+		suffix = "USDT"
+	}
+	minVol := parseFloat64(q.Get("min_vol"))
+
+	order := "DESC"
+	if direction == "down" {
+		order = "ASC"
+	}
+
+	var rows *sql.Rows
+	var err error
+	if suffix == "*" {
+		rows, err = s.db.Query(
+			`SELECT symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw
+			 FROM crypto_ticks_latest
+			 WHERE volume >= `+s.ph(1)+`
+			 ORDER BY pct_change `+order+` LIMIT `+s.ph(2),
+			minVol, limit,
+		)
+	} else {
+		rows, err = s.db.Query(
+			`SELECT symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw
+			 FROM crypto_ticks_latest
+			 WHERE symbol LIKE `+s.ph(1)+` AND volume >= `+s.ph(2)+`
+			 ORDER BY pct_change `+order+` LIMIT `+s.ph(3),
+			"%"+suffix, minVol, limit,
+		)
+	}
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
+		return
+	}
+	defer rows.Close()
+
+	type row struct {
+		Symbol      string          `json:"symbol"`
+		Timestamp   string          `json:"timestamp"`
+		Open        float64         `json:"open"`
+		Close       float64         `json:"close"`
+		High        float64         `json:"high"`
+		Low         float64         `json:"low"`
+		Volume      float64         `json:"volume"`
+		QuoteVolume float64         `json:"quote_volume"`
+		PctChange   float64         `json:"pct_change"`
+		Raw         json.RawMessage `json:"raw"`
+	}
+
+	out := make([]row, 0, limit)
+	for rows.Next() {
+		var rrow row
+		var rawStr string
+		if err := rows.Scan(&rrow.Symbol, &rrow.Timestamp, &rrow.Open, &rrow.Close, &rrow.High, &rrow.Low, &rrow.Volume, &rrow.QuoteVolume, &rrow.PctChange, &rawStr); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "db_error"})
+			return
+		}
+		rrow.Raw = json.RawMessage([]byte(rawStr))
+		out = append(out, rrow)
+	}
+
+	writeJSON(w, http.StatusOK, out)
+}
+
 func (s *server) count(table string) (int, error) {
 	var total int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM " + table).Scan(&total); err != nil {
@@ -725,6 +844,54 @@ func (s *server) upsertRunSQL() string {
 	}
 	return `INSERT OR REPLACE INTO runs(run_id, drone_id, profile_id, started_at, finished_at, status, rows_out, duration_ms, error)
 	VALUES(?,?,?,?,?,?,?,?,?)`
+}
+
+func (s *server) upsertCryptoTick(canon []byte) error {
+	tick, ok := parseCryptoTick(canon)
+	if !ok {
+		return nil
+	}
+	pct := float64(0)
+	if tick.Open > 0 {
+		pct = (tick.Close - tick.Open) / tick.Open * 100
+	}
+
+	raw := string(canon)
+	if s.dbDriver == "postgres" {
+		_, err := s.db.Exec(
+			`INSERT INTO crypto_ticks_latest(symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw)
+			 VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+			 ON CONFLICT(symbol) DO UPDATE SET
+			  ts=EXCLUDED.ts,
+			  open=EXCLUDED.open,
+			  close=EXCLUDED.close,
+			  high=EXCLUDED.high,
+			  low=EXCLUDED.low,
+			  volume=EXCLUDED.volume,
+			  quote_volume=EXCLUDED.quote_volume,
+			  pct_change=EXCLUDED.pct_change,
+			  raw=EXCLUDED.raw`,
+			tick.Symbol, tick.Timestamp, tick.Open, tick.Close, tick.High, tick.Low, tick.Volume, tick.QuoteVolume, pct, raw,
+		)
+		return err
+	}
+
+	_, err := s.db.Exec(
+		`INSERT INTO crypto_ticks_latest(symbol, ts, open, close, high, low, volume, quote_volume, pct_change, raw)
+		 VALUES(?,?,?,?,?,?,?,?,?,?)
+		 ON CONFLICT(symbol) DO UPDATE SET
+		  ts=excluded.ts,
+		  open=excluded.open,
+		  close=excluded.close,
+		  high=excluded.high,
+		  low=excluded.low,
+		  volume=excluded.volume,
+		  quote_volume=excluded.quote_volume,
+		  pct_change=excluded.pct_change,
+		  raw=excluded.raw`,
+		tick.Symbol, tick.Timestamp, tick.Open, tick.Close, tick.High, tick.Low, tick.Volume, tick.QuoteVolume, pct, raw,
+	)
+	return err
 }
 
 func decodeJSONStrict(r *http.Request, v any) error {
@@ -806,6 +973,95 @@ func parseLimit(v string) int {
 		limit = 1000
 	}
 	return limit
+}
+
+func parseFloat64(v string) float64 {
+	if strings.TrimSpace(v) == "" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
+type cryptoTick struct {
+	Symbol      string
+	Timestamp   string
+	Open        float64
+	Close       float64
+	High        float64
+	Low         float64
+	Volume      float64
+	QuoteVolume float64
+}
+
+func parseCryptoTick(canon []byte) (cryptoTick, bool) {
+	var m map[string]any
+	if err := json.Unmarshal(canon, &m); err != nil {
+		return cryptoTick{}, false
+	}
+
+	sym := strAny(m["s"])
+	if sym == "" {
+		sym = strAny(m["symbol"])
+	}
+	if sym == "" {
+		return cryptoTick{}, false
+	}
+
+	open, ok1 := floatAny(m["o"])
+	closeV, ok2 := floatAny(m["c"])
+	high, ok3 := floatAny(m["h"])
+	low, ok4 := floatAny(m["l"])
+	vol, ok5 := floatAny(m["v"])
+	qvol, ok6 := floatAny(m["q"])
+	if !(ok1 && ok2 && ok3 && ok4 && ok5 && ok6) {
+		return cryptoTick{}, false
+	}
+
+	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	if tsv := strAny(m["ingest_ts"]); tsv != "" {
+		ts = tsv
+	}
+
+	return cryptoTick{
+		Symbol:      sym,
+		Timestamp:   ts,
+		Open:        open,
+		Close:       closeV,
+		High:        high,
+		Low:         low,
+		Volume:      vol,
+		QuoteVolume: qvol,
+	}, true
+}
+
+func strAny(v any) string {
+	switch t := v.(type) {
+	case string:
+		return strings.TrimSpace(t)
+	case fmt.Stringer:
+		return strings.TrimSpace(t.String())
+	default:
+		return ""
+	}
+}
+
+func floatAny(v any) (float64, bool) {
+	switch t := v.(type) {
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(t), 64)
+		return f, err == nil
+	case float64:
+		return t, true
+	case json.Number:
+		f, err := t.Float64()
+		return f, err == nil
+	default:
+		return 0, false
+	}
 }
 
 func (s *server) ph(i int) string {

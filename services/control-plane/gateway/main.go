@@ -146,6 +146,7 @@ func main() {
 
 	mux.Handle("/api/records/", stripPrefixProxy("/api", aggProxy))
 	mux.Handle("/api/records", stripPrefixProxy("/api", aggProxy))
+	mux.Handle("/api/crypto/top", stripPrefixProxy("/api", aggProxy))
 
 	mux.Handle("/api/drones/", stripPrefixProxy("/api", cooProxy))
 	mux.Handle("/api/drones", stripPrefixProxy("/api", cooProxy))
