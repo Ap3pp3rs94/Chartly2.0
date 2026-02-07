@@ -62,7 +62,7 @@ function normalizeSpec(s: any): ReportSpec | null {
       params: normalizeParams(c.params),
       templateId: c.templateId ? safeString(c.templateId) : undefined,
     }))
-    .filter((c) => c.type === "line" || c.type === "bar" || c.type === "heatmap");
+    .filter((c: ChartSpec) => c.type === "line" || c.type === "bar" || c.type === "heatmap");
 
   charts.sort((a, b) => a.id.localeCompare(b.id));
 

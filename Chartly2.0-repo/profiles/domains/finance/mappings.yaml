@@ -1,0 +1,174 @@
+version: "1.0"
+
+inherits:
+  base_mappings_file: "profiles/core/base/mappings.yaml"
+  override_strategy:
+    - "extend: mapping_rules"
+    - "override: naming conventions and standard dimensions"
+    - "do_not_change: determinism rules, raw_ref binding, contract enforcement"
+
+finance_naming:
+  metric_prefixes:
+    price: "price"
+    volume: "volume"
+    rate: "rate"
+    risk: "risk"
+    macro: "macro"
+  metric_name_convention:
+    - "Use dot-separated namespaces: <prefix>.<subject>.<unit_or_variant>"
+    - "Examples: price.btc.usd, volume.aapl.shares, rate.usd.eur, macro.cpi.index"
+  event_types:
+    convention: "finance.<topic>.<action>"
+    examples:
+      - "finance.marketdata.received"
+      - "finance.rates.updated"
+      - "finance.macro.released"
+
+standard_dimensions:
+  required:
+    - key: "instrument"
+      description: "Instrument identifier (ticker/symbol/ISIN)."
+      max_len: 64
+    - key: "currency"
+      description: "Currency code (ISO 4217) when applicable."
+      max_len: 8
+  optional:
+    - key: "venue"
+      description: "Exchange/venue identifier."
+      max_len: 64
+    - key: "region"
+      description: "Region/country code."
+      max_len: 16
+    - key: "interval"
+      description: "Sampling interval (1m, 5m, 1h, 1d)."
+      max_len: 16
+    - key: "source_field"
+      description: "Original upstream field name."
+      max_len: 64
+  cardinality_notes:
+    - "Keep instrument dimension stable and normalized."
+    - "Avoid embedding unique IDs (order ids, transaction ids) as dimensions."
+    - "Venue and region should be small cardinality sets."
+
+mapping_rules:
+  # These are domain-safe templates; actual field paths may be customized per source profile.
+  price_series_from_array:
+    enabled: true
+    description: "Map an array of price observations into canonical finance price metrics."
+    expected_input_shape: "payload is array of objects"
+    required_fields_hint:
+      - "symbol or instrument"
+      - "price"
+      - "timestamp"
+    output:
+      metric_name_template: "price.{instrument}.{currency}"
+      ts_selector_priority: ["ts", "timestamp", "time", "date"]
+      value_field_hint: "price"
+      dimensions:
+        instrument: "payload[*].symbol (normalized)"
+        currency: "payload[*].currency (default 'USD')"
+        venue: "payload[*].venue (optional)"
+        interval: "payload[*].interval (optional)"
+      notes:
+        - "Use parse_datetime on timestamp-like fields; fallback to ctx.captured_at."
+        - "If currency missing, default USD unless source explicitly defines otherwise."
+
+  fx_rates_from_array:
+    enabled: true
+    description: "Map an array of FX rate observations into canonical rate metrics."
+    expected_input_shape: "payload is array of objects"
+    required_fields_hint:
+      - "base"
+      - "quote"
+      - "rate"
+      - "timestamp"
+    output:
+      metric_name_template: "rate.{base}.{quote}"
+      value_field_hint: "rate"
+      dimensions:
+        instrument: "concat(base,'/',quote)"
+        currency: "quote"
+        source_field: "rate"
+      notes:
+        - "Rates must be positive; negative or zero should be quarantined by rules."
+
+  yields_from_object:
+    enabled: true
+    description: "Map an object containing yield curve points into rate.yield.* metrics."
+    expected_input_shape: "payload is object"
+    required_fields_hint:
+      - "as_of"
+      - "curve_points"
+    output:
+      metric_name_template: "rate.yield.{tenor}"
+      value_field_hint: "yield"
+      dimensions:
+        instrument: "payload.curve_name (optional)"
+        currency: "payload.currency (default 'USD')"
+        interval: "payload.interval (optional)"
+      notes:
+        - "Tenor should be normalized (e.g., 1M, 3M, 2Y)."
+
+  macro_indicator_from_object:
+    enabled: true
+    description: "Map a macro indicator release payload into macro.* metrics."
+    expected_input_shape: "payload is object"
+    required_fields_hint:
+      - "indicator"
+      - "value"
+      - "release_date"
+    output:
+      metric_name_template: "macro.{indicator}.value"
+      ts_field_hint: "release_date"
+      dimensions:
+        region: "payload.region (default 'US')"
+        source_field: "value"
+      notes:
+        - "Indicator name must be normalized to lowercase underscore then dot-safe (implementation detail)."
+
+  ingestion_lifecycle_events:
+    enabled: true
+    description: "Finance domain uses base lifecycle events; add finance-specific receipt event if desired."
+    additional_event:
+      event_type: "finance.marketdata.received"
+      ts: "coalesce(ctx.fetched_at, ctx.captured_at)"
+      payload_fields:
+        - "job_id"
+        - "profile_name"
+        - "profile_version"
+      notes:
+        - "This event is informational; it should not leak raw payload."
+
+validation_notes:
+  - "All outputs MUST validate against contracts/v1 canonical schemas."
+  - "Finance compliance rules may restrict certain fields; see compliance_rules.yaml."
+  - "Dimension limits and secret detection are enforced by base rules/cleansing."
+
+llm_assist:
+  enabled: true
+  allowed_roles: ["mapping_suggester"]
+  approval_gate: "human_required"
+  forbidden:
+    - "enable_entity_inference"
+    - "introduce_high_cardinality_dimensions"
+    - "include_secret_values"
+  audit_fields_required: ["llm_role", "model_id", "prompt_hash", "output_hash", "approver", "decision"]
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example 1: Price feed payload
+# payload:
+#   - { symbol: "AAPL", price: 190.12, currency: "USD", timestamp: "2026-01-21T10:00:00Z", venue: "NASDAQ" }
+# -> metric_name: price.aapl.usd  value: 190.12  dimensions: {instrument: aapl, currency: usd, venue: nasdaq}
+#
+# Example 2: FX feed payload
+# payload:
+#   - { base: "USD", quote: "EUR", rate: 0.92, timestamp: 1705831200 }
+# -> metric_name: rate.usd.eur  value: 0.92
+#
+# Example 3: Macro payload
+# payload:
+#   { indicator: "CPI", value: 312.4, release_date: "2026-01-15T13:30:00Z", region: "US" }
+# -> metric_name: macro.cpi.value value: 312.4 dimensions: {region: us}
+# -----------------------------------------------------------------------------

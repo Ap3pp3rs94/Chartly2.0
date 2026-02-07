@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Ap3pp3rs94/Chartly2.0/contracts/v1/canonical/artifact.schema.json",
+  "title": "Chartly Canonical Artifact (v1)",
+  "description": "An Artifact represents a generated output (report, export, model file, etc.) stored in blob storage. Artifacts are traceable and scoped by tenant.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable artifact identifier (ULID recommended)."
+    },
+    "artifact_type": {
+      "type": "string",
+      "enum": ["report", "export", "model", "other"],
+      "description": "Artifact category."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 timestamp when the artifact was created."
+    },
+    "storage_ref": {
+      "type": "object",
+      "description": "Reference to the stored artifact blob (immutable).",
+      "additionalProperties": false,
+      "properties": {
+        "bucket": { "type": "string", "minLength": 1, "description": "Blob storage bucket." },
+        "key": { "type": "string", "minLength": 1, "description": "Blob storage object key." },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-fA-F0-9]{64}$",
+          "description": "SHA-256 hex digest of the artifact content."
+        },
+        "content_type": { "type": "string", "minLength": 1, "description": "MIME content type of the artifact." },
+        "captured_at": { "type": "string", "format": "date-time", "description": "RFC3339 time when the artifact was stored." },
+        "size_bytes": { "type": "integer", "minimum": 0, "description": "Optional artifact size in bytes." }
+      },
+      "required": ["bucket", "key", "sha256", "content_type", "captured_at"]
+    },
+    "tenant_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant scope identifier."
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Artifact metadata (report parameters, format, generator version, etc.).",
+      "additionalProperties": true
+    }
+  },
+  "required": [
+    "id",
+    "artifact_type",
+    "created_at",
+    "storage_ref",
+    "tenant_id",
+    "metadata"
+  ]
+}

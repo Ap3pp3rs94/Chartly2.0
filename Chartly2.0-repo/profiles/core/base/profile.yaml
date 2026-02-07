@@ -1,0 +1,330 @@
+# Chartly 2.0  Core Base Profile
+# This base profile defines the default, safe, contract-first behavior for raw  canonical normalization.
+# Domain profiles under profiles/domains/* may override/extend behavior, but MUST remain compatible with contracts.
+
+profile:
+  name: "core/base"
+  description: >
+    Base normalization profile for Chartly 2.0. Provides default policies for canonicalization,
+    schema enforcement, quarantine, idempotency, and LLM-assisted guidance. All domains inherit from this
+    profile unless explicitly overridden.
+  domain: "core"
+  version: "1.0.0"
+  status: "active"           # active|deprecated|experimental
+  owners:
+    - "Chartly Maintainers"
+  created_at: "2026-01-21T00:00:00Z"
+  updated_at: "2026-01-21T00:00:00Z"
+
+compatibility:
+  contracts_version: "v1"
+  minimum_chartly_version: "0.0.1"
+  breaking_changes_policy:
+    - "Breaking changes to mappings/rules require MAJOR version bump."
+    - "Non-breaking additions (new optional mappings/metrics) require MINOR bump."
+    - "Documentation or non-behavioral clarifications require PATCH bump."
+    - "Changes that increase quarantine rates for previously accepted inputs are breaking unless explicitly gated."
+
+classification:
+  # This profile is default-safe and assumes unknown sensitivity. Domain profiles must tighten.
+  data_sensitivity: "mixed"  # none|pii|phi|mixed
+  handling_notes:
+    - "Assume raw inputs may contain sensitive content unless explicitly classified otherwise."
+    - "Never emit raw payload content into logs."
+    - "Quarantine payloads by reference (raw_ref) and reason codes; do not copy raw content into canonical."
+  allowed_storage:
+    raw: true
+    canonical: true
+    audit: true
+
+scope:
+  applies_to: "default"     # default inheritance base
+  supported_source_kinds: ["api", "domain", "db", "file", "webhook", "other"]
+  supported_connector_types:
+    # IDs must match configs/connector-registry.yaml entries.
+    - "http_rest"
+    - "graphql"
+    - "websocket"
+    - "grpc"
+    - "database"
+    - "sftp"
+    - "s3"
+    - "rss"
+    - "webhook"
+    - "domain_fetch"
+
+contract_enforcement:
+  required_schemas:
+    - "contracts/v1/canonical/source.schema.json"
+    - "contracts/v1/canonical/entity.schema.json"
+    - "contracts/v1/canonical/event.schema.json"
+    - "contracts/v1/canonical/metric.schema.json"
+    - "contracts/v1/canonical/case.schema.json"
+    - "contracts/v1/canonical/artifact.schema.json"
+    - "contracts/v1/canonical/audit_record.schema.json"
+  validation_mode: "strict"         # strict|warn|off (strict required for base)
+  unknown_field_policy: "reject"    # reject|drop|allow (reject required for base)
+  notes:
+    - "Normalizer MUST validate canonical outputs against the schemas above."
+    - "If a domain overlay loosens validation_mode, it must explicitly document why and add compensating controls."
+
+canonicalization:
+  timezone: "UTC"
+  timestamp_policy:
+    input_timezones:
+      allowed: ["UTC", "Z", "offset"]
+      naive_interpretation: "UTC"     # naive timestamps treated as UTC by default
+    output_format: "rfc3339"
+    rounding:
+      enabled: false
+      granularity: "none"             # none|second|minute|hour|day
+  numeric_policy:
+    # Apply numeric coercion rules during normalization
+    allow_string_numbers: true
+    decimal_handling: "float64"       # float64|decimal (decimal is roadmap)
+    invalid_numeric: "quarantine"     # quarantine|null|drop
+    bounds:
+      allow_nan: false
+      allow_infinity: false
+  dimension_policy:
+    max_dimensions_per_record: 64
+    max_dimension_key_len: 64
+    max_dimension_value_len: 256
+    allowed_value_types: ["string", "number", "boolean"]
+    high_cardinality_protection:
+      enabled: true
+      rules:
+        - "If a dimension value exceeds max_dimension_value_len, truncate and emit warning."
+        - "If dimensions count exceeds max_dimensions_per_record, drop extras deterministically (sorted key order) and emit warning."
+        - "If a dimension key resembles a secret key (password/secret/token/api_key/private_key), quarantine immediately."
+
+quarantine_policy:
+  enabled: true
+  reason_code_taxonomy:
+    # Keep reason codes stable and machine-readable; domain profiles may add new codes.
+    - "schema.validation_failed"
+    - "policy.pii_phi_violation"
+    - "policy.secret_detected"
+    - "mapping.missing_required_field"
+    - "mapping.type_coercion_failed"
+    - "dedupe.collision_conflict"
+    - "enrichment.failed"
+    - "retention.policy_violation"
+    - "upstream.payload_too_large"
+    - "upstream.content_type_unsupported"
+  quarantine_record_shape:
+    required_fields:
+      - "tenant_id"
+      - "source_id"
+      - "job_id"
+      - "profile_name"
+      - "profile_version"
+      - "reason_code"
+      - "ts"
+      - "raw_ref"
+      - "validation_errors"
+      - "notes"
+    validation_errors_format: "array<string>"
+    notes_max_len: 2000
+  escalation_rules:
+    - when: "policy.pii_phi_violation"
+      action: "open_case"
+      severity: "high"
+    - when: "policy.secret_detected"
+      action: "open_case"
+      severity: "critical"
+    - when: "schema.validation_failed"
+      action: "track_metric"
+      severity: "medium"
+
+idempotency_policy:
+  strategy: "content_hash"           # content_hash|source_cursor|hybrid
+  key_components:
+    # Base deterministic key components (domain profiles may extend)
+    - "tenant_id"
+    - "source_id"
+    - "raw_ref.sha256"
+    - "profile.version"
+    - "canonical.object_type"
+    - "canonical.primary_id_or_composite"
+  dedupe_window_policy:
+    enabled: false                   # default off; enable only when domain requires windowing
+    window_seconds: 0
+    notes:
+      - "Windowed dedupe can hide legitimate repeated events; only enable with domain justification."
+  collision_policy:
+    on_duplicate: "drop"             # drop|keep_first|keep_last|quarantine
+    on_conflict: "quarantine"        # quarantine|keep_first|keep_last
+    conflict_definition:
+      - "Same idempotency key but different canonical payload hash."
+
+policy_references:
+  retention_policy_ref:
+    file: "retention.yaml"
+    required: true
+  mapping_policy_ref:
+    file: "mappings.yaml"
+    required: true
+  cleansing_policy_ref:
+    file: "cleansing.yaml"
+    required: true
+  rules_policy_ref:
+    file: "rules.yaml"
+    required: true
+  enrichment_policy_ref:
+    file: "enrichment.yaml"
+    required: true
+  alerts_policy_ref:
+    file: "alerts.yaml"
+    required: true
+
+llm_workers:
+  # LLM workers are allowed to assist ONLY within explicit guardrails.
+  # The system remains deterministic: profiles and contracts govern; LLMs suggest or annotate.
+  goal: >
+    Use dedicated LLM workers (Ollama models and/or Codex-assisted tooling) to accelerate profile authoring,
+    mapping suggestions, cleansing heuristics, and report drafting while maintaining strict enforcement of
+    contracts, policies, auditability, and human approval gates.
+
+  allowed_roles:
+    - "mapping_suggester"            # propose mappings.yaml entries from samples
+    - "cleansing_suggester"          # propose cleansing rules from sample payloads
+    - "enrichment_suggester"         # propose enrichment.yaml rules (non-sensitive)
+    - "report_spec_assistant"        # propose report/chart configs (contracts/v1/reports)
+    - "anomaly_hint_assistant"       # propose alert thresholds; never auto-enforce
+    - "schema_drift_explainer"       # explain upstream drift and suggest profile patches
+
+  forbidden_actions:
+    - "bypass_contract_validation"
+    - "write_canonical_records_directly"
+    - "write_or_modify_raw_payloads"
+    - "emit_or_store_secrets"
+    - "log_raw_payload_content"
+    - "auto_apply_profile_changes_without_approval"
+    - "override_quarantine_policy"
+    - "change_idempotency_keys_without_major_version_bump"
+
+  approval_gates:
+    # Defines when LLM suggestions can be auto-applied.
+    default: "human_required"
+    allow_auto_apply_when:
+      - condition: "non_behavioral_docs_only"
+        requirement: "human_optional"
+      - condition: "cleansing_trivial_whitespace_trim_only"
+        requirement: "human_required"
+    notes:
+      - "All mapping/rules/dedupe/enrichment changes require PR review (CODEOWNERS)."
+      - "Auto-apply is NOT enabled by default in any environment."
+
+  audit_requirements:
+    # Every LLM interaction that influences pipeline behavior must leave an audit trail.
+    required: true
+    record_fields:
+      - "ts"
+      - "tenant_id"
+      - "source_id"
+      - "profile_name"
+      - "profile_version"
+      - "llm_role"
+      - "model_id"
+      - "prompt_hash"
+      - "output_hash"
+      - "decision"           # accepted|rejected|modified
+      - "approver"           # user/service identity
+    storage:
+      # Store prompts/outputs as artifacts by reference, never inline in logs.
+      prompts_as_artifacts: true
+      outputs_as_artifacts: true
+      artifact_bucket_ref: "blob.artifacts"
+
+  model_routing:
+    # Routes tasks to a specific model pool.
+    # Endpoints are environment references; do not hardcode secrets.
+    ollama:
+      enabled: true
+      endpoint_env: "OLLAMA_ENDPOINT"          # e.g., http://localhost:11434
+      timeout_seconds: 30
+      workers:
+        # Each lane can be scaled independently as a worker pool.
+        - lane: "profile_mapping"
+          model: "llama3.1:8b"
+          max_concurrency: 4
+          allowed_roles: ["mapping_suggester", "cleansing_suggester"]
+        - lane: "reporting_specs"
+          model: "llama3.1:8b"
+          max_concurrency: 2
+          allowed_roles: ["report_spec_assistant", "anomaly_hint_assistant"]
+        - lane: "drift_analysis"
+          model: "llama3.1:8b"
+          max_concurrency: 2
+          allowed_roles: ["schema_drift_explainer"]
+      constraints:
+        - "No tool execution inside Ollama worker unless explicitly mediated by orchestrator."
+        - "Outputs must be deterministic-format suggestions (YAML snippets) where possible."
+
+    codex:
+      enabled: true
+      usage_lane: "code_changes"
+      patch_discipline:
+        - "Propose changes as unified diffs or explicit file replacement blocks."
+        - "Never modify files outside the target requested by operator."
+        - "Run local validation steps after writing: schema validator, lint where applicable."
+      wiring_guarantee:
+        - "Any change that affects contracts, profiles, or service interfaces must be reflected in MANIFEST and validated."
+        - "Codex must refuse to 'hotwire' around rules; it must work through profiles and contracts."
+
+observability:
+  required_log_fields:
+    - "ts"
+    - "level"
+    - "service"
+    - "env"
+    - "tenant_id"
+    - "request_id"
+    - "job_id"
+    - "source_id"
+    - "profile_name"
+    - "profile_version"
+  required_metrics:
+    - "normalize.records_in"
+    - "normalize.records_out"
+    - "normalize.quarantine_count"
+    - "normalize.validation_failures"
+    - "dedupe.duplicates_dropped"
+    - "llm.suggestions_total"
+    - "llm.suggestions_accepted"
+    - "llm.suggestions_rejected"
+  trace_requirements:
+    enabled: true
+    correlation:
+      - "request_id"
+      - "job_id"
+      - "source_id"
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)  how domain profiles override base behavior
+#
+# Example 1 (finance domain)  tighten sensitivity + enable strict dedupe window
+# profile:
+#   name: "domains/finance"
+# classification:
+#   data_sensitivity: "none"
+# idempotency_policy:
+#   dedupe_window_policy:
+#     enabled: true
+#     window_seconds: 300
+#
+# Example 2 (healthcare domain)  PHI constraints + mandatory quarantine escalation
+# classification:
+#   data_sensitivity: "phi"
+# quarantine_policy:
+#   escalation_rules:
+#     - when: "policy.pii_phi_violation"
+#       action: "open_case"
+#       severity: "critical"
+#
+# Example 3 (ecommerce domain)  allow more dimensions for SKU analysis
+# canonicalization:
+#   dimension_policy:
+#     max_dimensions_per_record: 96
+# -----------------------------------------------------------------------------

@@ -1,0 +1,101 @@
+version: "1.0"
+
+retention_engine:
+  enforcement: "roadmap"   # roadmap|enabled
+  notes:
+    - "Retention is enforced by orchestrator-managed lifecycle jobs (roadmap)."
+    - "Profiles define desired retention; actual enforcement must respect tenancy quotas and legal hold."
+  lifecycle_job_model:
+    owner_service: "orchestrator"
+    schedule:
+      frequency: "daily"
+      preferred_time_utc: "02:00"
+    operations:
+      - "raw_expiration"
+      - "canonical_compaction"
+      - "canonical_expiration"
+      - "audit_verification"
+    safety:
+      - "Never delete audit ledger entries unless explicitly allowed by compliance policy."
+      - "Deletion must be logged as audit records (append-only)."
+
+planes:
+  raw_plane:
+    enabled: true
+    default_retention_days: 14
+    deletion_policy: "delete_after_retention"
+    compaction_policy: "none"
+    legal_hold:
+      supported: true
+      behavior: "skip_deletion_when_hold_present"
+    notes:
+      - "Raw payloads can be large; base retention is short for local safety."
+      - "Domain profiles and production configs may extend raw retention for replay/debug."
+
+  canonical_plane:
+    enabled: true
+    default_retention_days: 90
+    deletion_policy: "delete_after_retention"
+    compaction_policy:
+      enabled: true
+      strategy: "time_bucket_compaction"
+      bucket_granularity: "day"
+      downsampling_roadmap: true
+    notes:
+      - "Canonical retention should exceed raw retention to support analytics."
+      - "Downsampling is roadmap for high-volume metrics."
+
+  audit_plane:
+    enabled: true
+    default_retention_days: 365
+    immutability: true
+    deletion_policy: "no_delete_by_default"
+    verification_retention:
+      keep_hash_chain_forever: true
+      verification_snapshots_days: 365
+    notes:
+      - "Audit plane is append-only and should be retained longest."
+      - "Deletion of audit records requires explicit compliance approval and versioned policy change."
+
+tenant_overrides:
+  allowed: true
+  interaction_with_quotas:
+    - "Tenant quotas in configs/tenancy.yaml may cap retention to prevent runaway storage."
+    - "If tenant requests longer retention than quota allows, system must either deny or require admin override."
+  minimums:
+    raw_plane_days: 1
+    canonical_plane_days: 7
+    audit_plane_days: 90
+
+privacy_and_compliance:
+  gdpr_delete_policy:
+    status: "roadmap"
+    notes:
+      - "GDPR right-to-erasure is implemented as targeted deletion/redaction workflows, not blanket retention changes."
+      - "All deletions/redactions must be recorded in audit plane."
+  hipaa_retention_notes:
+    - "HIPAA requirements vary by jurisdiction and policy. Healthcare domain profile must explicitly set retention."
+    - "PHI handling must ensure access controls and auditability."
+  sox_retention_notes:
+    - "SOX-related audit retention may require multi-year storage. Finance domain profiles should extend audit retention."
+
+llm_assist:
+  enabled: false
+  allowed_roles: []
+  notes:
+    - "LLMs may explain retention implications but must not modify retention automatically."
+    - "Retention changes are governance-sensitive and require human approval."
+
+# -----------------------------------------------------------------------------
+# EXAMPLES (comments only)
+#
+# Example: Production overlay extends raw retention for replay
+# planes:
+#   raw_plane:
+#     default_retention_days: 90
+#
+# Example: Finance domain extends audit retention
+# planes:
+#   audit_plane:
+#     default_retention_days: 3650
+# -----------------------------------------------------------------------------

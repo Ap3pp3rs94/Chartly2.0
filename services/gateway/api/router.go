@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/Ap3pp3rs94/Chartly2.0/services/gateway/api/handlers"
+	"github.com/Ap3pp3rs94/Chartly2.0/services/gateway/api/middleware"
 )
 
 type errorBody struct {
@@ -108,6 +109,8 @@ func NewRouter() http.Handler {
 	mux.HandleFunc("/api/recommendations", methodOnly(http.MethodPost, requireJSON(handlers.PostRecommendations)))
 	mux.HandleFunc("/api/heartbeat", methodOnly(http.MethodGet, handlers.GetHeartbeat))
 	mux.HandleFunc("/api/events", methodOnly(http.MethodGet, handlers.ServeEvents))
+	// Live stream
+	mux.HandleFunc("/api/live/stream", methodOnly(http.MethodGet, handlers.LiveStream))
 
 	// Reports
 	mux.HandleFunc("/api/reports", func(w http.ResponseWriter, r *http.Request) {
@@ -135,5 +138,5 @@ func NewRouter() http.Handler {
 
 	// Profile builder
 	mux.HandleFunc("/api/profile-builder/generate", methodOnly(http.MethodPost, requireJSON(handlers.ProfileBuilderGenerate)))
-	return recoverer(mux)
+	return recoverer(middleware.Vars(mux))
 }

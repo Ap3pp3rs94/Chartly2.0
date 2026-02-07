@@ -1,0 +1,79 @@
+name: deploy-vm
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build web
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd web
+          npm install --legacy-peer-deps
+          npx vite build
+          tar -czf /tmp/web-dist.tgz -C . dist
+
+      - name: Load SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.VM_SSH_KEY }}
+
+      - name: Add host key
+        shell: bash
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VM_HOST:-}" ]; then
+            echo "VM_HOST secret is required" >&2
+            exit 1
+          fi
+          PORT="${VM_PORT:-22}"
+          mkdir -p ~/.ssh
+          ssh-keyscan -p "$PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload web assets
+        shell: bash
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_PATH: ${{ secrets.VM_PATH }}
+        run: |
+          set -euo pipefail
+          USER="${VM_USER:-ubuntu}"
+          PORT="${VM_PORT:-22}"
+          PATH_ON_VM="${VM_PATH:-~/Chartly2.0}"
+          scp -P "$PORT" /tmp/web-dist.tgz "$USER@$VM_HOST:/tmp/web-dist.tgz"
+          ssh -p "$PORT" "$USER@$VM_HOST" "mkdir -p $PATH_ON_VM/web && tar -xzf /tmp/web-dist.tgz -C $PATH_ON_VM/web"
+
+      - name: Deploy services
+        shell: bash
+        env:
+          VM_HOST: ${{ secrets.VM_HOST }}
+          VM_USER: ${{ secrets.VM_USER }}
+          VM_PORT: ${{ secrets.VM_PORT }}
+          VM_PATH: ${{ secrets.VM_PATH }}
+        run: |
+          set -euo pipefail
+          USER="${VM_USER:-ubuntu}"
+          PORT="${VM_PORT:-22}"
+          PATH_ON_VM="${VM_PATH:-~/Chartly2.0}"
+          ssh -p "$PORT" "$USER@$VM_HOST" "cd $PATH_ON_VM && git pull && docker compose -f docker-compose.control.yml up -d --build"

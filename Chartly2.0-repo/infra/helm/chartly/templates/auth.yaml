@@ -1,0 +1,137 @@
+{{- if .Values.services.auth.enabled -}}
+
+{{- $ns := .Values.global.namespace -}}
+{{- $sel := required "services.auth.selectorLabels is required" .Values.services.auth.selectorLabels -}}
+
+{{- $img := printf "%s:%s" .Values.services.auth.image.repository .Values.services.auth.image.tag -}}
+{{- if .Values.global.image.registry -}}
+{{- $img = printf "%s/%s" .Values.global.image.registry $img -}}
+{{- end -}}
+
+{{- $podSC := .Values.global.security.pod -}}
+{{- with .Values.services.auth.security -}}
+{{- if .pod -}}
+{{- $podSC = .pod -}}
+{{- end -}}
+{{- end -}}
+{{- $podSC = omit $podSC "terminationGracePeriodSeconds" -}}
+
+{{- $ctrSC := .Values.global.security.container -}}
+{{- with .Values.services.auth.security -}}
+{{- if .container -}}
+{{- $ctrSC = .container -}}
+{{- end -}}
+{{- end -}}
+
+{{- $tgp := (dig "global" "security" "pod" "terminationGracePeriodSeconds" .Values | default 30) -}}
+
+{{- $tmp := dict "enabled" false "mountPath" "/tmp" -}}
+{{- with (dig "global" "security" "writablePaths" "tmp" .Values) -}}
+{{- if . -}}
+{{- $tmp = . -}}
+{{- end -}}
+{{- end -}}
+{{- with (dig "services" "auth" "writablePaths" "tmp" .Values) -}}
+{{- if . -}}
+{{- $tmp = . -}}
+{{- end -}}
+{{- end -}}
+
+{{- $rPath := (dig "services" "auth" "probes" "readiness" "path" .Values | default "/ready") -}}
+{{- $rDelay := (dig "services" "auth" "probes" "readiness" "initialDelaySeconds" .Values | default 3) -}}
+{{- $rPeriod := (dig "services" "auth" "probes" "readiness" "periodSeconds" .Values | default 5) -}}
+
+{{- $lPath := (dig "services" "auth" "probes" "liveness" "path" .Values | default "/health") -}}
+{{- $lDelay := (dig "services" "auth" "probes" "liveness" "initialDelaySeconds" .Values | default 10) -}}
+{{- $lPeriod := (dig "services" "auth" "probes" "liveness" "periodSeconds" .Values | default 10) -}}
+
+{{- $sPath := (dig "services" "auth" "probes" "startup" "path" .Values | default "/health") -}}
+{{- $sPeriod := (dig "services" "auth" "probes" "startup" "periodSeconds" .Values | default 2) -}}
+{{- $sFail := (dig "services" "auth" "probes" "startup" "failureThreshold" .Values | default 30) -}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chartly-auth
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- toYaml .Values.global.labels | nindent 4 }}
+    app.kubernetes.io/component: auth
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- toYaml $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml .Values.global.labels | nindent 8 }}
+        app.kubernetes.io/component: auth
+        {{- toYaml $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: {{ .Values.global.security.automountServiceAccountToken }}
+      terminationGracePeriodSeconds: {{ $tgp }}
+      securityContext:
+        {{- toYaml $podSC | nindent 8 }}
+      containers:
+        - name: auth
+          image: {{ $img | quote }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.services.auth.service.port }}
+              protocol: TCP
+          securityContext:
+            {{- toYaml $ctrSC | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: {{ $rPath | quote }}
+              port: http
+            initialDelaySeconds: {{ $rDelay }}
+            periodSeconds: {{ $rPeriod }}
+          livenessProbe:
+            httpGet:
+              path: {{ $lPath | quote }}
+              port: http
+            initialDelaySeconds: {{ $lDelay }}
+            periodSeconds: {{ $lPeriod }}
+          startupProbe:
+            httpGet:
+              path: {{ $sPath | quote }}
+              port: http
+            periodSeconds: {{ $sPeriod }}
+            failureThreshold: {{ $sFail }}
+          {{- with .Values.services.auth.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if $tmp.enabled }}
+          volumeMounts:
+            - name: tmp
+              mountPath: {{ $tmp.mountPath | default "/tmp" | quote }}
+          {{- end }}
+      {{- if $tmp.enabled }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chartly-auth
+  namespace: {{ $ns | quote }}
+  labels:
+    {{- toYaml .Values.global.labels | nindent 4 }}
+    app.kubernetes.io/component: auth
+spec:
+  type: {{ .Values.services.auth.service.type }}
+  selector:
+    {{- toYaml $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.services.auth.service.port }}
+      targetPort: http
+      protocol: TCP
+
+{{- end -}}

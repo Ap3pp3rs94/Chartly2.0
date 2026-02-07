@@ -1,111 +1,110 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { api } from "@/api/client";
-
-const KEY_TENANT = "chartly.tenantId";
-const KEY_TIMEOUT = "chartly.apiTimeoutMs";
-
-function normCollapse(s: string): string {
-  const cleaned = String(s ?? "").replaceAll("\u0000", "").trim();
-  return cleaned.split(/\s+/g).filter(Boolean).join(" ");
-}
-
-function clamp(n: number, lo: number, hi: number): number {
-  return Math.max(lo, Math.min(hi, n));
-}
-
-function readTenant(): string {
-  const v = localStorage.getItem(KEY_TENANT);
-  return normCollapse(v ?? "") || "local";
-}
-
-function readTimeout(): number {
-  const v = localStorage.getItem(KEY_TIMEOUT);
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 5000;
-  return clamp(Math.floor(n), 500, 60000);
-}
+import React, { useState } from "react";
+import VarsEditor from "@/components/Settings/VarsEditor";
+import { getSettings, setSettings } from "@/lib/storage";
 
 export default function Settings() {
-  const [tenantId, setTenantId] = useState<string>(() => readTenant());
-  const [timeoutMs, setTimeoutMs] = useState<number>(() => readTimeout());
-  const [msg, setMsg] = useState<string>("");
+  const current = getSettings();
+  const [refreshMs, setRefreshMs] = useState<number>(current.refreshMs);
+  const [summaryCadenceMin, setSummaryCadenceMin] = useState<number>(current.summaryCadenceMin);
+  const [defaultRange, setDefaultRange] = useState<string>(current.defaultRange);
+  const [saved, setSaved] = useState<string>("");
+  const [cleared, setCleared] = useState<string>("");
 
-  const current = useMemo(() => ({ tenantId: readTenant(), timeoutMs: readTimeout() }), []);
+  function savePrefs() {
+    setSettings({ refreshMs, summaryCadenceMin, defaultRange });
+    setSaved("Saved.");
+    setTimeout(() => setSaved(""), 1500);
+  }
 
-  useEffect(() => {
-    // Ensure API client sees current tenant on first load.
-    api.setTenant(readTenant());
-  }, []);
-
-  function save() {
-    const t = normCollapse(tenantId) || "local";
-    const tm = clamp(Math.floor(timeoutMs || 5000), 500, 60000);
-
-    localStorage.setItem(KEY_TENANT, t);
-    localStorage.setItem(KEY_TIMEOUT, String(tm));
-
-    api.setTenant(t);
-
-    setTenantId(t);
-    setTimeoutMs(tm);
-    setMsg("Saved.");
+  function clearLocalData() {
+    const keys = [
+      "chartly.settings.v1",
+      "chartly.vars.v1",
+      "chartly.profiles.virtual.v1",
+      "chartly.workspace.v1",
+      "chartly_last_insights_hash",
+      "chartly_selected_profiles",
+      "chartly_watchlist",
+      "chartly_autopilot",
+      "chartly_ui_advanced",
+      "chartly_last_insights_hash"
+    ];
+    for (const k of keys) {
+      try {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      } catch {
+        // ignore
+      }
+    }
+    setCleared("Local cache cleared. Reloading...");
+    setTimeout(() => {
+      window.location.reload();
+    }, 700);
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div>
-        <h1 style={{ margin: 0, fontSize: 20 }}>Settings</h1>
-        <div style={{ opacity: 0.75, fontSize: 12 }}>Client-side settings (DATA ONLY)</div>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <h1 style={{ margin: 0, fontSize: 20 }}>Settings</h1>
 
-      {msg ? (
-        <div style={{ padding: 10, border: "1px solid #ddd", borderRadius: 8, background: "#fafafa" }}>{msg}</div>
-      ) : null}
+      <VarsEditor />
 
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12 }}>
-        <div style={{ fontWeight: 700, marginBottom: 8 }}>Current stored values</div>
-        <div style={{ fontSize: 12, opacity: 0.85 }}>
-          tenantId: <code>{current.tenantId}</code>
-        </div>
-        <div style={{ fontSize: 12, opacity: 0.85 }}>
-          apiTimeoutMs: <code>{current.timeoutMs}</code>
-        </div>
-      </div>
-
-      <div style={{ border: "1px solid #ddd", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-        <div style={{ fontWeight: 700 }}>Edit</div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", gap: 10, alignItems: "center" }}>
-          <label style={{ fontSize: 12, opacity: 0.8 }}>Tenant ID</label>
-          <input
-            value={tenantId}
-            onChange={(e) => setTenantId(e.target.value)}
-            style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #ccc" }}
-          />
-
-          <label style={{ fontSize: 12, opacity: 0.8 }}>API timeout (ms)</label>
+      <div style={{ padding: 14, borderRadius: 6, border: "1px solid #1f2228", background: "#0f1115" }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Preferences</div>
+        <div style={{ display: "grid", gridTemplateColumns: "200px 1fr", gap: 8, alignItems: "center" }}>
+          <label style={{ fontSize: 12, opacity: 0.8 }}>Refresh interval (ms)</label>
           <input
             type="number"
-            value={timeoutMs}
-            min={500}
-            max={60000}
-            onChange={(e) => setTimeoutMs(clamp(Math.floor(Number(e.target.value) || 5000), 500, 60000))}
-            style={{ padding: "6px 8px", borderRadius: 6, border: "1px solid #ccc", width: 160 }}
+            value={refreshMs}
+            onChange={(e) => setRefreshMs(Number(e.target.value) || 25000)}
+            style={{ padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0b0c10", color: "#f3f4f6", width: 160 }}
           />
-        </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <button
-            onClick={save}
-            style={{ padding: "6px 10px", borderRadius: 8, border: "1px solid #ccc", background: "#fff", cursor: "pointer" }}
+          <label style={{ fontSize: 12, opacity: 0.8 }}>Summary cadence (minutes)</label>
+          <select
+            value={summaryCadenceMin}
+            onChange={(e) => setSummaryCadenceMin(Number(e.target.value))}
+            style={{ padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0b0c10", color: "#f3f4f6", width: 160 }}
           >
-            Save
-          </button>
-        </div>
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={30}>30</option>
+          </select>
 
-        <div style={{ fontSize: 12, opacity: 0.75 }}>
-          Note: apiTimeoutMs is stored for future use; APIClient currently uses its own default timeout unless extended.
+          <label style={{ fontSize: 12, opacity: 0.8 }}>Default time range</label>
+          <select
+            value={defaultRange}
+            onChange={(e) => setDefaultRange(e.target.value)}
+            style={{ padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0b0c10", color: "#f3f4f6", width: 160 }}
+          >
+            <option value="last_hour">Last hour</option>
+            <option value="today">Today</option>
+            <option value="last_7d">Last 7 days</option>
+          </select>
         </div>
+        <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={savePrefs}
+            style={{ padding: "8px 12px", borderRadius: 4, border: "1px solid #1f2228", background: "#14161a", color: "#f3f4f6" }}
+          >
+            Save Preferences
+          </button>
+          {saved ? <div style={{ fontSize: 12, opacity: 0.7 }}>{saved}</div> : null}
+        </div>
+      </div>
+
+      <div style={{ padding: 14, borderRadius: 6, border: "1px solid #2a0f10", background: "#120a0b" }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>Reset Local Data</div>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+          Clears cached selections, virtual profiles, and UI state in this browser only.
+        </div>
+        <button
+          onClick={clearLocalData}
+          style={{ padding: "8px 12px", borderRadius: 4, border: "1px solid #4a1b1c", background: "#1a0b0c", color: "#ffb4b4" }}
+        >
+          Clear Local Cache
+        </button>
+        {cleared ? <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>{cleared}</div> : null}
       </div>
     </div>
   );

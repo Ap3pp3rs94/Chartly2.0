@@ -9,9 +9,9 @@ export default function Reports() {
     title: "Example Report",
     description: "DATA ONLY  build/export/import report specs",
     charts: [
-      { id: "chart_1", type: "line", title: "Requests", query: "requests", params: { window: "5d" }, templateId: "ts_line_v1" },
-      { id: "chart_2", type: "bar", title: "Regions", query: "regions", params: {}, templateId: "bar_grouped_v1" },
-      { id: "chart_3", type: "heatmap", title: "Heat", query: "heat", params: {}, templateId: "heatmap_v0" },
+      { id: "chart_1", type: "line", title: "Requests", query: "requests", params: { window: "5d" } as Record<string, string>, templateId: "ts_line_v1" },
+      { id: "chart_2", type: "bar", title: "Regions", query: "regions", params: {} as Record<string, string>, templateId: "bar_grouped_v1" },
+      { id: "chart_3", type: "heatmap", title: "Heat", query: "heat", params: {} as Record<string, string>, templateId: "heatmap_v0" },
     ],
   }));
 

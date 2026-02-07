@@ -3,12 +3,6 @@ $base = "C:\Chartly2.0\profiles\government"
 New-Item -ItemType Directory -Force -Path $base | Out-Null
 
 $remove = @(
-  "data-gov.yaml",
-  "data-gov-catalog-climate.yaml",
-  "data-gov-catalog-energy.yaml",
-  "data-gov-catalog-health.yaml",
-  "data-gov-catalog-latest.yaml",
-  "data-gov-catalog-transportation.yaml",
   "data-cdc-chronic.yaml",
   "data-cdc-chronic-disease.yaml",
   "data-la-crime.yaml",

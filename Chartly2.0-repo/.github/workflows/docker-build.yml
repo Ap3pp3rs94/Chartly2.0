@@ -1,0 +1,48 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: registry
+            dockerfile: services/control-plane/registry/Dockerfile
+          - name: aggregator
+            dockerfile: services/control-plane/aggregator/Dockerfile
+          - name: coordinator
+            dockerfile: services/control-plane/coordinator/Dockerfile
+          - name: gateway
+            dockerfile: services/control-plane/gateway/Dockerfile
+          - name: reporter
+            dockerfile: services/control-plane/reporter/Dockerfile
+          - name: drone
+            dockerfile: cmd/drone/Dockerfile
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Dockerfile
+        id: check
+        run: |
+          if [ -f "${{ matrix.dockerfile }}" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Found ${{ matrix.dockerfile }}"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Missing ${{ matrix.dockerfile }} (skipping)"
+          fi
+
+      - name: Docker build
+        if: steps.check.outputs.exists == 'true'
+        run: |
+          docker build -f "${{ matrix.dockerfile }}" -t "chartly-${{ matrix.name }}:ci" .

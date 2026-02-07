@@ -160,4 +160,11 @@ pgdata/
 redis-data/
 
 .gocache
-Chartly2.0-repo/
+
+# Local runtime data (docker volumes) - never commit
+data/postgres/
+data/postgres/**
+
+# Local secrets/env
+.env
+.env.*

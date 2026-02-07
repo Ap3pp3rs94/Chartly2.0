@@ -1,0 +1,26 @@
+id: crypto-watchlist
+name: Crypto Watchlist
+version: "1.0"
+
+crypto:
+  symbols:
+    - BTCUSDT
+    - ETHUSDT
+    - SOLUSDT
+    - XRPUSDT
+    - BNBUSDT
+    - ADAUSDT
+    - AVAXUSDT
+    - DOGEUSDT
+    - LINKUSDT
+    - MATICUSDT
+  columns:
+    - symbol
+    - pct_change
+    - price
+    - volume
+    - quote_volume
+    - high
+    - low
+    - open
+    - updated

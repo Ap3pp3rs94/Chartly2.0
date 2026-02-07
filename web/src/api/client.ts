@@ -106,7 +106,7 @@ export class APIClient {
       "Accept": "application/json",
     });
 
-    const { signal, cancel } = withTimeout(init?.signal, this.timeoutMs);
+    const { signal, cancel } = withTimeout(init?.signal ?? undefined, this.timeoutMs);
 
     try {
       const res = await fetch(url, {
