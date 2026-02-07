@@ -1,0 +1,176 @@
+services:
+  registry:
+    build:
+      context: .
+      dockerfile: services/control-plane/registry/Dockerfile
+    ports: ["8091:8081"]
+    env_file:
+      - .env.local
+    volumes: ["./profiles:/app/profiles"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: services/control-plane/aggregator/Dockerfile
+    ports: ["8092:8082"]
+    environment:
+      DB_DRIVER: postgres
+      DB_DSN: ${CHARTLY_DB_DSN:-postgres://chartly:chartly@postgres:5432/chartly?sslmode=disable}
+    volumes: ["./data/control-plane:/app/data"]
+    depends_on: [postgres]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${CHARTLY_DB_USER:-chartly}
+      POSTGRES_PASSWORD: ${CHARTLY_DB_PASSWORD:-chartly}
+      POSTGRES_DB: ${CHARTLY_DB_NAME:-chartly}
+    ports: ["5432:5432"]
+    volumes: ["./data/postgres:/var/lib/postgresql/data"]
+    restart: unless-stopped
+
+  coordinator:
+    build:
+      context: .
+      dockerfile: services/control-plane/coordinator/Dockerfile
+    ports: ["8093:8083"]
+    environment:
+      REGISTRY_URL: http://registry:8081
+    depends_on: [registry]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  reporter:
+    build:
+      context: .
+      dockerfile: services/control-plane/reporter/Dockerfile
+    ports: ["8094:8084"]
+    environment:
+      AGGREGATOR_URL: http://aggregator:8082
+    depends_on: [aggregator]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  analytics:
+    build:
+      context: .
+      dockerfile: services/analytics/Dockerfile
+    ports: ["8096:8086"]
+    environment:
+      ANALYTICS_ADDR: ":8086"
+      ANALYTICS_ENV: "local"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  profile-builder:
+    build:
+      context: .
+      dockerfile: services/profile-builder/Dockerfile
+    ports: ["8095:8085"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  codex-executor:
+    build:
+      context: .
+      dockerfile: services/codex-executor/Dockerfile
+    ports: ["8097:8087"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  codex-runner:
+    build:
+      context: .
+      dockerfile: services/codex-runner/Dockerfile
+    ports: ["8098:8086"]
+    environment:
+      CONTROL_PLANE_URL: http://gateway:8080
+      CODEX_EXECUTOR_URL: http://codex-executor:8087
+    volumes:
+      - ./profiles:/app/profiles:ro
+      - ./services/codex-runner/config:/app/config:ro
+    depends_on: [gateway, codex-executor]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  topics:
+    build:
+      context: .
+      dockerfile: services/topics/Dockerfile
+    ports: ["8099:8087"]
+    environment:
+      CONTROL_PLANE_URL: http://gateway:8080
+      CODEX_EXECUTOR_URL: http://codex-executor:8087
+    volumes:
+      - ./profiles/topics:/app/profiles/topics:ro
+      - ./services/topics/config:/app/config:ro
+    depends_on: [gateway]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8087/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  gateway:
+    build:
+      context: .
+      dockerfile: services/control-plane/gateway/Dockerfile
+    ports: ["8090:8080"]
+    env_file:
+      - .env.local
+    environment:
+      REGISTRY_URL: http://registry:8081
+      AGGREGATOR_URL: http://aggregator:8082
+      COORDINATOR_URL: http://coordinator:8083
+      REPORTER_URL: http://reporter:8084
+      ANALYTICS_URL: http://analytics:8086
+      PROFILE_BUILDER_URL: http://profile-builder:8085
+    depends_on: [registry, aggregator, coordinator, reporter, analytics, profile-builder, codex-executor]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default:
+    name: chartly-control-plane
+
