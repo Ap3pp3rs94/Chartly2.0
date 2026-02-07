@@ -175,3 +175,10 @@ data/postgres/**
 # Local secrets/env
 .env
 .env.*
+# Local runtime data (docker volumes) - never commit
+data/postgres/
+data/postgres/**
+
+# Local secrets/env
+.env
+.env.*
