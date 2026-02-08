@@ -136,6 +136,7 @@ func main() {
 	r.HandleFunc("/profiles", s.handleProfilesList).Methods(http.MethodGet, http.MethodOptions)
 	r.HandleFunc("/profiles", s.handleProfilesCreate).Methods(http.MethodPost, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}", s.handleProfileGet).Methods(http.MethodGet, http.MethodOptions)
+	r.HandleFunc("/profiles/{id}", s.handleProfileUpdate).Methods(http.MethodPut, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}", s.handleProfileDelete).Methods(http.MethodDelete, http.MethodOptions)
 	r.HandleFunc("/profiles/{id}/fields", s.handleProfileFields).Methods(http.MethodGet, http.MethodOptions)
 
@@ -928,6 +929,110 @@ func (s *store) handleProfilesCreate(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	writeJSON(w, http.StatusCreated, p)
+}
+
+func (s *store) handleProfileUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	if !s.requireAPIKey(w, r) {
+		return
+	}
+
+	id := strings.TrimSpace(mux.Vars(r)["id"])
+	if id == "" || !safeIDRe.MatchString(id) || strings.Contains(id, "..") {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_id"})
+		return
+	}
+
+	body, berr := io.ReadAll(io.LimitReader(r.Body, 8<<20))
+	if berr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_body"})
+		return
+	}
+	defer r.Body.Close()
+
+	var req createProfileRequest
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_json"})
+		return
+	}
+
+	req.ID = strings.TrimSpace(firstNonEmpty(req.ID, id))
+	req.Name = strings.TrimSpace(req.Name)
+	req.Version = strings.TrimSpace(req.Version)
+
+	if req.ID != id {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id_mismatch"})
+		return
+	}
+	if req.Content == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "missing_content"})
+		return
+	}
+
+	meta, perr := parseProfileYAML(req.Content)
+	if perr != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid_yaml"})
+		return
+	}
+	yid := strings.TrimSpace(meta.ID)
+	if yid != "" && yid != req.ID {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "id_mismatch"})
+		return
+	}
+
+	if err := os.MkdirAll(s.profilesDir, 0o755); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "write_failed"})
+		return
+	}
+
+	content := normalizeYAMLBytes([]byte(req.Content))
+	dst := filepath.Join(s.profilesDir, req.ID+".yaml")
+
+	tmp, err := os.CreateTemp(s.profilesDir, req.ID+".tmp-*")
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "write_failed"})
+		return
+	}
+	tmpName := tmp.Name()
+	_, werr := tmp.Write(content)
+	cerr := tmp.Close()
+	if werr != nil || cerr != nil {
+		_ = os.Remove(tmpName)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "write_failed"})
+		return
+	}
+	if err := os.Rename(tmpName, dst); err != nil {
+		_ = os.Remove(tmpName)
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "write_failed"})
+		return
+	}
+
+	meta2, perr2 := parseProfileYAML(string(content))
+	if perr2 != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "write_failed"})
+		return
+	}
+
+	p := Profile{
+		ID:      req.ID,
+		Name:    firstNonEmpty(strings.TrimSpace(meta2.Name), req.Name),
+		Version: firstNonEmpty(strings.TrimSpace(meta2.Version), req.Version),
+		Digest:  digestBytes(content),
+		Content: string(content),
+	}
+	p = s.applyOverrides(p)
+
+	s.mu.Lock()
+	s.profiles[p.ID] = p
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, p)
 }
 
 func (s *store) handleProfilePause(w http.ResponseWriter, r *http.Request) {

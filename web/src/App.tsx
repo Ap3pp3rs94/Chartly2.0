@@ -5,13 +5,18 @@ import Charts from "@/pages/Charts";
 import Dashboard from "@/pages/Dashboard";
 import Settings from "@/pages/Settings";
 import Discover from "@/pages/Discover";
+import Crypto from "@/pages/Crypto";
+import Results from "@/pages/Results";
+import Profiles from "@/pages/Profiles";
 import { loadWorkspace, setSelectedProfiles } from "@/lib/workspace";
-import { getVirtualProfiles, setVirtualProfiles } from "@/lib/storage";
+import { getSettings, getVirtualProfiles, setVirtualProfiles } from "@/lib/storage";
 
 const navItems = [
   { to: "/", label: "Dashboard" },
+  { to: "/crypto", label: "Crypto" },
+  { to: "/results", label: "Results" },
+  { to: "/profiles", label: "Profiles" },
   { to: "/discover", label: "Add Sources" },
-  { to: "/profiles", label: "Sources" },
   { to: "/charts", label: "Explore" },
   { to: "/settings", label: "Settings" }
 ];
@@ -34,7 +39,8 @@ export default function App() {
         const data = JSON.parse(evt.data || "{}");
         const services = data?.services || {};
         const allUp = Object.values(services).every((v) => v === "up");
-        const ok = data?.status === "ok" && allUp;
+        const status = data?.status;
+        const ok = (status === "ok" || status === "healthy") && allUp;
         setPulseOk(ok);
         setPulseMsg(ok ? "All services healthy" : "Degraded");
       } catch {
@@ -255,10 +261,22 @@ export default function App() {
             placeholder="Search"
             style={{ flex: 1, padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0f1115", color: "#f3f4f6" }}
           />
-          <select style={{ padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0f1115", color: "#f3f4f6" }}>
-            <option>Last hour</option>
-            <option>Today</option>
-            <option>Last 7 days</option>
+          <select
+            value={getSettings().defaultRange || "last_hour"}
+            onChange={(e) => {
+              const next = getSettings();
+              next.defaultRange = e.target.value;
+              try {
+                localStorage.setItem("chartly.settings.v1", JSON.stringify(next));
+              } catch {
+                // ignore
+              }
+            }}
+            style={{ padding: "8px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0f1115", color: "#f3f4f6" }}
+          >
+            <option value="last_hour">Last hour</option>
+            <option value="today">Today</option>
+            <option value="last_7d">Last 7 days</option>
           </select>
           <div title={pulseMsg} aria-label={pulseMsg} style={{ width: 10, height: 10, borderRadius: 999, background: pulseOk ? "#32d583" : "#ff5c7a", animation: pulseOk ? "pulseGreen 2s infinite" : "pulseRed 2s infinite" }} />
           <Link to="/settings" style={{ textDecoration: "none", color: "#f3f4f6", border: "1px solid #1f2228", padding: "8px 10px", borderRadius: 4, background: "#14161a" }}>
@@ -270,8 +288,10 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/crypto" element={<Crypto />} />
+            <Route path="/results" element={<Results />} />
+            <Route path="/profiles" element={<Profiles />} />
             <Route path="/discover" element={<Discover />} />
-            <Route path="/profiles" element={<Correlate />} />
             <Route path="/correlate" element={<Correlate />} />
             <Route path="/charts" element={<Charts />} />
             <Route path="/settings" element={<Settings />} />

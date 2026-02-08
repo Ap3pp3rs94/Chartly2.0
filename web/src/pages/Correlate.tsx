@@ -45,8 +45,9 @@ export default function Correlate() {
         body: JSON.stringify({ profiles: selected, mode: "auto" })
       });
       const data = await res.json();
-      if (res.ok && data?.id) {
-        nav(`/charts?report=${encodeURIComponent(data.id)}`);
+      const reportId = data?.id || data?.report_id;
+      if (res.ok && reportId) {
+        nav(`/charts?report=${encodeURIComponent(reportId)}`);
         return;
       }
       setMsg("Unable to create report.");

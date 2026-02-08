@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { getSettings } from "@/lib/storage";
 
 type SummaryState = {
   totalResults: number;
@@ -6,7 +7,7 @@ type SummaryState = {
   lastUpdated: string;
 };
 
-const SUMMARY_INTERVAL = 10 * 60 * 1000;
+const DEFAULT_SUMMARY_INTERVAL = 10 * 60 * 1000;
 
 function nowIso() {
   return new Date().toISOString();
@@ -27,6 +28,11 @@ async function fetchJson(url: string, timeoutMs = 8000): Promise<any> {
 }
 
 export default function Dashboard() {
+  const settings = getSettings();
+  const summaryInterval =
+    typeof settings?.summaryCadenceMin === "number"
+      ? Math.max(1, settings.summaryCadenceMin) * 60 * 1000
+      : DEFAULT_SUMMARY_INTERVAL;
   const [summary, setSummary] = useState<SummaryState>({
     totalResults: 0,
     activeProfiles: 0,
@@ -36,12 +42,23 @@ export default function Dashboard() {
 
   useEffect(() => {
     const refresh = async () => {
+      const sum = await fetchJson("/api/summary");
+      if (sum) {
+        lastUpdateRef.current = sum.last_updated || nowIso();
+        setSummary({
+          totalResults: sum.total_results ?? 0,
+          activeProfiles: sum.active_profiles ?? 0,
+          lastUpdated: lastUpdateRef.current
+        });
+        return;
+      }
+
       const profiles = await fetchJson("/api/profiles");
       const profileList = Array.isArray(profiles) ? profiles : profiles?.profiles ?? [];
       const activeProfiles = profileList.length;
 
-      const sum = await fetchJson("/api/results/summary");
-      let totalResults = sum?.total_results ?? 0;
+      const agg = await fetchJson("/api/results/summary");
+      let totalResults = agg?.total_results ?? 0;
       if (!totalResults) {
         const wall = await fetchJson("/api/reports/live-crypto-wall");
         totalResults = Array.isArray(wall?.rows) ? wall.rows.length : 0;
@@ -56,7 +73,7 @@ export default function Dashboard() {
     };
 
     refresh();
-    const t = setInterval(refresh, SUMMARY_INTERVAL);
+    const t = setInterval(refresh, summaryInterval);
     return () => clearInterval(t);
   }, []);
 

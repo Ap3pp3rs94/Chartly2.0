@@ -58,6 +58,26 @@ function createVirtualProfile(name: string, url: string, origin: string): Virtua
   };
 }
 
+function getRegistryKey(): string {
+  const vars = getVars();
+  return vars["REGISTRY_API_KEY"] || vars["X_API_KEY"] || vars["API_KEY"] || "";
+}
+
+function buildSourceProfileYaml(vp: VirtualProfile) {
+  const safeName = vp.name || vp.id;
+  return `id: ${vp.id}
+name: ${safeName}
+version: "1.0"
+description: "Imported source (virtual)."
+
+source:
+  type: http_rest
+  url: ${vp.source?.url || ""}
+  auth: none
+  format: json
+`;
+}
+
 export default function Discover() {
   const [customName, setCustomName] = useState("");
   const [customUrl, setCustomUrl] = useState("");
@@ -73,6 +93,34 @@ export default function Discover() {
     list.push(vp);
     setVirtualProfiles(list);
     setMessage(`Added ${vp.name}.`);
+  };
+
+  const registerProfile = async (vp: VirtualProfile) => {
+    const key = getRegistryKey();
+    if (!key) {
+      setMessage("Missing REGISTRY_API_KEY (set it in Settings).");
+      return;
+    }
+    try {
+      const res = await fetch("/api/profiles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-API-Key": key },
+        body: JSON.stringify({
+          id: vp.id,
+          name: vp.name || vp.id,
+          version: "1.0",
+          content: buildSourceProfileYaml(vp),
+        }),
+      });
+      if (res.ok) {
+        setMessage(`Registered ${vp.name || vp.id}.`);
+        return;
+      }
+      const err = await res.json().catch(() => ({}));
+      setMessage(`Register failed: ${err?.error || res.status}`);
+    } catch {
+      setMessage("Register failed.");
+    }
   };
 
   return (
@@ -98,6 +146,12 @@ export default function Discover() {
                 onClick={() => addVirtual(createVirtualProfile(t.name, t.url, t.kind))}
               >
                 Add to Workspace
+              </button>
+              <button
+                style={{ padding: "6px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#111827", color: "#e5e7eb" }}
+                onClick={() => registerProfile(createVirtualProfile(t.name, t.url, t.kind))}
+              >
+                Register
               </button>
               <button
                 style={{ padding: "6px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#101216", color: "#9aa0aa" }}
@@ -141,6 +195,18 @@ export default function Discover() {
             }}
           >
             Add to Workspace
+          </button>
+          <button
+            style={{ padding: "6px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#111827", color: "#e5e7eb" }}
+            onClick={() => {
+              if (!customUrl.trim()) {
+                setMessage("Add a URL first.");
+                return;
+              }
+              registerProfile(createVirtualProfile(customName || "Custom Source", customUrl.trim(), "generic"));
+            }}
+          >
+            Register
           </button>
           <button
             style={{ padding: "6px 10px", borderRadius: 4, border: "1px solid #1f2228", background: "#0f1115", color: "#9aa0aa" }}

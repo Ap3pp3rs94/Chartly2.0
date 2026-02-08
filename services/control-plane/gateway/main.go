@@ -8,6 +8,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/subtle"
+	_ "embed"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -26,6 +27,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -43,6 +46,9 @@ const (
 
 	distDir = "/app/web/dist"
 )
+
+//go:embed connectors_catalog.yaml
+var connectorCatalogYAML []byte
 
 type serviceDetail struct {
 	Status     string `json:"status"`
@@ -66,6 +72,108 @@ type reportEntry struct {
 	ID        string
 	CreatedAt time.Time
 	Spec      reportSpec
+}
+
+type connectorCatalog struct {
+	Version    string                  `yaml:"version"`
+	Connectors []connectorCatalogEntry `yaml:"connectors"`
+}
+
+type connectorCatalogEntry struct {
+	ID           string   `yaml:"id"`
+	Name         string   `yaml:"name"`
+	Kind         string   `yaml:"kind"`
+	Enabled      bool     `yaml:"enabled"`
+	Capabilities []string `yaml:"capabilities"`
+	Endpoints    []struct {
+		Notes string `yaml:"notes"`
+	} `yaml:"endpoints"`
+}
+
+type connectorPublic struct {
+	ID           string   `json:"id"`
+	Kind         string   `json:"kind"`
+	DisplayName  string   `json:"display_name"`
+	Description  string   `json:"description,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+}
+
+type connectorConfigStore struct {
+	mu    sync.Mutex
+	items map[string]any
+}
+
+func newConnectorConfigStore() *connectorConfigStore {
+	return &connectorConfigStore{items: make(map[string]any)}
+}
+
+func (s *connectorConfigStore) get(id string) (any, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.items[id]
+	return v, ok
+}
+
+func (s *connectorConfigStore) set(id string, cfg any) {
+	s.mu.Lock()
+	s.items[id] = cfg
+	s.mu.Unlock()
+}
+
+type auditEvent struct {
+	EventID   string `json:"event_id"`
+	EventTS   string `json:"event_ts"`
+	Action    string `json:"action"`
+	Outcome   string `json:"outcome"`
+	ObjectKey string `json:"object_key"`
+	RequestID string `json:"request_id,omitempty"`
+	ActorID   string `json:"actor_id,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Detail    any    `json:"detail_json,omitempty"`
+}
+
+type auditStore struct {
+	mu     sync.Mutex
+	events []auditEvent
+	max    int
+}
+
+func newAuditStore(max int) *auditStore {
+	if max <= 0 {
+		max = 1000
+	}
+	return &auditStore{max: max}
+}
+
+func (s *auditStore) add(ev auditEvent) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.events = append(s.events, ev)
+	if len(s.events) > s.max {
+		s.events = s.events[len(s.events)-s.max:]
+	}
+}
+
+func (s *auditStore) list(limit int, since time.Time) []auditEvent {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]auditEvent, 0, len(s.events))
+	for _, ev := range s.events {
+		if !since.IsZero() {
+			ts, err := time.Parse(time.RFC3339, ev.EventTS)
+			if err == nil && ts.Before(since) {
+				continue
+			}
+		}
+		out = append(out, ev)
+	}
+	if limit <= 0 || limit > len(out) {
+		limit = len(out)
+	}
+	if limit < len(out) {
+		out = out[len(out)-limit:]
+	}
+	return out
 }
 
 type reportStore struct {
@@ -113,6 +221,179 @@ func (s *reportStore) get(id string) (reportEntry, bool) {
 	return it, ok
 }
 
+type summaryCache struct {
+	mu      sync.Mutex
+	expires time.Time
+	data    map[string]any
+}
+
+type cryptoCache struct {
+	mu          sync.RWMutex
+	tickers     []binanceTicker
+	lastUpdated time.Time
+	lastErr     string
+}
+
+func (c *cryptoCache) set(ticks []binanceTicker, errMsg string) {
+	c.mu.Lock()
+	c.tickers = ticks
+	c.lastErr = errMsg
+	c.lastUpdated = time.Now().UTC()
+	c.mu.Unlock()
+}
+
+func (c *cryptoCache) snapshot() ([]binanceTicker, time.Time, string) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	cp := make([]binanceTicker, len(c.tickers))
+	copy(cp, c.tickers)
+	return cp, c.lastUpdated, c.lastErr
+}
+
+func (s *summaryCache) get() (map[string]any, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data == nil || time.Now().After(s.expires) {
+		return nil, false
+	}
+	cp := make(map[string]any, len(s.data))
+	for k, v := range s.data {
+		cp[k] = v
+	}
+	return cp, true
+}
+
+func (s *summaryCache) set(data map[string]any, ttl time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.data = data
+	s.expires = time.Now().Add(ttl)
+}
+
+type healthSnapshot struct {
+	Status      string                   `json:"status"`
+	Services    map[string]serviceDetail `json:"services"`
+	LastSuccess map[string]string        `json:"last_success"`
+	CheckedAt   string                   `json:"checked_at"`
+}
+
+type healthCache struct {
+	mu          sync.Mutex
+	lastSuccess map[string]time.Time
+	snapshot    healthSnapshot
+}
+
+func newHealthCache() *healthCache {
+	return &healthCache{lastSuccess: make(map[string]time.Time)}
+}
+
+func (h *healthCache) update(services map[string]serviceDetail) healthSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	now := time.Now().UTC()
+	allUp := true
+	for name, detail := range services {
+		if detail.Status == "up" {
+			h.lastSuccess[name] = now
+		} else {
+			allUp = false
+		}
+	}
+	last := make(map[string]string, len(h.lastSuccess))
+	for k, v := range h.lastSuccess {
+		last[k] = v.Format(time.RFC3339)
+	}
+	status := "healthy"
+	if !allUp {
+		status = "degraded"
+	}
+	h.snapshot = healthSnapshot{
+		Status:      status,
+		Services:    services,
+		LastSuccess: last,
+		CheckedAt:   now.Format(time.RFC3339),
+	}
+	return h.snapshot
+}
+
+func (h *healthCache) get() healthSnapshot {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.snapshot
+}
+
+type sseEvent struct {
+	ID    int64
+	Event string
+	Data  string
+}
+
+type sseHub struct {
+	mu        sync.RWMutex
+	nextID    int64
+	buffer    []sseEvent
+	maxBuffer int
+	clients   map[chan sseEvent]struct{}
+}
+
+func newSSEHub(maxBuffer int) *sseHub {
+	if maxBuffer < 1 {
+		maxBuffer = 256
+	}
+	return &sseHub{
+		maxBuffer: maxBuffer,
+		clients:   make(map[chan sseEvent]struct{}),
+	}
+}
+
+func (h *sseHub) publish(event string, payload any) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	h.mu.Lock()
+	h.nextID++
+	ev := sseEvent{ID: h.nextID, Event: event, Data: string(b)}
+	h.buffer = append(h.buffer, ev)
+	if len(h.buffer) > h.maxBuffer {
+		h.buffer = h.buffer[len(h.buffer)-h.maxBuffer:]
+	}
+	for ch := range h.clients {
+		select {
+		case ch <- ev:
+		default:
+		}
+	}
+	h.mu.Unlock()
+}
+
+func (h *sseHub) addClient(ch chan sseEvent) {
+	h.mu.Lock()
+	h.clients[ch] = struct{}{}
+	h.mu.Unlock()
+}
+
+func (h *sseHub) removeClient(ch chan sseEvent) {
+	h.mu.Lock()
+	delete(h.clients, ch)
+	h.mu.Unlock()
+}
+
+func (h *sseHub) replaySince(id int64) []sseEvent {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if id <= 0 || len(h.buffer) == 0 {
+		return nil
+	}
+	out := make([]sseEvent, 0, len(h.buffer))
+	for _, ev := range h.buffer {
+		if ev.ID > id {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
 type ctxKey string
 
 const (
@@ -135,6 +416,14 @@ func main() {
 	anaProxy := mustProxy(analyticsURL)
 
 	reports := newReportStore()
+	health := newHealthCache()
+	sse := newSSEHub(512)
+	summary := &summaryCache{}
+	crypto := &cryptoCache{}
+	audit := newAuditStore(2000)
+	connectors := newConnectorConfigStore()
+	connCatalog := loadConnectorCatalog()
+	connList := buildConnectorList(connCatalog)
 
 	mux := http.NewServeMux()
 
@@ -159,6 +448,40 @@ func main() {
 		}
 		sum["status"] = status
 		writeJSON(w, http.StatusOK, sum)
+	})
+
+	mux.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		snap := health.get()
+		if snap.CheckedAt == "" {
+			services := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL).Services
+			snap = health.update(services)
+		}
+		writeJSON(w, http.StatusOK, snap)
+	})
+
+	mux.HandleFunc("/api/gateway/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		snap := health.get()
+		if snap.CheckedAt == "" {
+			services := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL).Services
+			snap = health.update(services)
+		}
+		writeJSON(w, http.StatusOK, snap)
 	})
 
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
@@ -215,39 +538,148 @@ func main() {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		logLine("INFO", "sse_connect", "path=%s", r.URL.Path)
+		rid := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		logLine("INFO", "sse_connect", "path=%s request_id=%s", r.URL.Path, rid)
 
 		ctx := r.Context()
-		heartbeatTicker := time.NewTicker(2 * time.Second)
-		tickTicker := time.NewTicker(5 * time.Second)
-		defer heartbeatTicker.Stop()
-		defer tickTicker.Stop()
+		lastID := parseLastEventID(r.Header.Get("Last-Event-ID"))
+		ch := make(chan sseEvent, 16)
+		sse.addClient(ch)
+		defer sse.removeClient(ch)
 
-		writeSSE := func(event string, payload any) {
+		if lastID > 0 {
+			for _, ev := range sse.replaySince(lastID) {
+				writeSSEEvent(w, flusher, ev)
+			}
+		}
+
+		// Immediate heartbeat on connect.
+		services := checkAllDetailed(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL).Services
+		snap := health.update(services)
+		writeSSEEvent(w, flusher, sseEvent{
+			Event: "heartbeat",
+			Data:  mustJSON(map[string]any{"status": snap.Status, "ts": time.Now().UTC().Format(time.RFC3339), "services": snapshotStatusMap(snap.Services)}),
+		})
+
+		keepalive := time.NewTicker(15 * time.Second)
+		defer keepalive.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				logLine("INFO", "sse_disconnect", "path=%s request_id=%s", r.URL.Path, rid)
+				return
+			case ev := <-ch:
+				writeSSEEvent(w, flusher, ev)
+			case <-keepalive.C:
+				fmt.Fprint(w, ": keepalive\n\n")
+				flusher.Flush()
+			}
+		}
+	})
+
+	resultsStreamHandler := func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming_not_supported"})
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		limit := clampInt(queryInt(r, "limit", 50), 1, 500)
+		profileID := strings.TrimSpace(r.URL.Query().Get("profile_id"))
+		pollMs := clampInt(queryInt(r, "poll_ms", 2000), 500, 10000)
+
+		lastSeen := time.Time{}
+		if since := strings.TrimSpace(r.URL.Query().Get("since")); since != "" {
+			if t, ok := parseTimeRFC3339(since); ok {
+				lastSeen = t
+			}
+		}
+		seenIDs := make(map[string]struct{})
+
+		send := func(event string, payload any) {
 			b, _ := json.Marshal(payload)
 			fmt.Fprintf(w, "event: %s\n", event)
 			fmt.Fprintf(w, "data: %s\n\n", string(b))
 			flusher.Flush()
 		}
 
+		ctx := r.Context()
+		rid := strings.TrimSpace(r.Header.Get("X-Request-ID"))
+		logLine("INFO", "results_sse_connect", "path=%s request_id=%s", r.URL.Path, rid)
+
+		if rows, err := fetchAggregatorResults(ctx, aggregatorURL, profileID, limit); err == nil {
+			snapshot := make([]aggResult, 0, len(rows))
+			snapshot = append(snapshot, rows...)
+			if len(snapshot) > 0 {
+				if ts := getTimestamp(snapshot[0], resultData(snapshot[0])); !ts.IsZero() {
+					lastSeen = ts
+					for _, row := range snapshot {
+						if row.ID != "" {
+							seenIDs[row.ID] = struct{}{}
+						}
+					}
+				}
+			}
+			send("results", map[string]any{
+				"ts":   time.Now().UTC().Format(time.RFC3339),
+				"rows": snapshot,
+			})
+		}
+
+		ticker := time.NewTicker(time.Duration(pollMs) * time.Millisecond)
+		defer ticker.Stop()
+		keepalive := time.NewTicker(15 * time.Second)
+		defer keepalive.Stop()
+
 		for {
 			select {
 			case <-ctx.Done():
-				logLine("INFO", "sse_disconnect", "path=%s", r.URL.Path)
+				logLine("INFO", "results_sse_disconnect", "path=%s request_id=%s", r.URL.Path, rid)
 				return
-			case <-heartbeatTicker.C:
-				svc := checkAll(registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
-				payload := map[string]any{
-					"status":   "ok",
-					"ts":       time.Now().UTC().Format(time.RFC3339),
-					"services": svc["services"],
+			case <-keepalive.C:
+				fmt.Fprint(w, ": keepalive\n\n")
+				flusher.Flush()
+			case <-ticker.C:
+				rows, err := fetchAggregatorResults(ctx, aggregatorURL, profileID, limit)
+				if err != nil {
+					send("results", map[string]any{
+						"ts":    time.Now().UTC().Format(time.RFC3339),
+						"error": "upstream_error",
+						"rows":  []aggResult{},
+					})
+					continue
 				}
-				writeSSE("heartbeat", payload)
-			case <-tickTicker.C:
-				writeSSE("tick", map[string]any{"ts": time.Now().UTC().Format(time.RFC3339)})
+				newRows, newest, updatedSeen := selectNewResults(rows, lastSeen, seenIDs)
+				seenIDs = updatedSeen
+				if newest.After(lastSeen) {
+					lastSeen = newest
+				}
+				if len(newRows) == 0 {
+					continue
+				}
+				send("results", map[string]any{
+					"ts":   time.Now().UTC().Format(time.RFC3339),
+					"rows": newRows,
+				})
 			}
 		}
-	})
+	}
+	mux.HandleFunc("/api/results/stream", resultsStreamHandler)
+	mux.HandleFunc("/api/live/stream", resultsStreamHandler)
 
 	// Proxies (strip /api prefix)
 	mux.Handle("/api/profiles/", stripPrefixProxy("/api", regProxy))
@@ -264,6 +696,70 @@ func main() {
 
 	mux.Handle("/api/drones/", stripPrefixProxy("/api", cooProxy))
 	mux.Handle("/api/drones", stripPrefixProxy("/api", cooProxy))
+
+	mux.HandleFunc("/api/summary", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		if cached, ok := summary.get(); ok {
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+		ctx := r.Context()
+		data, err := buildSummary(ctx, registryURL, aggregatorURL)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_error"})
+			return
+		}
+		summary.set(data, 10*time.Minute)
+		writeJSON(w, http.StatusOK, data)
+	})
+
+	mux.HandleFunc("/api/audit/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "status": "gateway_stub"})
+	})
+
+	mux.HandleFunc("/api/audit/v0/events", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		limit := 200
+		if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+			if n, err := strconvAtoiSafe(v); err == nil && n > 0 {
+				limit = n
+			}
+		}
+		var since time.Time
+		if v := strings.TrimSpace(r.URL.Query().Get("since")); v != "" {
+			if t, err := time.Parse(time.RFC3339, v); err == nil {
+				since = t
+			}
+		}
+		items := audit.list(limit, since)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"count":  len(items),
+			"items":  items,
+			"events": items,
+		})
+	})
 
 	mux.HandleFunc("/api/reports", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
@@ -354,22 +850,329 @@ func main() {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
 			return
 		}
-		target := strings.TrimSuffix(cryptoStreamURL, "/") + "/symbols"
-		req, _ := http.NewRequestWithContext(r.Context(), http.MethodGet, target, nil)
-		c := &http.Client{Timeout: 5 * time.Second}
-		resp, err := c.Do(req)
+		// Prefer Binance public API to auto-populate symbols even if crypto-stream is absent.
+		if symbols, err := fetchBinanceSymbols(r.Context()); err == nil && len(symbols) > 0 {
+			w.Header().Set("X-Source", "binance")
+			writeJSON(w, http.StatusOK, symbols)
+			return
+		}
+		// Fallback to crypto-stream if available.
+		symbols, source, err := fetchCryptoSymbols(r.Context(), cryptoStreamURL)
 		if err != nil {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_error", "upstream": "crypto-stream", "status": 0})
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_error", "upstream": source, "status": 0})
 			return
 		}
-		defer resp.Body.Close()
-		if resp.StatusCode/100 != 2 {
-			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_error", "upstream": "crypto-stream", "status": resp.StatusCode})
+		w.Header().Set("X-Source", source)
+		if source == "unavailable" {
+			w.Header().Set("X-Warning", "upstream_unavailable")
+		}
+		writeJSON(w, http.StatusOK, symbols)
+	})
+
+	mux.HandleFunc("/api/crypto/top", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		_, _ = io.Copy(w, resp.Body)
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		limit := clampInt(queryInt(r, "limit", 25), 1, 500)
+		direction := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+		if direction == "" {
+			direction = "gainers"
+		}
+		suffix := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("suffix")))
+		if suffix == "" {
+			suffix = "USDT"
+		}
+		minQuote := queryFloat(r, "min_quote_vol", 0)
+		rows, err := fetchBinanceTop(r.Context(), limit, direction, suffix, minQuote)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "upstream_error", "upstream": "binance", "status": 0})
+			return
+		}
+		writeJSON(w, http.StatusOK, rows)
+	})
+
+	mux.HandleFunc("/api/crypto/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		status, code, err := checkCryptoHealth(r.Context(), cryptoStreamURL)
+		if err != nil {
+			writeJSON(w, http.StatusBadGateway, map[string]any{"status": "down", "error": err.Error(), "http_status": code})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"status": status, "http_status": code})
+	})
+
+	mux.HandleFunc("/api/crypto/stream", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{"error": "streaming_not_supported"})
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		limit := clampInt(queryInt(r, "limit", 25), 1, 500)
+		direction := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("direction")))
+		if direction == "" {
+			direction = "gainers"
+		}
+		suffix := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("suffix")))
+		if suffix == "" {
+			suffix = "USDT"
+		}
+		minQuote := queryFloat(r, "min_quote_vol", 0)
+
+		send := func(rows []cryptoTopRow, updated time.Time, errMsg string) {
+			payload := map[string]any{
+				"ts":      time.Now().UTC().Format(time.RFC3339),
+				"updated": updated.Format(time.RFC3339),
+				"rows":    rows,
+			}
+			if errMsg != "" {
+				payload["error"] = errMsg
+			}
+			b, _ := json.Marshal(payload)
+			fmt.Fprintf(w, "event: tickers\n")
+			fmt.Fprintf(w, "data: %s\n\n", string(b))
+			flusher.Flush()
+		}
+
+		ticks, updated, errMsg := crypto.snapshot()
+		rows := computeTopFromTickers(ticks, limit, direction, suffix, minQuote)
+		send(rows, updated, errMsg)
+
+		ctx := r.Context()
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				ticks, updated, errMsg = crypto.snapshot()
+				rows = computeTopFromTickers(ticks, limit, direction, suffix, minQuote)
+				send(rows, updated, errMsg)
+			}
+		}
+	})
+
+	mux.HandleFunc("/api/gateway/connectors/catalog", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"version":    connCatalog.Version,
+			"count":      len(connList),
+			"connectors": connList,
+		})
+	})
+	// Compatibility alias for older UI builds.
+	mux.HandleFunc("/api/catalog", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"version":    connCatalog.Version,
+			"count":      len(connList),
+			"connectors": connList,
+		})
+	})
+
+	mux.HandleFunc("/api/gateway/connectors/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "ok",
+			"source":     "gateway",
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"count":      len(connList),
+		})
+	})
+	// Compatibility alias for older UI builds.
+	mux.HandleFunc("/api/connectors/health", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status":     "ok",
+			"source":     "gateway",
+			"updated_at": time.Now().UTC().Format(time.RFC3339),
+			"count":      len(connList),
+		})
+	})
+
+	mux.HandleFunc("/api/gateway/connectors/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/gateway/connectors/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+			return
+		}
+		id := parts[0]
+		if len(parts) == 2 && parts[1] == "health" {
+			if !connectorExists(connCatalog, id) {
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":         id,
+				"status":     "ok",
+				"updated_at": time.Now().UTC().Format(time.RFC3339),
+			})
+			return
+		}
+		if len(parts) == 2 && parts[1] == "schema" {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, defaultConnectorSchema(id))
+			return
+		}
+		if len(parts) == 2 && parts[1] == "config" {
+			switch r.Method {
+			case http.MethodGet:
+				cfg, ok := connectors.get(id)
+				if !ok {
+					cfg = map[string]any{"enabled": false}
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"connector_id": id,
+					"config":       cfg,
+				})
+				return
+			case http.MethodPost, http.MethodPut:
+				var payload map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				cfg := payload["config"]
+				if cfg == nil {
+					cfg = payload
+				}
+				connectors.set(id, cfg)
+				writeJSON(w, http.StatusOK, map[string]any{
+					"connector_id": id,
+					"config":       cfg,
+					"saved_at":     time.Now().UTC().Format(time.RFC3339),
+				})
+				return
+			default:
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+	})
+	// Compatibility alias for older UI builds.
+	mux.HandleFunc("/api/connectors/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		path := strings.TrimPrefix(r.URL.Path, "/api/connectors/")
+		parts := strings.Split(strings.Trim(path, "/"), "/")
+		if len(parts) == 0 || parts[0] == "" {
+			writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+			return
+		}
+		id := parts[0]
+		if len(parts) == 2 && parts[1] == "health" {
+			if !connectorExists(connCatalog, id) {
+				writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]any{
+				"id":         id,
+				"status":     "ok",
+				"updated_at": time.Now().UTC().Format(time.RFC3339),
+			})
+			return
+		}
+		if len(parts) == 2 && parts[1] == "schema" {
+			if r.Method != http.MethodGet {
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+				return
+			}
+			writeJSON(w, http.StatusOK, defaultConnectorSchema(id))
+			return
+		}
+		if len(parts) == 2 && parts[1] == "config" {
+			switch r.Method {
+			case http.MethodGet:
+				cfg, ok := connectors.get(id)
+				if !ok {
+					cfg = map[string]any{"enabled": false}
+				}
+				writeJSON(w, http.StatusOK, map[string]any{
+					"connector_id": id,
+					"config":       cfg,
+				})
+				return
+			case http.MethodPost, http.MethodPut:
+				var payload map[string]any
+				_ = json.NewDecoder(r.Body).Decode(&payload)
+				cfg := payload["config"]
+				if cfg == nil {
+					cfg = payload
+				}
+				connectors.set(id, cfg)
+				writeJSON(w, http.StatusOK, map[string]any{
+					"connector_id": id,
+					"config":       cfg,
+					"saved_at":     time.Now().UTC().Format(time.RFC3339),
+				})
+				return
+			default:
+				writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method_not_allowed"})
+				return
+			}
+		}
+		writeJSON(w, http.StatusNotFound, map[string]any{"error": "not_found"})
 	})
 
 	// Analytics service expects /api/analytics/* paths (do not strip /api)
@@ -390,8 +1193,11 @@ func main() {
 	handler = withRateLimit(rateLimiter)(handler)
 	handler = withAuth(authCfg)(handler)
 	handler = withCORS(handler)
-	handler = withLogging(handler)
+	handler = withLogging(handler, audit)
 	handler = withRequestID(handler)
+
+	startEventLoops(sse, health, registryURL, aggregatorURL, coordinatorURL, reporterURL, analyticsURL)
+	startCryptoCacheLoop(crypto)
 
 	addr := ":" + defaultPort
 	srv := &http.Server{
@@ -545,7 +1351,10 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 type aggResult struct {
+	ID        string    `json:"id"`
+	DroneID   string    `json:"drone_id"`
 	ProfileID string    `json:"profile_id"`
+	RunID     string    `json:"run_id"`
 	Timestamp string    `json:"timestamp"`
 	Data      any       `json:"data"`
 	CreatedAt time.Time `json:"created_at"`
@@ -578,8 +1387,17 @@ func fetchAggregatorResults(ctx context.Context, aggURL, profileID string, limit
 	}
 	for _, row := range generic {
 		ar := aggResult{}
+		if v, ok := row["id"].(string); ok {
+			ar.ID = v
+		}
+		if v, ok := row["drone_id"].(string); ok {
+			ar.DroneID = v
+		}
 		if v, ok := row["profile_id"].(string); ok {
 			ar.ProfileID = v
+		}
+		if v, ok := row["run_id"].(string); ok {
+			ar.RunID = v
 		}
 		if v, ok := row["timestamp"].(string); ok {
 			ar.Timestamp = v
@@ -590,6 +1408,48 @@ func fetchAggregatorResults(ctx context.Context, aggURL, profileID string, limit
 		out = append(out, ar)
 	}
 	return out, nil
+}
+
+func selectNewResults(rows []aggResult, last time.Time, seen map[string]struct{}) ([]aggResult, time.Time, map[string]struct{}) {
+	if seen == nil {
+		seen = make(map[string]struct{})
+	}
+	newest := last
+	out := make([]aggResult, 0, len(rows))
+	for i := len(rows) - 1; i >= 0; i-- {
+		row := rows[i]
+		ts := getTimestamp(row, resultData(row))
+		if ts.Before(last) {
+			continue
+		}
+		if ts.Equal(last) {
+			if row.ID != "" {
+				if _, ok := seen[row.ID]; ok {
+					continue
+				}
+			}
+		}
+		out = append(out, row)
+		if ts.After(newest) {
+			newest = ts
+		}
+	}
+	if newest.After(last) {
+		seen = make(map[string]struct{})
+		for _, row := range out {
+			ts := getTimestamp(row, resultData(row))
+			if ts.Equal(newest) && row.ID != "" {
+				seen[row.ID] = struct{}{}
+			}
+		}
+	} else {
+		for _, row := range out {
+			if row.ID != "" {
+				seen[row.ID] = struct{}{}
+			}
+		}
+	}
+	return out, newest, seen
 }
 
 func parseTimeRFC3339(s string) (time.Time, bool) {
@@ -641,6 +1501,26 @@ func asFloat(v any) (float64, bool) {
 		}
 		f, err := strconv.ParseFloat(t, 64)
 		return f, err == nil
+	}
+	return 0, false
+}
+
+func asInt(v any) (int, bool) {
+	switch t := v.(type) {
+	case int:
+		return t, true
+	case int64:
+		return int(t), true
+	case float64:
+		return int(t), true
+	case json.Number:
+		if n, err := t.Int64(); err == nil {
+			return int(n), true
+		}
+	case string:
+		if n, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
+			return n, true
+		}
 	}
 	return 0, false
 }
@@ -738,6 +1618,26 @@ func buildLiveCryptoWall(ctx context.Context, aggURL string) (map[string]any, er
 		rowsOut = append(rowsOut, v)
 	}
 	sort.Slice(rowsOut, func(i, j int) bool { return rowsOut[i].Symbol < rowsOut[j].Symbol })
+	source := "aggregator"
+	if len(rowsOut) == 0 {
+		fallback, ferr := fetchBinanceTop(ctx, 100, "gainers", "USDT", 0)
+		if ferr == nil {
+			source = "binance"
+			for _, r := range fallback {
+				rowsOut = append(rowsOut, rowOut{
+					Symbol:    r.Symbol,
+					Price:     r.Price,
+					PctChange: r.PctChange,
+					Volume:    r.Volume,
+					QuoteVol:  r.QuoteVol,
+					High:      r.High,
+					Low:       r.Low,
+					Open:      r.Open,
+					Updated:   r.Updated,
+				})
+			}
+		}
+	}
 	return map[string]any{
 		"id":         "live-crypto-wall",
 		"title":      "Live Crypto Wall",
@@ -747,6 +1647,7 @@ func buildLiveCryptoWall(ctx context.Context, aggURL string) (map[string]any, er
 		"meta": map[string]any{
 			"source_profiles": []string{"crypto-watchlist"},
 			"window":          "last_30m",
+			"source":          source,
 		},
 	}, nil
 }
@@ -777,6 +1678,11 @@ func buildCryptoIndex(ctx context.Context, aggURL string) (map[string]any, error
 		points = append(points, point{T: ts.Format(time.RFC3339), Y: val})
 	}
 	sort.Slice(points, func(i, j int) bool { return points[i].T < points[j].T })
+	if len(points) == 0 {
+		if idx, ok := buildIndexFromBinance(ctx); ok {
+			points = append(points, idx)
+		}
+	}
 	return map[string]any{
 		"id":         "crypto-index",
 		"title":      "Crypto Index",
@@ -852,13 +1758,29 @@ func loadAuthConfig() *authConfig {
 		APIKeysFile:     apiKeysFile,
 		APIKeysTTL:      apiKeysTTL,
 		AllowAnonymous: map[string]struct{}{
-			"/health":             {},
-			"/api/status":         {},
-			"/api/events":         {},
-			"/api/reports":        {},
-			"/api/crypto/symbols": {},
-			"/metrics":            {},
-			"/favicon.ico":        {},
+			"/health":                         {},
+			"/api/health":                     {},
+			"/api/gateway/health":             {},
+			"/api/status":                     {},
+			"/api/events":                     {},
+			"/api/live/stream":                {},
+			"/api/results":                    {},
+			"/api/results/summary":            {},
+			"/api/results/stream":             {},
+			"/api/summary":                    {},
+			"/api/reports":                    {},
+			"/api/audit/health":               {},
+			"/api/audit/v0/events":            {},
+			"/api/catalog":                    {},
+			"/api/gateway/connectors/catalog": {},
+			"/api/gateway/connectors/health":  {},
+			"/api/connectors/health":          {},
+			"/api/crypto/symbols":             {},
+			"/api/crypto/top":                 {},
+			"/api/crypto/stream":              {},
+			"/api/crypto/health":              {},
+			"/metrics":                        {},
+			"/favicon.ico":                    {},
 		},
 		JWKSCacheTTL:  cacheTTL,
 		RequireTenant: requireTenant,
@@ -884,7 +1806,12 @@ func withAuth(cfg *authConfig) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if _, ok := cfg.AllowAnonymous[r.URL.Path]; ok || strings.HasPrefix(r.URL.Path, "/api/reports/") {
+			if _, ok := cfg.AllowAnonymous[r.URL.Path]; ok ||
+				strings.HasPrefix(r.URL.Path, "/api/reports/") ||
+				strings.HasPrefix(r.URL.Path, "/api/profiles/") ||
+				strings.HasPrefix(r.URL.Path, "/api/gateway/connectors/") ||
+				strings.HasPrefix(r.URL.Path, "/api/connectors/") ||
+				strings.HasPrefix(r.URL.Path, "/api/audit/") {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -1273,6 +2200,12 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rid := strings.TrimSpace(r.Header.Get("X-Request-ID"))
@@ -1285,7 +2218,7 @@ func withRequestID(next http.Handler) http.Handler {
 	})
 }
 
-func withLogging(next http.Handler) http.Handler {
+func withLogging(next http.Handler, audit *auditStore) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
@@ -1296,6 +2229,26 @@ func withLogging(next http.Handler) http.Handler {
 		metricsRecord(rec.status, dur)
 		fmt.Fprintf(os.Stdout, "%s method=%s path=%s status=%d duration_ms=%d request_id=%s\n",
 			ts, r.Method, r.URL.Path, rec.status, dur, rid)
+		if audit != nil {
+			outcome := "success"
+			if rec.status >= 400 {
+				outcome = "error"
+			}
+			audit.add(auditEvent{
+				EventID:   fmt.Sprintf("%d", time.Now().UnixNano()),
+				EventTS:   ts,
+				Action:    r.Method,
+				Outcome:   outcome,
+				ObjectKey: r.URL.Path,
+				RequestID: rid,
+				ActorID:   principalFromContext(r.Context()),
+				Source:    "gateway",
+				Detail: map[string]any{
+					"status":      rec.status,
+					"duration_ms": dur,
+				},
+			})
+		}
 	})
 }
 
@@ -1329,7 +2282,530 @@ func logLine(level, msg, format string, args ...any) {
 	fmt.Fprintf(os.Stdout, "%s %s %s %s\n", ts, level, msg, line)
 }
 
+func loadConnectorCatalog() connectorCatalog {
+	var cat connectorCatalog
+	if len(connectorCatalogYAML) == 0 {
+		return cat
+	}
+	if err := yaml.Unmarshal(connectorCatalogYAML, &cat); err != nil {
+		logLine("WARN", "connector_catalog_parse_failed", "err=%s", err.Error())
+		return connectorCatalog{}
+	}
+	return cat
+}
+
+func buildConnectorList(cat connectorCatalog) []connectorPublic {
+	out := make([]connectorPublic, 0, len(cat.Connectors))
+	for _, c := range cat.Connectors {
+		desc := ""
+		if len(c.Endpoints) > 0 {
+			desc = strings.TrimSpace(c.Endpoints[0].Notes)
+		}
+		pub := connectorPublic{
+			ID:           strings.TrimSpace(c.ID),
+			Kind:         strings.TrimSpace(c.Kind),
+			DisplayName:  strings.TrimSpace(c.Name),
+			Description:  desc,
+			Capabilities: append([]string(nil), c.Capabilities...),
+		}
+		if pub.ID == "" || pub.Kind == "" || pub.DisplayName == "" {
+			continue
+		}
+		sort.Strings(pub.Capabilities)
+		out = append(out, pub)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out
+}
+
+func connectorExists(cat connectorCatalog, id string) bool {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return false
+	}
+	for _, c := range cat.Connectors {
+		if strings.EqualFold(strings.TrimSpace(c.ID), id) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultConnectorSchema(id string) map[string]any {
+	return map[string]any{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title":   fmt.Sprintf("Connector %s", id),
+		"type":    "object",
+		"properties": map[string]any{
+			"enabled": map[string]any{
+				"type":        "boolean",
+				"description": "Enable connector",
+			},
+			"notes": map[string]any{
+				"type":        "string",
+				"description": "Operator notes",
+			},
+		},
+	}
+}
+
 // --- helpers ---
+
+func startEventLoops(hub *sseHub, health *healthCache, reg, agg, coo, rep, ana string) {
+	go func() {
+		heartbeat := time.NewTicker(2 * time.Second)
+		defer heartbeat.Stop()
+		for range heartbeat.C {
+			services := checkAllDetailed(reg, agg, coo, rep, ana).Services
+			snap := health.update(services)
+			hub.publish("heartbeat", map[string]any{
+				"status":   snap.Status,
+				"ts":       time.Now().UTC().Format(time.RFC3339),
+				"services": snapshotStatusMap(snap.Services),
+			})
+		}
+	}()
+
+	go func() {
+		tick := time.NewTicker(5 * time.Second)
+		defer tick.Stop()
+		for range tick.C {
+			hub.publish("tick", map[string]any{"ts": time.Now().UTC().Format(time.RFC3339)})
+		}
+	}()
+
+	go func() {
+		var lastTotal int
+		var lastIndex string
+		tick := time.NewTicker(10 * time.Second)
+		defer tick.Stop()
+		for range tick.C {
+			total, ts, ok := fetchResultSummary(context.Background(), agg)
+			if ok && total != lastTotal {
+				lastTotal = total
+				hub.publish("results", map[string]any{
+					"ts":            time.Now().UTC().Format(time.RFC3339),
+					"total_results": total,
+					"last_updated":  ts,
+				})
+			}
+			if idx := fetchReportUpdated(context.Background(), agg); idx != "" && idx != lastIndex {
+				lastIndex = idx
+				hub.publish("insights", map[string]any{
+					"ts":         time.Now().UTC().Format(time.RFC3339),
+					"updated_at": idx,
+				})
+			}
+		}
+	}()
+}
+
+func startCryptoCacheLoop(cache *cryptoCache) {
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			ticks, err := fetchBinanceTickers(context.Background())
+			if err != nil {
+				cache.set(nil, err.Error())
+				continue
+			}
+			cache.set(ticks, "")
+		}
+	}()
+}
+
+func parseLastEventID(v string) int64 {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	n, err := strconv.ParseInt(v, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func writeSSEEvent(w http.ResponseWriter, flusher http.Flusher, ev sseEvent) {
+	if ev.Event != "" {
+		if ev.ID > 0 {
+			fmt.Fprintf(w, "id: %d\n", ev.ID)
+		}
+		fmt.Fprintf(w, "event: %s\n", ev.Event)
+		fmt.Fprintf(w, "data: %s\n\n", ev.Data)
+		flusher.Flush()
+	}
+}
+
+func mustJSON(v any) string {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "{}"
+	}
+	return string(b)
+}
+
+func snapshotStatusMap(services map[string]serviceDetail) map[string]string {
+	out := make(map[string]string, len(services))
+	for k, v := range services {
+		out[k] = v.Status
+	}
+	return out
+}
+
+func queryInt(r *http.Request, key string, def int) int {
+	v := strings.TrimSpace(r.URL.Query().Get(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func queryFloat(r *http.Request, key string, def float64) float64 {
+	v := strings.TrimSpace(r.URL.Query().Get(key))
+	if v == "" {
+		return def
+	}
+	n, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func clampInt(v, minV, maxV int) int {
+	if v < minV {
+		return minV
+	}
+	if v > maxV {
+		return maxV
+	}
+	return v
+}
+
+func buildSummary(ctx context.Context, regURL, aggURL string) (map[string]any, error) {
+	total, lastUpdated := fetchSummaryTotals(ctx, aggURL)
+	profiles := fetchProfilesCount(ctx, regURL)
+	return map[string]any{
+		"total_results":   total,
+		"active_profiles": profiles,
+		"last_updated":    lastUpdated,
+		"generated_at":    time.Now().UTC().Format(time.RFC3339),
+	}, nil
+}
+
+func fetchProfilesCount(ctx context.Context, regURL string) int {
+	u := strings.TrimSuffix(regURL, "/") + "/profiles"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	c := &http.Client{Timeout: 4 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return 0
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return 0
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0
+	}
+	var list []map[string]any
+	if err := json.Unmarshal(body, &list); err == nil {
+		return len(list)
+	}
+	var wrapped map[string]any
+	if err := json.Unmarshal(body, &wrapped); err != nil {
+		return 0
+	}
+	if arr, ok := wrapped["profiles"].([]any); ok {
+		return len(arr)
+	}
+	return 0
+}
+
+func fetchSummaryTotals(ctx context.Context, aggURL string) (int, string) {
+	u := strings.TrimSuffix(aggURL, "/") + "/results/summary"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	c := &http.Client{Timeout: 4 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return 0, time.Now().UTC().Format(time.RFC3339)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return 0, time.Now().UTC().Format(time.RFC3339)
+	}
+	var sum map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&sum); err != nil {
+		return 0, time.Now().UTC().Format(time.RFC3339)
+	}
+	total, _ := asInt(sum["total_results"])
+	last := fetchLatestResultTS(ctx, aggURL)
+	if last == "" {
+		last = time.Now().UTC().Format(time.RFC3339)
+	}
+	return total, last
+}
+
+func fetchLatestResultTS(ctx context.Context, aggURL string) string {
+	u := strings.TrimSuffix(aggURL, "/") + "/results?limit=1"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	c := &http.Client{Timeout: 4 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return ""
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return ""
+	}
+	var rows []map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&rows); err != nil || len(rows) == 0 {
+		return ""
+	}
+	if ts, ok := rows[0]["timestamp"].(string); ok && ts != "" {
+		return ts
+	}
+	if ts, ok := rows[0]["created_at"].(string); ok && ts != "" {
+		return ts
+	}
+	return ""
+}
+
+func fetchResultSummary(ctx context.Context, aggURL string) (int, string, bool) {
+	total, last := fetchSummaryTotals(ctx, aggURL)
+	return total, last, true
+}
+
+func fetchReportUpdated(ctx context.Context, aggURL string) string {
+	rows, err := fetchAggregatorResults(ctx, aggURL, "crypto-watchlist", 1)
+	if err != nil || len(rows) == 0 {
+		return ""
+	}
+	data := resultData(rows[0])
+	if data == nil {
+		return ""
+	}
+	return getTimestamp(rows[0], data).Format(time.RFC3339)
+}
+
+func fetchCryptoSymbols(ctx context.Context, cryptoURL string) (any, string, error) {
+	target := strings.TrimSuffix(cryptoURL, "/") + "/symbols"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	c := &http.Client{Timeout: 5 * time.Second}
+	resp, err := c.Do(req)
+	if err == nil && resp != nil {
+		defer resp.Body.Close()
+		if resp.StatusCode/100 == 2 {
+			var payload any
+			if err := json.NewDecoder(resp.Body).Decode(&payload); err == nil {
+				return payload, "crypto-stream", nil
+			}
+		}
+	}
+
+	return []string{}, "unavailable", nil
+}
+
+func fetchBinanceSymbols(ctx context.Context) ([]string, error) {
+	// Use binance.vision to avoid geo-blocks on api.binance.com.
+	u := "https://data-api.binance.vision/api/v3/exchangeInfo"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	c := &http.Client{Timeout: 6 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("non_2xx")
+	}
+	var info struct {
+		Symbols []struct {
+			Symbol string `json:"symbol"`
+			Status string `json:"status"`
+		} `json:"symbols"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(info.Symbols))
+	for _, s := range info.Symbols {
+		if s.Symbol == "" || strings.ToUpper(s.Status) != "TRADING" {
+			continue
+		}
+		out = append(out, s.Symbol)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+type binanceTicker struct {
+	Symbol             string `json:"symbol"`
+	LastPrice          string `json:"lastPrice"`
+	PriceChangePercent string `json:"priceChangePercent"`
+	Volume             string `json:"volume"`
+	QuoteVolume        string `json:"quoteVolume"`
+	HighPrice          string `json:"highPrice"`
+	LowPrice           string `json:"lowPrice"`
+	OpenPrice          string `json:"openPrice"`
+	CloseTime          int64  `json:"closeTime"`
+}
+
+type cryptoTopRow struct {
+	Symbol    string  `json:"symbol"`
+	Price     float64 `json:"price"`
+	PctChange float64 `json:"pct_change"`
+	Volume    float64 `json:"volume"`
+	QuoteVol  float64 `json:"quote_volume"`
+	High      float64 `json:"high"`
+	Low       float64 `json:"low"`
+	Open      float64 `json:"open"`
+	Updated   string  `json:"updated"`
+}
+
+func fetchBinanceTickers(ctx context.Context) ([]binanceTicker, error) {
+	// Use binance.vision to avoid geo-blocks on api.binance.com.
+	u := "https://data-api.binance.vision/api/v3/ticker/24hr"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	c := &http.Client{Timeout: 6 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("non_2xx")
+	}
+	var ticks []binanceTicker
+	if err := json.NewDecoder(resp.Body).Decode(&ticks); err != nil {
+		return nil, err
+	}
+	return ticks, nil
+}
+
+func fetchBinanceTop(ctx context.Context, limit int, direction, suffix string, minQuote float64) ([]cryptoTopRow, error) {
+	ticks, err := fetchBinanceTickers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return computeTopFromTickers(ticks, limit, direction, suffix, minQuote), nil
+}
+
+func computeTopFromTickers(ticks []binanceTicker, limit int, direction, suffix string, minQuote float64) []cryptoTopRow {
+	if len(ticks) == 0 {
+		return []cryptoTopRow{}
+	}
+	out := make([]cryptoTopRow, 0, len(ticks))
+	for _, t := range ticks {
+		if suffix != "" && !strings.HasSuffix(t.Symbol, suffix) {
+			continue
+		}
+		qv, _ := asFloat(t.QuoteVolume)
+		if qv < minQuote {
+			continue
+		}
+		price, _ := asFloat(t.LastPrice)
+		pct, _ := asFloat(t.PriceChangePercent)
+		vol, _ := asFloat(t.Volume)
+		high, _ := asFloat(t.HighPrice)
+		low, _ := asFloat(t.LowPrice)
+		open, _ := asFloat(t.OpenPrice)
+		updated := ""
+		if t.CloseTime > 0 {
+			updated = time.UnixMilli(t.CloseTime).UTC().Format(time.RFC3339)
+		}
+		out = append(out, cryptoTopRow{
+			Symbol:    t.Symbol,
+			Price:     price,
+			PctChange: pct,
+			Volume:    vol,
+			QuoteVol:  qv,
+			High:      high,
+			Low:       low,
+			Open:      open,
+			Updated:   updated,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if direction == "losers" {
+			return out[i].PctChange < out[j].PctChange
+		}
+		return out[i].PctChange > out[j].PctChange
+	})
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out
+}
+
+func buildIndexFromBinance(ctx context.Context) (struct {
+	T string  `json:"t"`
+	Y float64 `json:"y"`
+}, bool) {
+	ticks, err := fetchBinanceTickers(ctx)
+	if err != nil || len(ticks) == 0 {
+		return struct {
+			T string  `json:"t"`
+			Y float64 `json:"y"`
+		}{}, false
+	}
+	type ranked struct {
+		price float64
+		qv    float64
+	}
+	top := make([]ranked, 0, 50)
+	for _, t := range ticks {
+		if !strings.HasSuffix(t.Symbol, "USDT") {
+			continue
+		}
+		qv, _ := asFloat(t.QuoteVolume)
+		price, _ := asFloat(t.LastPrice)
+		if qv <= 0 || price <= 0 {
+			continue
+		}
+		top = append(top, ranked{price: price, qv: qv})
+	}
+	sort.Slice(top, func(i, j int) bool { return top[i].qv > top[j].qv })
+	if len(top) > 10 {
+		top = top[:10]
+	}
+	if len(top) == 0 {
+		return struct {
+			T string  `json:"t"`
+			Y float64 `json:"y"`
+		}{}, false
+	}
+	var sum float64
+	for _, r := range top {
+		sum += r.price
+	}
+	return struct {
+		T string  `json:"t"`
+		Y float64 `json:"y"`
+	}{T: time.Now().UTC().Format(time.RFC3339), Y: sum / float64(len(top))}, true
+}
+
+func checkCryptoHealth(ctx context.Context, cryptoURL string) (string, int, error) {
+	target := strings.TrimSuffix(cryptoURL, "/") + "/health"
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	c := &http.Client{Timeout: 3 * time.Second}
+	resp, err := c.Do(req)
+	if err != nil {
+		return "down", 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return "down", resp.StatusCode, fmt.Errorf("non_2xx")
+	}
+	return "up", resp.StatusCode, nil
+}
 
 func splitCSV(v string) []string {
 	if strings.TrimSpace(v) == "" {
