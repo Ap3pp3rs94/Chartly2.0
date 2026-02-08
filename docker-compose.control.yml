@@ -182,6 +182,7 @@ services:
       AGGREGATOR_URL: http://aggregator:8082
       REGISTRY_URL: http://registry:8081
       BINANCE_WS_URL: wss://stream.binance.com:9443/ws/!miniTicker@arr
+      CRYPTO_FORCE_REST: "1"
       CRYPTO_PROFILE_ID: crypto-watchlist
       CRYPTO_WATCHLIST_PROFILE_ID: crypto-watchlist
       CRYPTO_WATCHLIST_REFRESH: 30s

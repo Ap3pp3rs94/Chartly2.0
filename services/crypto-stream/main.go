@@ -37,6 +37,7 @@ type config struct {
 	HealthAddr     string
 	ProjectMode    string
 	ProjectMinVol  float64
+	ForceREST      bool
 	WatchlistID    string
 	WatchlistEvery time.Duration
 	Watchlist      *watchlistState
@@ -76,6 +77,10 @@ func main() {
 	rowsOut := int64(0)
 	lastErr := atomic.Value{}
 	wsUp := uint32(0)
+	if cfg.ForceREST {
+		atomic.StoreUint32(&wsUp, 0)
+		log.Printf("rest polling forced: CRYPTO_FORCE_REST=1")
+	}
 
 	_ = postRun(ctx, cfg, runIn{
 		RunID:     cfg.RunID,
@@ -149,7 +154,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if atomic.LoadUint32(&wsUp) == 1 {
+				if !cfg.ForceREST && atomic.LoadUint32(&wsUp) == 1 {
 					continue
 				}
 				if err := pollREST(ctx, cfg, &rowsOut, recordsCh); err != nil {
@@ -161,6 +166,14 @@ func main() {
 	}()
 
 	for {
+		if cfg.ForceREST {
+			select {
+			case <-ctx.Done():
+				goto shutdown
+			case <-time.After(cfg.ReconnectDelay):
+				continue
+			}
+		}
 		if err := runWS(ctx, cfg, &rowsOut, recordsCh, &wsUp); err != nil {
 			lastErr.Store(err)
 			log.Printf("ws loop error: %v", err)
@@ -472,6 +485,7 @@ func loadConfig() config {
 		HealthAddr:     getenv("CRYPTO_HEALTH_ADDR", ":8088"),
 		ProjectMode:    getenv("CRYPTO_PROJECT_MODE", "avg_usdt"),
 		ProjectMinVol:  getenvFloat("CRYPTO_PROJECT_MIN_VOL", 1000),
+		ForceREST:      getenvBool("CRYPTO_FORCE_REST", false),
 		WatchlistID:    getenv("CRYPTO_WATCHLIST_PROFILE_ID", "crypto-watchlist"),
 		WatchlistEvery: getenvDuration("CRYPTO_WATCHLIST_REFRESH", 30*time.Second),
 		Watchlist:      wl,
@@ -519,6 +533,21 @@ func getenvFloat(key string, def float64) float64 {
 		return def
 	}
 	return f
+}
+
+func getenvBool(key string, def bool) bool {
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return def
+	}
 }
 
 type watchlistState struct {
