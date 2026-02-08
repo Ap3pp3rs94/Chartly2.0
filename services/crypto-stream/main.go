@@ -24,13 +24,16 @@ type config struct {
 	AggregatorURL  string
 	RegistryURL    string
 	BinanceWSURL   string
+	BinanceRESTURL string
 	ProfileID      string
 	DroneID        string
 	RunID          string
 	BatchMax       int
 	FlushInterval  time.Duration
 	PostTimeout    time.Duration
+	RESTTimeout    time.Duration
 	ReconnectDelay time.Duration
+	RESTPollEvery  time.Duration
 	HealthAddr     string
 	ProjectMode    string
 	ProjectMinVol  float64
@@ -72,6 +75,7 @@ func main() {
 	startedAt := time.Now().UTC()
 	rowsOut := int64(0)
 	lastErr := atomic.Value{}
+	wsUp := uint32(0)
 
 	_ = postRun(ctx, cfg, runIn{
 		RunID:     cfg.RunID,
@@ -137,8 +141,27 @@ func main() {
 		}
 	}()
 
+	go func() {
+		ticker := time.NewTicker(cfg.RESTPollEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if atomic.LoadUint32(&wsUp) == 1 {
+					continue
+				}
+				if err := pollREST(ctx, cfg, &rowsOut, recordsCh); err != nil {
+					lastErr.Store(err)
+					log.Printf("rest poll error: %v", err)
+				}
+			}
+		}
+	}()
+
 	for {
-		if err := runWS(ctx, cfg, &rowsOut, recordsCh); err != nil {
+		if err := runWS(ctx, cfg, &rowsOut, recordsCh, &wsUp); err != nil {
 			lastErr.Store(err)
 			log.Printf("ws loop error: %v", err)
 		}
@@ -175,13 +198,15 @@ shutdown:
 	})
 }
 
-func runWS(ctx context.Context, cfg config, rowsOut *int64, recordsCh chan<- json.RawMessage) error {
+func runWS(ctx context.Context, cfg config, rowsOut *int64, recordsCh chan<- json.RawMessage, wsUp *uint32) error {
 	dialer := websocket.DefaultDialer
 	conn, _, err := dialer.Dial(cfg.BinanceWSURL, nil)
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	atomic.StoreUint32(wsUp, 1)
+	defer atomic.StoreUint32(wsUp, 0)
 
 	for {
 		select {
@@ -219,6 +244,42 @@ type miniTicker struct {
 	Volume      float64
 	QuoteVolume float64
 	Raw         map[string]any
+}
+
+func pollREST(ctx context.Context, cfg config, rowsOut *int64, recordsCh chan<- json.RawMessage) error {
+	reqCtx, cancel := context.WithTimeout(ctx, cfg.RESTTimeout)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, cfg.BinanceRESTURL, nil)
+	if err != nil {
+		return err
+	}
+	client := &http.Client{Timeout: cfg.RESTTimeout}
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("rest status %d", resp.StatusCode)
+	}
+	var raw json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		return err
+	}
+	records, err := normalizeMiniTicker(raw, cfg)
+	if err != nil {
+		return err
+	}
+	for _, r := range records {
+		select {
+		case recordsCh <- r:
+			atomic.AddInt64(rowsOut, 1)
+		default:
+			// drop on backpressure to avoid unbounded memory
+		}
+	}
+	return nil
 }
 
 func normalizeMiniTicker(raw []byte, cfg config) ([]json.RawMessage, error) {
@@ -398,13 +459,16 @@ func loadConfig() config {
 		AggregatorURL:  getenv("AGGREGATOR_URL", "http://aggregator:8082"),
 		RegistryURL:    getenv("REGISTRY_URL", "http://registry:8081"),
 		BinanceWSURL:   getenv("BINANCE_WS_URL", "wss://data-stream.binance.vision/ws/!miniTicker@arr"),
+		BinanceRESTURL: getenv("BINANCE_REST_URL", "https://api.binance.com/api/v3/ticker/24hr"),
 		ProfileID:      getenv("CRYPTO_PROFILE_ID", "crypto-watchlist"),
 		DroneID:        getenv("CRYPTO_DRONE_ID", "crypto-binance-ws"),
 		RunID:          getenv("CRYPTO_RUN_ID", "run_"+time.Now().UTC().Format("20060102T150405Z")),
 		BatchMax:       getenvInt("CRYPTO_BATCH_MAX", 500),
 		FlushInterval:  getenvDuration("CRYPTO_FLUSH_INTERVAL", 2*time.Second),
 		PostTimeout:    getenvDuration("CRYPTO_POST_TIMEOUT", 10*time.Second),
+		RESTTimeout:    getenvDuration("CRYPTO_REST_TIMEOUT", 8*time.Second),
 		ReconnectDelay: getenvDuration("CRYPTO_RECONNECT_DELAY", 3*time.Second),
+		RESTPollEvery:  getenvDuration("CRYPTO_REST_POLL_INTERVAL", 5*time.Second),
 		HealthAddr:     getenv("CRYPTO_HEALTH_ADDR", ":8088"),
 		ProjectMode:    getenv("CRYPTO_PROJECT_MODE", "avg_usdt"),
 		ProjectMinVol:  getenvFloat("CRYPTO_PROJECT_MIN_VOL", 1000),
