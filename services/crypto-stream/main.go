@@ -471,8 +471,8 @@ func loadConfig() config {
 	return config{
 		AggregatorURL:  getenv("AGGREGATOR_URL", "http://aggregator:8082"),
 		RegistryURL:    getenv("REGISTRY_URL", "http://registry:8081"),
-		BinanceWSURL:   getenv("BINANCE_WS_URL", "wss://data-stream.binance.vision/ws/!miniTicker@arr"),
-		BinanceRESTURL: getenv("BINANCE_REST_URL", "https://api.binance.com/api/v3/ticker/24hr"),
+		BinanceWSURL:   getenv("BINANCE_WS_URL", "wss://stream.binance.us:9443/ws/!miniTicker@arr"),
+		BinanceRESTURL: getenv("BINANCE_REST_URL", "https://api.binance.us/api/v3/ticker/24hr"),
 		ProfileID:      getenv("CRYPTO_PROFILE_ID", "crypto-watchlist"),
 		DroneID:        getenv("CRYPTO_DRONE_ID", "crypto-binance-ws"),
 		RunID:          getenv("CRYPTO_RUN_ID", "run_"+time.Now().UTC().Format("20060102T150405Z")),
