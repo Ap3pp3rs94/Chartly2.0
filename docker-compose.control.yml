@@ -175,10 +175,13 @@ services:
     build:
       context: .
       dockerfile: services/crypto-stream/Dockerfile
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
     environment:
       AGGREGATOR_URL: http://aggregator:8082
       REGISTRY_URL: http://registry:8081
-      BINANCE_WS_URL: wss://data-stream.binance.vision/ws/!miniTicker@arr
+      BINANCE_WS_URL: wss://stream.binance.com:9443/ws/!miniTicker@arr
       CRYPTO_PROFILE_ID: crypto-watchlist
       CRYPTO_WATCHLIST_PROFILE_ID: crypto-watchlist
       CRYPTO_WATCHLIST_REFRESH: 30s
