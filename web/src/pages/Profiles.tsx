@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { getAllProfiles } from "@/lib/profile_virtual";
 import { loadWorkspace, setSelectedProfiles } from "@/lib/workspace";
 import { useNavigate } from "react-router-dom";
-import { getVirtualProfiles, setVirtualProfiles, getVars } from "@/lib/storage";
+import { getVirtualProfiles, setVirtualProfiles, getVarValue } from "@/lib/storage";
 
 export default function Profiles() {
   const nav = useNavigate();
@@ -47,10 +47,14 @@ export default function Profiles() {
     getAllProfiles().then(setProfiles);
   }
 
-  function getRegistryKey() {
-    const vars = getVars();
-    return vars["REGISTRY_API_KEY"] || vars["X_API_KEY"] || vars["API_KEY"] || "";
-  }
+function getRegistryKey() {
+  return (
+    getVarValue("REGISTRY_API_KEY") ||
+    getVarValue("X_API_KEY") ||
+    getVarValue("API_KEY") ||
+    ""
+  );
+}
 
   async function loadProfile(id: string) {
     setStatus("");
@@ -85,7 +89,7 @@ export default function Profiles() {
       setStatus("Profile content is required.");
       return;
     }
-    const exists = profiles.some((p) => p.id === draftId.trim());
+    const exists = profiles.some((p) => p.id === draftId.trim() && !p._virtual);
     const method = exists ? "PUT" : "POST";
     const url = exists ? `/api/profiles/${encodeURIComponent(draftId.trim())}` : "/api/profiles";
     const body = {
@@ -199,7 +203,7 @@ export default function Profiles() {
               <div style={{ fontSize: 12, opacity: 0.7 }}>{p.id}</div>
             </div>
             <div style={{ fontSize: 12, opacity: 0.7 }}>
-              {p._virtual ? "imported" : "real"}
+              {p._origin === "derived_symbol" ? "derived" : p._virtual ? "imported" : "real"}
               <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>{statusMap[p.id] || ""}</div>
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -216,10 +220,10 @@ export default function Profiles() {
               {!p._virtual ? (
                 <button onClick={() => callProfileAction(p.id, "resume")} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #1f2a37", background: "#12201a", color: "#9ef0c0" }}>Resume</button>
               ) : null}
-              {p._virtual ? (
+              {p._virtual && p._origin !== "derived_symbol" ? (
                 <button onClick={() => removeVirtual(p.id)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #1f2a37", background: "#222", color: "#fff" }}>Remove</button>
               ) : (
-                <button onClick={() => deleteProfile(p.id)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #1f2a37", background: "#261313", color: "#ffb4b4" }}>Delete</button>
+                !p._virtual ? <button onClick={() => deleteProfile(p.id)} style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #1f2a37", background: "#261313", color: "#ffb4b4" }}>Delete</button> : null
               )}
             </div>
           </div>
